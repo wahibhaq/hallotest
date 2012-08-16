@@ -1,0 +1,25 @@
+!!! 5
+html(lang="en")
+  head
+    title surespot
+    meta(name="viewport", content="width=device-width, initial-scale=1")
+    link(rel="stylesheet", href="../css/app/style.css")
+    link(rel="stylesheet", href="../css/lib/jquery.mobile-1.1.1.min.css")
+    //script(src="../js/lib/cordova-2.0.0.js")
+    script(data-main="../js/app/main", src="../js/lib/require.js")
+    script(src="../js/lib/jsbn.js")
+    script(src="../js/lib/jsbn2.js")
+    script(src="../js/lib/rsa.js")
+    script(src="../js/lib/rsa2.js")
+    script(src="../js/lib/prng4.js")
+    script(src="../js/lib/rng.js")
+    script(src="../js/lib/rsasync.js")
+    script(src="../js/lib/sjcl.js")
+
+
+  body#page_body(data-base="")
+    include login
+    include signup
+    include notifications
+    include friends
+    include conversation

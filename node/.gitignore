@@ -1,0 +1,7 @@
+node_modules
+.idea
+.DS_Store
+dump.rdb
+build/output
+assets/html
+assets/js/app

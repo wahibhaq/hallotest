@@ -1,0 +1,27 @@
+#notifications(data-role="page")
+  div(data-role="header", data-position="fixed", data-tap-toggle="false")
+    h1.ss-title.notifications-vm(data-bind='text: title')
+    div(data-role="navbar")
+        ul
+          li
+            a.ss-logout(href='#', data-bind="click: logout") logout
+
+
+          li
+            a(href="#friends") friends&nbsp;
+              span.friends-vm.ui-li-count(data-bind='text: totalMessageCount')
+
+          li
+            a.ui-btn-active.ui-state-persist(href="#") notifications&nbsp;
+              span.notifications-vm.ui-li-count(data-bind='text: itemList().length')
+  #notificationscontent(data-role="content")
+    ul.notificationslist(data-role="listview", data-bind="foreach: itemList, jqmRefreshList: itemList()", auto-dividers="true")
+      li
+        div
+          span(data-bind="text: $data.data")
+          button(data-role='button', data-inline='true', data-mini='true', data-bind="click: function(data,event) { $parent.notificationClick(data,event,'accept') }") accept
+          button(data-role='button', data-inline='true', data-mini='true', data-bind="click: function(data,event) { $parent.notificationClick(data,event,'ignore') }") ignore
+  div(data-role="footer", data-position="fixed",  data-tap-toggle="false")
+
+
+

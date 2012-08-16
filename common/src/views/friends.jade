@@ -1,0 +1,33 @@
+#friends(data-role="page")
+  div(data-role="header", data-position="fixed", data-tap-toggle="false")
+
+    h1.ss-title.friends-vm(data-bind='text: title()')
+    div(data-role="navbar")
+      ul
+        li
+          a.ss-logout(href='#', data-bind="click: logout") logout
+
+        li
+          a.ui-btn-active.ui-state-persist(href="#") friends&nbsp;
+            span.friends-vm.ui-li-count(data-bind='text: totalMessageCount')
+
+        li
+          a(href="#notifications") notifications&nbsp;
+            span.notifications-vm.ui-li-count(data-bind='text: itemList().length')
+
+  #friendscontent(data-role="content")
+      ul#friendslist.friendslist(data-role="listview", data-bind="foreach: itemList, jqmRefreshList: itemList()", auto-dividers="true")
+        li
+
+
+
+
+            a(href='#', data-bind="click: function(data,event) { $parent.friendClick(data,event) }")
+              span(data-bind="text: $data.friendname")&nbsp;
+              span.ui-li-count(data-bind='text: $parent.getNewMessageCount($data.room)')
+  div(data-role="footer", data-position="fixed",  data-tap-toggle="false")
+    input(type="text", id="blinkerinput")
+
+
+
+
