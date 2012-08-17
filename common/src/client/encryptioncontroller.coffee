@@ -17,11 +17,19 @@ define ["./encryption", "./networkcontroller"], (encryption, networkcontroller) 
         console.log "keypair loaded from localStorage"
         @_rebuildKeys JSON.parse(key)
 
-      #start with some random shit
-      sjcl.random.startCollectors()
-      sjcl.random.addEventListener "seeded", =>
-        console.log 'random ready'
-        sjcl.random.stopCollectors()
+      if not sjcl.random.isReady()
+        console.log "starting random collection, move the mouse"
+        #start with some random shit
+        sjcl.random.startCollectors()
+        sjcl.random.addEventListener "seeded", =>
+          console.log 'random ready'
+          sjcl.random.stopCollectors()
+          if @privatekey?
+            @readycallback true if @readycallback?
+          else
+            @_generateKeyPair()
+      else
+        console.log "random ready"
         if @privatekey?
           @readycallback true if @readycallback?
         else
@@ -47,8 +55,9 @@ define ["./encryption", "./networkcontroller"], (encryption, networkcontroller) 
         callback(publickey)
       else
         networkcontroller.getPublicKey username, (publickey) =>
-          @_storePublicKey username, publickey
-          callback publickey
+          key = @_rebuildPublicKey(JSON.parse(publickey))
+          @_storePublicKey username, key
+          callback key
         , ->
           callback null
 
@@ -93,6 +102,10 @@ define ["./encryption", "./networkcontroller"], (encryption, networkcontroller) 
 
       @privatekey = new sjcl.ecc.elGamal.secretKey key.sec.curve, sjcl.ecc.curves['c' + key.sec.curve], ex
       @publickey = new sjcl.ecc.elGamal.publicKey key.pub.curve, point.curve, point
+
+    _rebuildPublicKey: (key) ->
+      point = sjcl.ecc.curves['c'+key.curve].fromBits(key.point)
+      return new sjcl.ecc.elGamal.publicKey key.curve, point.curve, point
 
 
   return new EncryptionController()
