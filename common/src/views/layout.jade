@@ -6,7 +6,6 @@ html(lang="en")
     link(rel="stylesheet", href="../css/app/style.css")
     link(rel="stylesheet", href="../css/lib/jquery.mobile-1.1.1.min.css")
     //script(src="../js/lib/cordova-2.0.0.js")
-    script(data-main="../js/app/main", src="../js/lib/require.js")
     script(src="../js/lib/jsbn.js")
     script(src="../js/lib/jsbn2.js")
     script(src="../js/lib/rsa.js")
@@ -15,7 +14,7 @@ html(lang="en")
     script(src="../js/lib/rng.js")
     script(src="../js/lib/rsasync.js")
     script(src="../js/lib/sjcl.js")
-
+    script(data-main="../js/app/main", src="../js/lib/require.js")
 
   body#page_body(data-base="")
     include login

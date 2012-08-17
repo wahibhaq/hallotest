@@ -10,6 +10,7 @@ define ["jquery"], ($) ->
     user.username = username
     user.password = password
     user.publickey = publickey
+    userjson = JSON.stringify user
     $.post(@buildUrl("/users"), JSON.stringify(user)).success(successCallback).error errorCallback
 
   login: (username, password, successCallback, errorCallback) ->

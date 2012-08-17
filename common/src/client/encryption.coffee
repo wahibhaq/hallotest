@@ -1,5 +1,10 @@
 define ->
-  generateKeyPairAsync: (result) ->
+  generateEccKeyPairAsync: (result) ->
+    keys = sjcl.ecc.elGamal.generateKeys(384, 6)
+    result keys
+
+
+  generateRsaKeyPairAsync: (result) ->
     key = new RSAKey()
     key.generateAsync 256, "03", ->
       privatekey =
@@ -13,13 +18,18 @@ define ->
 
       result privatekey
 
+  eccEncrypt: (publickey, plaintext) ->
+    sjcl.encrypt publickey, plaintext
+
+  eccDecrypt: (privatekey, ciphertext) ->
+    sjcl.decrypt privatekey, ciphertext
 
   rsaEncrypt: (publickey, plaintext) ->
     rsa = new RSAKey()
     rsa.setPublic publickey, "03"
     rsa.encrypt plaintext
 
-  asymDecrypt: (privatekey, ciphertext) ->
+  rsaDecrypt: (privatekey, ciphertext) ->
     rsa = new RSAKey()
     rsa.setPrivateEx privatekey.n, "03", privatekey.d, privatekey.p, privatekey.q, privatekey.dmp1, privatekey.dmq1, privatekey.coeff
     rsa.decrypt ciphertext

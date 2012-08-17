@@ -61,8 +61,8 @@ task 'ccln', 'copy common lib to node', ->
 task 'cclc', 'copy common lib to cordova', ->
   copyCommonLibCordova()
 
-task 'watch', 'Watch src/ for coffee changes', ->
-  exec 'coffee', ['-w', '-c', '-o', 'assets/js/app/', 'src/coffee/client']
+task 'wcn', 'Watch src/ for coffee changes, update node', ->
+  exec 'coffee', ['-w', '-c', '-o', 'node/assets/js/app/', 'common/src/client']
  
 optimizeNode = (callback) ->
   exec 'node', ['build/r.js', '-o','build/node.build.js']

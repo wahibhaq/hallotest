@@ -133,7 +133,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     app.use express.logger()
     app.use express["static"](__dirname + "/../assets")
     if dev
-      app.set "views", __dirname + "/../src/views"
+      app.set "views", __dirname + "/../../common/src/views"
       app.set "view engine", "jade"
       app.set "view options", layout: false
     app.use express.cookieParser()

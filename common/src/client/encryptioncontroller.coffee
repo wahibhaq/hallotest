@@ -12,26 +12,34 @@ define ["./encryption", "./networkcontroller"], (encryption, networkcontroller) 
       #todo check if key is on disk
       # return true;
       #  localStorage.clear();
-      @privatekey = localStorage.getItem("privatekey")
-      if @privatekey
+      key = localStorage.getItem("privatekey")
+      if key?
         console.log "keypair loaded from localStorage"
-        @_setAsymKey JSON.parse(@privatekey)
+        @_rebuildKeys JSON.parse(key)
 
-        #if we have a callback, call it
-        #the consumer should check if the publickey is available before setting the callback
-        @readycallback true if @readycallback
-      else
+      #start with some random shit
+      sjcl.random.startCollectors()
+      sjcl.random.addEventListener "seeded", =>
+        console.log 'random ready'
+        sjcl.random.stopCollectors()
+        if @privatekey?
+          @readycallback true if @readycallback?
+        else
+          @_generateKeyPair()
 
-        #new user so start generating a key asynchronously, maybe by the time they're done
-        #entering login stuff the key will be ready
-        encryption.generateKeyPairAsync (generatedKey) =>
-          console.log "keypair generated"
 
-          #dump this in localstorage for now
-          localStorage.setItem "privatekey", JSON.stringify(generatedKey)
-          @_setAsymKey generatedKey
-          @readycallback true if @readycallback
 
+    _generateKeyPair: () ->
+      #new user so start generating a key asynchronously, maybe by the time they're done
+      #entering login stuff the key will be ready
+      encryption.generateEccKeyPairAsync (generatedKey) =>
+        console.log "keypair generated"
+
+        #dump this in localstorage for now
+        localStorage.setItem "privatekey", JSON.stringify { pub: generatedKey.pub.serialize(), sec: generatedKey.sec.serialize()}
+        @privatekey = generatedKey.sec
+        @publickey = generatedKey.pub
+        @readycallback true if @readycallback and sjcl.random.isReady()
 
     _hydratePublicKey: (username, callback) ->
       publickey = @publickeys[username]
@@ -52,7 +60,7 @@ define ["./encryption", "./networkcontroller"], (encryption, networkcontroller) 
       @publickeys[username] = publickey
 
     asymDecrypt: (ciphertext) ->
-      encryption.asymDecrypt @privatekey, ciphertext
+      encryption.eccDecrypt @privatekey, ciphertext
 
     createSymKeys: (room, remoteusername, callback) ->
       @_hydratePublicKey remoteusername, (remotepublickey) =>
@@ -64,8 +72,8 @@ define ["./encryption", "./networkcontroller"], (encryption, networkcontroller) 
         #todo don't store in plain text
         newKey = "somekey"
         @symmetricKeys[room] = newKey
-        mkey = encryption.rsaEncrypt(@publickey, newKey)
-        tkey = encryption.rsaEncrypt(remotepublickey, newKey)
+        mkey = encryption.eccEncrypt(@publickey, newKey)
+        tkey = encryption.eccEncrypt(remotepublickey, newKey)
         callback {
           mykey: mkey,
           theirkey: tkey
@@ -78,9 +86,14 @@ define ["./encryption", "./networkcontroller"], (encryption, networkcontroller) 
       return encryption.aesDecrypt(@symmetricKeys[room], ciphertext)
 
 
-    _setAsymKey: (key) ->
-      @privatekey = key
-      @publickey = key.n
+    _rebuildKeys: (key) ->
+
+      point = sjcl.ecc.curves['c'+key.pub.curve].fromBits(key.pub.point)
+      ex = sjcl.bn.fromBits key.sec.exponent
+
+      @privatekey = new sjcl.ecc.elGamal.secretKey key.sec.curve, sjcl.ecc.curves['c' + key.sec.curve], ex
+      @publickey = new sjcl.ecc.elGamal.publicKey key.pub.curve, point.curve, point
+
 
   return new EncryptionController()
   

@@ -43,7 +43,7 @@ define [
 
         #see if the key is there
         unless @encryptionReady
-          if encryptioncontroller.publickey
+          if encryptioncontroller.publickey and sjcl.random.isReady()
             @encryptionReady = true
           else
 
@@ -55,7 +55,7 @@ define [
 
       signupanduploadkey: ->
         u = @username
-        networkcontroller.addUser @username, @password, encryptioncontroller.publickey, (signupSuccessCallback = ->
+        networkcontroller.addUser @username, @password, JSON.stringify(encryptioncontroller.publickey.serialize()), (signupSuccessCallback = ->
           chatcontroller.connect()
           UserViewModel.setUsername u
           $(".dynamicConversationPage").remove()
