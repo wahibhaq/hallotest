@@ -13,7 +13,6 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   express = require("express")
   passport = require("passport")
   LocalStrategy = require("passport-local").Strategy
-  jade = require("jade")
   bcrypt = require("bcrypt")
   RedisStore = require("connect-redis")(express)
   path = require 'path'
@@ -132,10 +131,6 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
     app.use express.logger()
     app.use express["static"](__dirname + "/../assets")
-    if dev
-      app.set "views", __dirname + "/../../common/src/views"
-      app.set "view engine", "jade"
-      app.set "view options", layout: false
     app.use express.cookieParser()
     app.use express.bodyParser()
     app.use express.session(
@@ -392,10 +387,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     res.send "test/test.html"
 
   app.get "/", (req, res) ->
-    if dev
-      res.render "layout"
-    else
-      res.sendfile path.normalize __dirname + "/../assets/html/layout.html"
+    res.sendfile path.normalize __dirname + "/../assets/html/layout.html"
 
   app.get "/friends", ensureAuthenticated, getFriends
   app.get "/publickey/:username", ensureAuthenticated, getPublicKey

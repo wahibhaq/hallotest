@@ -28,7 +28,7 @@ requirejs.config
     cordova: "../lib/cordova-2.0.0"
     jquery: "../lib/jquery-1.7.1"
     jqm: "../lib/jquery.mobile-1.1.1"
-    "socket.io": "http://alpha.surespot.me:80/socket.io/socket.io"
+    "socket.io": "../lib/socket.io"
     knockout: "../lib/knockout-2.1.0.debug"
 
 require ["jquery", "cordova"], ($, cordova) ->
@@ -47,7 +47,7 @@ require ["jquery", "cordova"], ($, cordova) ->
             $.mobile.changePage "#login"
 
 
-    require ["knockout", "./assets/js/app/chatcontroller", "./uicontroller", "./usercontroller", "./viewmodels/UserViewModel", "./viewmodels/FriendsViewModel", "./viewmodels/ListViewModel", "./viewmodels/NotificationsViewModel"], (ko, chatController, uiController) ->
+    require ["knockout", "./chatcontroller", "./uicontroller", "./usercontroller", "./viewmodels/UserViewModel", "./viewmodels/FriendsViewModel", "./viewmodels/ListViewModel", "./viewmodels/NotificationsViewModel"], (ko, chatController, uiController) ->
       chatController.connect()
       redirectToConversation = undefined
       redirectToConversation = (event, locationHash) ->
