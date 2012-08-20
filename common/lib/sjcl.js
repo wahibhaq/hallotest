@@ -1460,7 +1460,13 @@ sjcl.random = {
     crypto.getRandomValues(ab);
     sjcl.random.addEntropy(ab, 1024, "crypto.getRandomValues");
   } catch (e) {
-    // no getRandomValues :-(
+      //use seedrandom
+      Math.seedrandom();
+
+      while (!sjcl.random.isReady()) {
+          var n = Math.random()
+          sjcl.random.addEntropy(n,1,"seedrandom Math.random()")
+      }
   }
 })();
 /** @fileOverview Convenince functions centered around JSON encapsulation.
