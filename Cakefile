@@ -36,12 +36,10 @@ task 'cc', 'compile src coffee to cordova assets', ->
   coffeeCordova()
 
 task 'bc', 'build all cordova assets', ->
-  commonCoffeeCordova(
-    coffeeCordova(
-      jadeCordova(
-        copyCommonCssCordova((err) ->
-          return console.log err if err?
-          copyCommonLibCordova((err) -> console.log err if err?)))))
+  commonCoffeeCordova(coffeeCordova)
+  copyCommonCssCordova((err) -> console.log err if err?)
+  copyCommonLibCordova((err) -> console.log err if err?)
+  jadeCordova()
 
 
 task 'bn', 'build all node assets', ->
