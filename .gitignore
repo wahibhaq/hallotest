@@ -3,3 +3,5 @@
 surespot-built
 node/assets/
 android/assets/
+.apk
+.ap_

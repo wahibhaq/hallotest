@@ -1,5 +1,3 @@
-
-
 {print} = require 'sys'
 {spawn} = require 'child_process'
 fse = require 'fs-extra'
@@ -29,7 +27,7 @@ copyCommonLibNode = (callback) ->
     fse.copy('common/lib', 'node/assets/js/lib/', callback)
 
 cc = coffeeCordova = (callback) ->
-  exec 'coffee', ['-c', '-o', 'android/assets/js/app/', 'common/src/client/'], callback
+  exec 'coffee', ['-c', '-o', 'android/assets/js/app/', 'android/websrc'], callback
 
 task 'cn', 'compile src coffee to node assets', ->
   coffeeNode()
@@ -38,7 +36,12 @@ task 'cc', 'compile src coffee to cordova assets', ->
   coffeeCordova()
 
 task 'bc', 'build all cordova assets', ->
-  coffeeCordova jadeCordova()
+  commonCoffeeCordova(
+    coffeeCordova(
+      jadeCordova(
+        copyCommonCssCordova((err) ->
+          return console.log err if err?
+          copyCommonLibCordova((err) -> console.log err if err?)))))
 
 
 task 'bn', 'build all node assets', ->
@@ -53,19 +56,19 @@ task 'ccssn', 'copy common css to node', ->
   copyCommonCssNode((err) -> console.log err if err?)
 
 task 'cccc', 'copy common css to cordova', ->
-  copyCommonCssCordova()
+  copyCommonCssCordova((err) -> console.log err if err?)
 
 task 'ccln', 'copy common lib to node', ->
   copyCommonLibNode((err) -> console.log err if err?)
 
 task 'cclc', 'copy common lib to cordova', ->
-  copyCommonLibCordova()
+  copyCommonLibCordova((err) -> console.log err if err?)
 
 task 'wcn', 'Watch src/ for coffee changes, update node', ->
   exec 'coffee', ['-w', '-c', '-o', 'node/assets/js/app/', 'common/src/client']
- 
+
 optimizeNode = (callback) ->
-  exec 'node', ['build/r.js', '-o','build/node.build.js']
+  exec 'node', ['build/r.js', '-o', 'build/node.build.js']
 
 task 'optimize', 'r.js the code', ->
   optimize()
