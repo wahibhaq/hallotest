@@ -91,9 +91,13 @@ uiController) ->
 
   $(document).bind "mobileinit", ->
     console.log "mobileinit"
-    $.mobile.defaultPageTransition = 'none'
+    #$.mobile.defaultPageTransition = 'none'
     $.mobile.allowCrossDomainPages = true
     $.support.cors = true
+    #$.mobile.transitionFallbacks.slideout = "none"
+    #$.mobile.transitionFallbacks.slide = "none"
+    #$.mobile.transitionFallbacks.pop = "none"
+    #$.mobile.maxTransitionWidth = 1
     $.ajaxSetup
       contentType: "application/json; charset=utf-8"
       statusCode:

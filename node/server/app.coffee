@@ -384,7 +384,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   )
 
   app.get "/test", (req, res) ->
-    res.send "test/test.html"
+    res.sendfile path.normalize __dirname + "/../assets/html/test.html"
 
   app.get "/", (req, res) ->
     res.sendfile path.normalize __dirname + "/../assets/html/layout.html"

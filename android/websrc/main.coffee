@@ -40,7 +40,9 @@ require ["jquery", "cordova"], ($, cordova) ->
       $.mobile.allowCrossDomainPages = true
       $.mobile.pushStateEnabled = false
       $.support.cors = true
-      $.mobile.transitionFallbacks.slideout = "none"
+      #$.mobile.transitionFallbacks.slideout = "none"
+      #$.mobile.transitionFallbacks.slide = "none"
+      #$.mobile.transitionFallbacks.pop = "none"
       $.ajaxSetup
         contentType: "application/json; charset=utf-8"
         statusCode:

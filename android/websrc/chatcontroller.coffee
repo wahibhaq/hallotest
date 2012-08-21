@@ -51,7 +51,7 @@ define [
 
       disconnect: ->
         if @_socket?
-          @_socket?.socket.disconnect()
+          @_socket.socket.disconnect()
 
 
       connect:  ->
@@ -64,7 +64,7 @@ define [
           if nullsocket
             #   console.log ('creating new socket connection')
             #todo use config for this
-            @_socket = io.connect("http://129.168.10.135")
+            @_socket = io.connect("http://192.168.10.135:3000")
 
           else
             #  console.log ('reconnecting existing socket connection')

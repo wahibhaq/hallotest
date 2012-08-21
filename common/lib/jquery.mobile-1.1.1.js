@@ -2300,7 +2300,7 @@ var createHandler = function( sequential ){
             },
 		
 			doneIn = function() {
-			
+
 				if ( !sequential ) {
 					
 					if( $from ){
@@ -2324,7 +2324,7 @@ var createHandler = function( sequential ){
 			};
 
 		toggleViewportClass();
-	
+
 		if ( $from && !none ) {
 			startOut();
 		}

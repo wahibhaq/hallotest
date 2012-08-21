@@ -1,7 +1,5 @@
 .DS_Store
 .idea
-surespot-built
+surespot-*
 node/assets/
 android/assets/
-*.apk
-*.ap_
