@@ -1455,11 +1455,14 @@ sjcl.random = {
 
 (function(){
   try {
+
     // get cryptographically strong entropy in Webkit
     var ab = new Uint32Array(32);
     crypto.getRandomValues(ab);
     sjcl.random.addEntropy(ab, 1024, "crypto.getRandomValues");
+    console.log("using browser crypto api")
   } catch (e) {
+      console.log("using seedrandom")
       //use seedrandom
       Math.seedrandom();
 

@@ -30,6 +30,9 @@ chatcontroller) ->
           ko.utils.arrayPushAll @itemList, data
           @itemList.valueHasMutated()
 
+    navClick: ->
+      $.mobile.changePage "#notifications"
+
 
     notificationClick: (notification, event, data) ->
       if notification.type is 'invite'

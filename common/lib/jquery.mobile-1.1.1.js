@@ -2266,29 +2266,38 @@ var createHandler = function( sequential ){
 				startIn();
 			},
 			
-			startIn = function(){	
-			
-				$to.addClass( $.mobile.activePageClass );				
-			
-				// Send focus to page as it is now display: block
-				$.mobile.focusPage( $to );
+			startIn = function(){
+                console.log("start in")
+                // Prevent flickering in phonegap container: see comments at #4024 regarding iOS
+                $to.css( "z-index", -10 );
 
-				// Set to page height
-				$to.height( screenHeight + toScroll );
-				
-				scrollPage();
-				
-				if( !none ){
-					$to.animationComplete( doneIn );
-				}
-				
-				$to.addClass( name + " in" + reverseClass );
-				
-				if( none ){
-					doneIn();
-				}
-				
-			},
+                $to.addClass( $.mobile.activePageClass + toPreClass );
+
+                // Send focus to page as it is now display: block
+                $.mobile.focusPage( $to );
+
+                // Set to page height
+                $to.height( screenHeight + toScroll );
+
+                scrollPage();
+
+                // Restores visibility of the new page: added together with $to.css( "z-index", -10 );
+                $to.css( "z-index", "" );
+
+                if ( !none ) {
+                    $to.animationComplete( doneIn );
+                }
+
+                $to
+                    .removeClass( toPreClass )
+                    .addClass( name + " in" + reverseClass );
+
+                if ( none ) {
+                    doneIn();
+                }
+
+
+            },
 		
 			doneIn = function() {
 			

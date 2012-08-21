@@ -64,7 +64,7 @@ define [
           if nullsocket
             #   console.log ('creating new socket connection')
             #todo use config for this
-            @_socket = io.connect("http://alpha.surespot.me")
+            @_socket = io.connect("http://129.168.10.135")
 
           else
             #  console.log ('reconnecting existing socket connection')

@@ -49,6 +49,9 @@ define [
       logout: ->
         uicontroller.logout()
 
+      navClick: ->
+        $.mobile.changePage "#friends"
+
     $("#blinkerinput").bind "keypress", (e) ->
       if e.which is 13
         text = $(this).val()

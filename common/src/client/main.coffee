@@ -7,7 +7,7 @@ requirejs.config
       exports: "io"
   #todo build config
   paths:
-    jquery: "../lib/jquery-1.7.1"
+    jquery: "../lib/jquery-1.7.2"
     jqm: "../lib/jquery.mobile-1.1.1"
     "socket.io": "../lib/socket.io"
     knockout: "../lib/knockout-2.1.0.debug"
@@ -83,28 +83,17 @@ uiController) ->
 
   $(document).bind "ready", ->
     console.log 'ready'
-    require ['jqm'], ->
-      $("body").css "visibility", "visible"
-      ko.bindingHandlers.jqmRefreshList =
-        update: (element, valueAccessor) ->
-          # if element? and element.length > 0
+    $("body").css "visibility", "visible"
 
-          console.log 'jqmRefreshList, element css: ' + $(element).attr('class')
-    #  if element.listview?
-    #ko.utils.unwrapObservable valueAccessor() #just to create a dependency
-          setTimeout (-> #To make sure the refresh fires after the DOM is updated
-            $(element).trigger('create')
-            $(element).listview()
-            $(element).listview "refresh"
-          ), 100
 
-    #$('#login').removeClass('first-class')
 
 
 
   $(document).bind "mobileinit", ->
     console.log "mobileinit"
     $.mobile.defaultPageTransition = 'none'
+    $.mobile.allowCrossDomainPages = true
+    $.support.cors = true
     $.ajaxSetup
       contentType: "application/json; charset=utf-8"
       statusCode:
@@ -114,3 +103,18 @@ uiController) ->
           $.mobile.changePage "#login"
             #,
             #transition: "slide"
+
+  require ['jqm'], ->
+
+    ko.bindingHandlers.jqmRefreshList =
+      update: (element, valueAccessor) ->
+        # if element? and element.length > 0
+
+        console.log 'jqmRefreshList, element css: ' + $(element).attr('class')
+        #  if element.listview?
+        #ko.utils.unwrapObservable valueAccessor() #just to create a dependency
+        setTimeout (-> #To make sure the refresh fires after the DOM is updated
+          $(element).trigger('create')
+          $(element).listview()
+          $(element).listview "refresh"
+        ), 100
