@@ -7,7 +7,7 @@ requirejs.config
       exports: "io"
   #todo build config
   paths:
-    jquery: "../lib/jquery-1.7.2"
+    jquery: "../lib/jquery-1.7.1"
     jqm: "../lib/jquery.mobile-1.1.1"
     "socket.io": "../lib/socket.io"
     knockout: "../lib/knockout-2.1.0.debug"

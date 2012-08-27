@@ -26,7 +26,7 @@ requirejs.config
 
   paths:
     cordova: "../lib/cordova-2.0.0"
-    jquery: "../lib/jquery-1.7.2"
+    jquery: "../lib/jquery-1.7.1"
     jqm: "../lib/jquery.mobile-1.1.1"
     "socket.io": "../lib/socket.io"
     knockout: "../lib/knockout-2.1.0.debug"
@@ -36,7 +36,7 @@ require ["jquery", "cordova"], ($, cordova) ->
     console.log "ready"
     $(document).bind "mobileinit", ->
       console.log "mobileinit"
-      $.mobile.defaultPageTransition = 'none'
+      $.mobile.defaultPageTransition = 'slide'
       $.mobile.allowCrossDomainPages = true
       $.mobile.pushStateEnabled = false
       $.support.cors = true
