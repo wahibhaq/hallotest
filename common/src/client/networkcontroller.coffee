@@ -42,7 +42,7 @@ define ["jquery"], ($) ->
    # console.log "setpublickey"
    # $.post("/users/" + username + "/publickey").success(successCallback).error errorCallback
 
-  getFriends: (username, successCallback, errorCallback) ->
+  getFriends: (successCallback, errorCallback) ->
     console.log "getFriends"
     $.get(@buildUrl("/friends")).success(successCallback).error errorCallback
 

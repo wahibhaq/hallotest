@@ -18,8 +18,8 @@ define [
       getNewMessageCount: (room) -> uicontroller.getNewMessageCount room
       totalMessageCount: uicontroller.totalMessageCount
 
-      load: (username) ->
-        networkcontroller.getFriends username, (data) =>
+      load: () ->
+        networkcontroller.getFriends (data) =>
           #$.each data, (index, value) =>
           @itemList?.removeAll()
           # chuck the room in there so we can bind it
@@ -73,5 +73,5 @@ define [
     friendsViewModel = new FriendsViewModel()
     for element in  $('#friendscontent, .friends-vm')
       ko.applyBindings friendsViewModel, element
-    friendsViewModel.load(UserViewModel.getUsername())
+    friendsViewModel.load()
     friendsViewModel
