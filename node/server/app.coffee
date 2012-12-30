@@ -323,8 +323,10 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   getNotifications = (req, res, next) ->
     rc.smembers "invites:#{req.user.username}", (err, users) ->
       next err  if err
-      res.send 204 if users.length is 0
-      res.send _.map users, (user) -> {type: 'invite', data: user}
+      if users.length is 0
+        res.send 204
+      else
+        res.send _.map users, (user) -> {type: 'invite', data: user}
 
 
   room = sio.on("connection", (socket) ->
