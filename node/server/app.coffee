@@ -474,8 +474,10 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   app.get "/conversations", ensureAuthenticated, (req, res, next) ->
     rc.smembers "users:" + req.user.username + ":conversations", (err, data) ->
       next err  if err
-      res.send 200  if data.length is 0
-      res.send data
+      if data.length is 0
+        res.send 204
+      else
+        res.send data
 
 
   app.get "/conversations/:room/messages", ensureAuthenticated, (req, res, next) ->
