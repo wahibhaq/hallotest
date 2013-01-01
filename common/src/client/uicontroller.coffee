@@ -10,8 +10,7 @@ define [
 ($, networkcontroller, encryptioncontroller, chatcontroller, utils, ko, ConversationViewModel, UserViewModel) ->
   class UIController
 
-    newMessageCount:
-      {}
+    newMessageCount: {}
     totalMessageCount: ko.observable(0)
     getNewMessageCount: (room) ->
       messageCount = @newMessageCount[room]
@@ -119,42 +118,6 @@ define [
       if room?
         @_createConversationPage remoteuser
 
-
-    ###
-    #todo use local storage
-    #see if the conversation key exists already
-    networkcontroller.getConversationKey(
-      room
-      , (data) =>
-        if data?
-          #we already have a chat, so just create the page for it
-          skey = encryptioncontroller.ecDecrypt(data)
-
-          unless skey?
-            alert 'could not decrypt conversation key'
-            return
-          encryptioncontroller.symmetricKeys[room] = skey
-          chatcontroller.emit "join", room
-          @_createConversationPage room, remoteuser
-        else
-          #this is a new chat, so create a new conversation
-          @_createConversation room, remoteuser
-      , (err) ->
-        alert 'could not get sym key')
-    ###
-
-    ###
-          _createConversation: (remoteusername) ->
-            encryptioncontroller.createSymKeys room, remoteusername, (symKeys) =>
-              #todo set keys over REST and create room on success
-              message = {}
-              message.room = room
-              message.mykey = symKeys.mykey
-              message.theirname = remoteusername
-              message.theirkey = symKeys.theirkey
-              chatcontroller.emit "create", JSON.stringify(message)
-              @_createConversationPage room, remoteusername
-    ###
     recreateConversation: (conversationid) =>
       username = UserViewModel.getUsername()
       remoteusername = conversationid.substr(14)
@@ -171,7 +134,12 @@ define [
       conversationPage = $("#conversationtemplate").clone()
 
       #clear the mnew message count
-      @newMessageCount[remoteusername](0)
+
+
+      mc = @newMessageCount[remoteusername]
+      if !mc?
+        @newMessageCount[remoteusername] = ko.observable(0)
+
 
       #set the id
       conversationPage.attr "id", conversationId
