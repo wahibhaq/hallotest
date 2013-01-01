@@ -2,6 +2,8 @@ define ["./encryption", "./networkcontroller"], (encryption, networkcontroller) 
   class EncryptionController
     symmetricKeys:
       {}
+    sharedSecrets:
+      {}
     publickeys:
       {}
     privatekey: null
@@ -52,16 +54,17 @@ define ["./encryption", "./networkcontroller"], (encryption, networkcontroller) 
     _hydratePublicKey: (username, callback) ->
       publickey = @publickeys[username]
       if publickey?
-        callback(publickey)
+        callback(publickey, @sharedSecrets[username])
       else
         networkcontroller.getPublicKey username, (publickey) =>
           key = @_rebuildPublicKey(JSON.parse(publickey))
           @_storePublicKey username, key
-          callback key
+          #cache secret
+          secret = @privatekey.dh(key)
+          @sharedSecrets[username] = secret
+          callback key, secret
         , ->
-          callback null
-
-
+          callback null, null
 
 
     #cache the public key for a user
@@ -69,24 +72,23 @@ define ["./encryption", "./networkcontroller"], (encryption, networkcontroller) 
       @publickeys[username] = publickey
 
     ecEncrypt: (to, plaintext, callback) ->
-      @_hydratePublicKey to, (tokey) =>
+      @_hydratePublicKey to, (tokey, secret) =>
         unless tokey?
           alert "no public key for user!" + to
           callback null
 
-        sharedSecret = @privatekey.dh(tokey)
-        cipherText = encryption.aesEncrypt sharedSecret, plaintext
+        cipherText = encryption.aesEncrypt secret, plaintext
         callback cipherText
 
     ecDecrypt: (from, ciphertext, callback) ->
-      @_hydratePublicKey from, (fromkey) =>
+      @_hydratePublicKey from, (fromkey, secret) =>
         unless fromkey?
           alert "no public key for user!" + from
           callback null
 
-        sharedSecret = @privatekey.dh(fromkey)
-        callback encryption.aesDecrypt sharedSecret, ciphertext
+        callback encryption.aesDecrypt secret, ciphertext
 
+    ###
     createSymKeys: (room, remoteusername, callback) ->
       @_hydratePublicKey remoteusername, (remotepublickey) =>
         unless remotepublickey?
@@ -109,7 +111,7 @@ define ["./encryption", "./networkcontroller"], (encryption, networkcontroller) 
 
     symDecrypt: (room, ciphertext) ->
       return encryption.aesDecrypt(@symmetricKeys[room], ciphertext)
-
+    ###
 
     _rebuildKeys: (key) ->
 
