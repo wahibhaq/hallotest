@@ -40,7 +40,7 @@ chatcontroller) ->
         networkcontroller.respondToInvite notification.data, data, =>
           #update our shit locally if we accepted the bastard as a friend
           if data is 'accept'
-            FriendsViewModel.addFriend notification.data
+            FriendsViewModel.addItem notification.data
           #remove notification
           @itemList.remove(notification)
 

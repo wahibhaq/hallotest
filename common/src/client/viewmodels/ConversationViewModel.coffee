@@ -6,6 +6,7 @@ define [
   'networkcontroller',
   'chatcontroller',
   'encryptioncontroller',
+  'uicontroller',
   '../utils'],
     ($,
      ko,
@@ -14,6 +15,7 @@ define [
      networkcontroller,
      chatcontroller,
      encryptioncontroller,
+     uicontroller,
      utils) ->
       class ConversationViewModel extends ListViewModel
         remoteusername = null
@@ -40,7 +42,7 @@ define [
         #username = sessionStorage.getItem("username")
         #remoteusername = $(this).text()
         title: ->
-          "surespot / #{UserViewModel.username()} / #{@remoteusername}"
+          "surespot / #{@remoteusername}"
 
 
 
@@ -50,3 +52,5 @@ define [
           encryptioncontroller.ecDecrypt(@remoteusername, message.text, (plaintext) =>
             @addItem message.from + ': ' + plaintext)
 
+        logout: ->
+          uicontroller.logout()

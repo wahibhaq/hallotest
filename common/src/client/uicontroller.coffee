@@ -206,16 +206,21 @@ define [
       #linesList.listview 'create'
 
       #apply data bindings
-      conversationViewModel = new ConversationViewModel(remoteusername)
-      conversationViewModel.load =>
-        for element in  $(conversationPage).find('.conversationcontent')
-          ko.applyBindings conversationViewModel, element
-        for element in $('.newMessagesCount, .messageCountTotal, .ss-logout')
-          ko.applyBindings @, element
+      #make sure public key is loaded for remote user
+      encryptioncontroller._hydratePublicKey(remoteusername, (key) =>
+        if key != null
+          conversationViewModel = new ConversationViewModel(remoteusername)
+          conversationViewModel.load =>
+            for element in  $(conversationPage).find('.conversationcontent')
+              ko.applyBindings conversationViewModel, element
+            for element in $('.newMessagesCount, .messageCountTotal, .ss-logout')
+              ko.applyBindings @, element
 
+            @_scrollConversation remoteusername
+            $.mobile.changePage conversationPage)
+       # else
+          #todo tell user it's borked
 
-        @_scrollConversation remoteusername
-        $.mobile.changePage conversationPage
 
   #, transition: "slide"
 
