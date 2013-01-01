@@ -188,87 +188,8 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       console.log "401"
       res.send 401
 
-  #socket io store
-
-  #  var decodedCookie = decodeURIComponent(req.headers.cookie);
-
-  #  req.cookie = connect.utils.parseSignedCookie(req.headers.cookie['connect.sid'], "your mama");
-
-  # save the session store to the data object
-  # (as required by the Session constructor)
-  #   req.sessionStore = sessionStore;
-
-  # create a session object, passing data as request and our
-  # just acquired session data
-
-  #todo namespace room emit broken
-  #.of('/blink')
-
-  #see if we're already in some chats and rejoin them
-
-  #todo handle error
-  #if (err) next(err);
-  #join all the rooms
-
-  #todo get the room from the socket not the message
-  #todo check they are part of the room
-  #don't trust what the bastard client says about who he is
-
-  #store key in database
-
-  #todo handle error
-  #todo send ack
-
-  #keep track of which chats we're joined to
-
-  #todo handle error
-  # if (err) next(new Error('[addFriend] sadd failed for username: ' + username + ', friendname' + friendname))
-
-  #todo handle error
-  # if (err) next(new Error('[addFriend] sadd failed for username: ' + username + ', friendname' + friendname))
-
-  #  res.send(201);
-
-  #todo get the room from the socket not the message
-  #todo check they are part of the room
-  #don't trust what the bastard client says about who he is
-  #    var user = socket.handshake.session.passport.user;
-
-  #in is reserved in coffeescript
-
-  #add user to user's list of u
-
-  #todo make sure route username matches logged in username
-
-  #return the password in the user object so we can auth
-
-  #join all the rooms
-
-  #send any messages
-
-  #todo handle error
-
-  #
-  # app.post('/conversations/:room/keys/:username', ensureAuthenticated, function (req, res, next) {
-  # if (req.body.key) {
-  # process.nextTick(function () {
-  # rc.hset(util.format("conversations:%s:keys", req.params.room), req.params.username, req.body.key, function (err, data) {
-  #
-  #
-  # if (err) next(new Error('Could not set sym key'));
-  # //return the password in the user object so we can auth
-  #
-  #
-  # res.send(201);
-  #
-  # })
-  # });
-  # }
-  # else {
-  # next(new Error('No key supplied.'));
-  # }
-  # })
-
+  getRoomName = (from, to) ->
+    if from < to then from + ":" + to else to + ":" + from
 
   getFriends = (req, res, next) ->
     username = req.user.username
@@ -331,9 +252,12 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
   room = sio.on("connection", (socket) ->
     user = socket.handshake.session.passport.user
-    #join notification room
-    console.log "user #{user} joining notification room"
+
+    #join user's room
+    console.log "user #{user} joining socket.io room"
     socket.join(user)
+
+    ###
     console.log "rejoining spots"
     rc.smembers "users:" + user + ":conversations", (err, data) ->
       unless err
@@ -346,10 +270,11 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
           i++
       else
         console.log "error joining rooms: " + err
+    ###
 
 
 
-
+    ### only needed for group chat
     socket.on "create", (data) ->
       console.log "received conversation keys from user: " + user
       message = JSON.parse(data)
@@ -358,10 +283,9 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       rc.hmset "conversations:#{room}:keys", user, message.mykey, message.theirname, message.theirkey, (err, data) ->
         console.log "set keys: " + data
         console.log "received create, joining room: " + room
-        socket.join room
+       # socket.join room
         rc.sadd "users:" + user + ":conversations", room, (err, data) ->
           console.log "created conversation: " + room
-
 
     socket.on "join", (room) ->
       #user = socket.handshake.session.passport.user
@@ -369,19 +293,26 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       socket.join room
       rc.sadd "users:" + user + ":conversations", room, (err, data) ->
         console.log "joined conversation: " + room
-
+    ###
 
     socket.on "message", (data) ->
-      #user = socket.handshake.session.passport.user
+      user = socket.handshake.session.passport.user
+
+      #todo check user == message.from
+      #todo check from and to are friends
+
       message = JSON.parse(data)
-      message.user = user
+      # message.user = user
       console.log "sending message from user #{user}"
-      room = message.room
+      to = message.to
+      from = message.from
       text = message.text
-      console.log "sending message " + text + " to room:" + room
+      room = getRoomName(from, to)
+      console.log "sending message " + text + " to user:" + to
       newMessage = JSON.stringify(message)
       rc.rpush "conversations:" + room + ":messages", newMessage
-      sio.sockets.in(message.room).emit "message", newMessage
+      sio.sockets.to(to).emit "message", newMessage
+      sio.sockets.to(from).emit "message", newMessage
 
   )
 
@@ -410,7 +341,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     username = req.user.username
     spot = req.body.spot
 
-    console.log "#{username} inviting #{friendname} to spot #{spot}"
+    console.log "#{username} inviting #{friendname} to be friends"
     #todo check both users exist
     userExists friendname, (err, exists) ->
       next err  if err
@@ -465,12 +396,14 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
             next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err
         res.send(201)
 
-  app.get "/conversations/:room/key", ensureAuthenticated, (req, res, next) ->
-    rc.hget "conversations:#{req.params.room}:keys", req.user.username, (err, data) ->
+  ###
+  app.get "/conversations/:remoteuser/key", ensureAuthenticated, (req, res, next) ->
+    rc.hget "conversations:#{getRoomName(req.user.username, req.params.remoteuser)}:keys", req.user.username, (err, data) ->
       next new Error("Could not get sym key")  if err
       res.send data
+  ###
 
-
+  ###
   app.get "/conversations", ensureAuthenticated, (req, res, next) ->
     rc.smembers "users:" + req.user.username + ":conversations", (err, data) ->
       next err  if err
@@ -478,10 +411,11 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
         res.send 204
       else
         res.send data
+  ###
 
-
-  app.get "/conversations/:room/messages", ensureAuthenticated, (req, res, next) ->
-    rc.lrange "conversations:" + req.params.room + ":messages", 0, -1, (err, data) ->
+  app.get "/conversations/:remoteuser/messages", ensureAuthenticated, (req, res, next) ->
+    #todo make sure they are friends
+    rc.lrange "conversations:" + getRoomName(req.user.username, req.params.remoteuser) + ":messages", 0, -1, (err, data) ->
       res.send data  unless err
 
 

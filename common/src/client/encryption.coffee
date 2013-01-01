@@ -35,8 +35,8 @@ define ->
     rsa.decrypt ciphertext
 
   aesEncrypt: (password, plaintext) ->
-    sjcl.encrypt password, plaintext,
-      ks: 256
+    cipherText = sjcl.encrypt password, plaintext
+    return cipherText
 
 
   aesDecrypt: (password, ciphertext) ->

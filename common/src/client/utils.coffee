@@ -13,4 +13,5 @@ define ["jquery", "./viewmodels/UserViewModel"], ($, UserViewModel) ->
     username = UserViewModel.getUsername()
     if username < remoteusername then username + "_" + remoteusername else remoteusername + "_" + username
 
-
+  getOtherUser: (from, to) ->
+    if to == UserViewModel.getUsername() then from else to

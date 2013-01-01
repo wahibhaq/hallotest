@@ -68,8 +68,24 @@ define ["./encryption", "./networkcontroller"], (encryption, networkcontroller) 
     _storePublicKey: (username, publickey) ->
       @publickeys[username] = publickey
 
-    asymDecrypt: (ciphertext) ->
-      encryption.eccDecrypt @privatekey, ciphertext
+    ecEncrypt: (to, plaintext, callback) ->
+      @_hydratePublicKey to, (tokey) =>
+        unless tokey?
+          alert "no public key for user!" + to
+          callback null
+
+        sharedSecret = @privatekey.dh(tokey)
+        cipherText = encryption.aesEncrypt sharedSecret, plaintext
+        callback cipherText
+
+    ecDecrypt: (from, ciphertext, callback) ->
+      @_hydratePublicKey from, (fromkey) =>
+        unless fromkey?
+          alert "no public key for user!" + from
+          callback null
+
+        sharedSecret = @privatekey.dh(fromkey)
+        callback encryption.aesDecrypt sharedSecret, ciphertext
 
     createSymKeys: (room, remoteusername, callback) ->
       @_hydratePublicKey remoteusername, (remotepublickey) =>

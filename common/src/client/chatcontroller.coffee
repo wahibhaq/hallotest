@@ -4,13 +4,15 @@ define [
   "./networkcontroller",
   './utils',
   'jquery',
-  'knockout'],
+  'knockout',
+  './viewmodels/UserViewModel'],
   (io,
    encryptioncontroller,
    networkcontroller,
    utils,
    $,
-   ko) ->
+   ko,
+   UserViewModel) ->
     class ChatController
       _socket: null
       _uicontroller: null
@@ -42,12 +44,16 @@ define [
       emit: (type, data) ->
         @_socket.emit type, data
 
-      sendMessage: (room, text) =>
+      sendMessage: (to, text) ->
         if text? and text.length > 0
-          message = {}
-          message.text = encryptioncontroller.symEncrypt room, text
-          message.room = room
-          @_socket.send JSON.stringify(message)
+          encryptioncontroller.ecEncrypt to, text, (ciphertext) =>
+            message = {}
+            message.text = ciphertext
+            console.log "plaintext: " + text
+            console.log "ciphertext: " + JSON.stringify(message.text)
+            message.from = UserViewModel.getUsername()
+            message.to = to
+            @_socket.send JSON.stringify(message)
 
       disconnect: ->
         if @_socket?

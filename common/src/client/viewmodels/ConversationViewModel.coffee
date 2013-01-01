@@ -5,28 +5,29 @@ define [
   './UserViewModel',
   'networkcontroller',
   'chatcontroller',
-  'encryptioncontroller'],
+  'encryptioncontroller',
+  '../utils'],
     ($,
      ko,
      ListViewModel,
      UserViewModel,
      networkcontroller,
      chatcontroller,
-     encryptioncontroller) ->
+     encryptioncontroller,
+     utils) ->
       class ConversationViewModel extends ListViewModel
-        spot = null
         remoteusername = null
-        constructor: (remoteusername, spot) ->
+        constructor: (remoteusername) ->
           super()
-          @spot = spot
+
           @remoteusername = remoteusername
 
-          $.each($("#conversation_#{spot} h1"), (index, value) =>
+          $.each($("#conversation_#{remoteusername} h1"), (index, value) =>
             ko.applyBindings @, value)
 
 
         load: (callback) =>
-          networkcontroller.getMessages @spot, (data) =>
+          networkcontroller.getMessages @remoteusername, (data) =>
             @itemList?.removeAll()
             $.each data, (index, messageString) =>
               message = JSON.parse(messageString)
@@ -45,5 +46,7 @@ define [
 
 
         addMessage: (message) ->
-          @addItem message.user + ': ' + encryptioncontroller.symDecrypt(message.room, message.text)
+          console.log ("received encrypted text: " + message.text)
+          encryptioncontroller.ecDecrypt(@remoteusername, message.text, (plaintext) =>
+            @addItem message.from + ': ' + plaintext)
 

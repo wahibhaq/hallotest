@@ -23,8 +23,8 @@
 
 
             a(href='#', data-bind="click: function(data,event) { $parent.friendClick(data,event) }")
-              span(data-bind="text: $data.friendname")&nbsp;
-              span.ui-li-count(data-bind='text: $parent.getNewMessageCount($data.room)')
+              span(data-bind="text: $data")&nbsp;
+              span.ui-li-count(data-bind='text: $parent.getNewMessageCount($data)')
   div(data-role="footer", data-position="fixed",  data-tap-toggle="false")
     input(type="text", id="blinkerinput")
 

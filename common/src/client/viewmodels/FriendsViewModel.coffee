@@ -24,27 +24,27 @@ define [
           @itemList?.removeAll()
           # chuck the room in there so we can bind it
           # todo decouple users and rooms "spots"
-          ko.utils.arrayPushAll @itemList, $.map data, (fname) =>
-            @_createFriend fname
+          ko.utils.arrayPushAll @itemList, data
           @itemList.valueHasMutated()
 
 
       friendClick: (data, event) ->
-        uicontroller.createOrShowConversation data.room, data.friendname
+        uicontroller.createOrShowConversation data
 
       friendHandler: (fname) =>
-        @addFriend fname
-
         console.log "adding new friend #{fname}"
+        @addItem fname
 
-      addFriend: (fname) ->
+
+
+   #   addFriend: (fname) ->
         #tell the socket to join the room
-        console.log "joining room"
-        chatcontroller.emit "join", utils.getRoomName(fname)
-        @addItem @_createFriend(fname)
+      #  console.log "joining room"
+      #  chatcontroller.emit "join", utils.getRoomName(fname)
+#        @addItem fname
 
-      _createFriend: (fname) ->
-        { friendname: fname, room: utils.getRoomName(fname)}
+      #_createFriend: (fname) ->
+       # { friendname: fname, room: utils.getRoomName(fname)}
 
       logout: ->
         uicontroller.logout()
