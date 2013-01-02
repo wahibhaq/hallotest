@@ -27,8 +27,8 @@ define ["jquery"], ($) ->
       error: errorCallback
 
 
-  getConversationKey: (room, successCallback, errorCallback) ->
-    $.get(@buildUrl("/conversations/" + room + "/key/")).success(successCallback).error errorCallback
+  #getConversationKey: (room, successCallback, errorCallback) ->
+   # $.get(@buildUrl("/conversations/" + room + "/key/")).success(successCallback).error errorCallback
 
   
   #  setConversationKey:function (username,key,successCallback, errorCallback) {

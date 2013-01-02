@@ -244,10 +244,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   getNotifications = (req, res, next) ->
     rc.smembers "invites:#{req.user.username}", (err, users) ->
       next err  if err
-      if users.length is 0
-        res.send 204
-      else
-        res.send _.map users, (user) -> {type: 'invite', data: user}
+      res.send _.map users, (user) -> {type: 'invite', data: user}
 
 
   room = sio.on("connection", (socket) ->
@@ -332,7 +329,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     res.send()
 
   app.post "/users", createNewUserAccount, passport.authenticate("local"), (req, res) ->
-    res.send 201
+    res.send()
 
 
   app.post "/invite/:friendname", ensureAuthenticated, (req, res, next) ->
@@ -355,7 +352,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
         #see if they are already friends
         dal.isFriend username, friendname, (err, result) ->
           #if they are, do nothing
-          if result is 1 then res.send(204)
+          if result is 1 then res.send()
           else
             #todo use transaction
             #add to the user's set of people he's invited
@@ -369,9 +366,9 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                 #todo push notification
                 if invitesCount > 0
                   sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
-                  res.send(202)
+                  res.send()
                 else
-                  res.send(204)
+                  res.send()
 
   app.post '/invites/:friendname/:action', ensureAuthenticated, (req, res, next) ->
     console.log 'POST /invites'
@@ -394,7 +391,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
         else
           rc.sadd "ignores:#{username}", friendname, (err, data) ->
             next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err
-        res.send(201)
+        res.send()
 
   ###
   app.get "/conversations/:remoteuser/key", ensureAuthenticated, (req, res, next) ->

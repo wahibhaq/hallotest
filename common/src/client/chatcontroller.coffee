@@ -53,6 +53,7 @@ define [
             console.log "ciphertext: " + JSON.stringify(message.text)
             message.from = UserViewModel.getUsername()
             message.to = to
+
             @_socket.send JSON.stringify(message)
 
       disconnect: ->
