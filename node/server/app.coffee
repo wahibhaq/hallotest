@@ -139,13 +139,14 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     )
     app.use passport.initialize()
     app.use passport.session()
-    app.use express.errorHandler(
-      showStack: false
-      dumpExceptions: true
-    )
+    app.use express.errorHandler({
+      showMessage: true,
+      showStack: false,
+      dumpExceptions: false
+    })
 
   app.listen nodePort
-  sio = require("socket.io").listen(app)
+  sio = require("socket.io").listen(443)
 
   app.configure "heroku-stage", ->
     sio.configure ->
@@ -366,9 +367,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                 #todo push notification
                 if invitesCount > 0
                   sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
-                  res.send()
-                else
-                  res.send()
+                res.send()
 
   app.post '/invites/:friendname/:action', ensureAuthenticated, (req, res, next) ->
     console.log 'POST /invites'
