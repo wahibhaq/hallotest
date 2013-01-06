@@ -231,7 +231,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       next err  if err
       if exists
         console.log "user already exists"
-        next new Error(409, "That username already exists please choose another.");
+        res.send 409
       else
         username = req.body.username
         password = req.body.password
@@ -328,6 +328,11 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   app.get "/friends", ensureAuthenticated, getFriends
   app.get "/publickey/:username", ensureAuthenticated, getPublicKey
   app.get "/notifications", ensureAuthenticated, getNotifications
+  app.get "/users/:username/exists", (req,res) ->
+    userExists req.params.username, (err, exists) ->
+      next err  if err
+      res.send exists
+
 
 
   app.post "/login", passport.authenticate("local"), (req, res) ->
@@ -335,14 +340,14 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     res.send 204
 
   app.post "/users", createNewUserAccount, passport.authenticate("local"), (req, res) ->
-    res.send 204
+    res.send 201
 
   app.post "/registergcm", passport.authenticate("local"), (req, res) ->
     deviceId = req.body.device_gcm_id
     userKey = "users:" + req.user.username
     rc.hset userKey, "device_gcm_id", deviceId, (err) ->
       next err if err
-      res.send()
+      res.send 204
 
   app.post "/invite/:friendname", ensureAuthenticated, (req, res, next) ->
     friendname = req.params.friendname
@@ -356,7 +361,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       next err  if err
       unless exists
         console.log "no such user"
-        next new Error("[invite friend] no such user")
+        res.send 404
       else
         #todo check if friendname has ignored username
 
@@ -364,7 +369,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
         #see if they are already friends
         dal.isFriend username, friendname, (err, result) ->
           #if they are, do nothing
-          if result is 1 then next new Error(409,"Already friends.")
+          if result is 1 then res.send 409
           else
             #todo use transaction
             #add to the user's set of people he's invited
@@ -400,7 +405,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                         console.log(result)
                         res.send 204
                 else
-                  next new Error(409,"Already invited.")
+                  res.send 403
 
 
 
@@ -436,7 +441,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
   app.post "/logout", ensureAuthenticated, (req, res) ->
     req.logout()
-    res.send()
+    res.send 204
 
 
   process.on "uncaughtException", uncaught = (err) ->
