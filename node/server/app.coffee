@@ -17,7 +17,9 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   RedisStore = require("connect-redis")(express)
   path = require 'path'
   util = require("util")
+  gcm = require("node-gcm")
   nodePort = 3000
+  socketPort = 3000
   sio = undefined
   sessionStore = undefined
   rc = undefined
@@ -43,6 +45,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
   app.configure "development", ->
     nodePort = 3000
+    socketPort = 3000
     sessionStore = new RedisStore()
     dal = new DAL()
     rc = createRedisClient()
@@ -54,6 +57,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     console.log "running on amazon-dev"
     nodePort = 3000
     redisPort = 6379
+    socketPort = 3000
     sessionStore = new RedisStore(
       host: "ec2.2fours.com"
       port: redisPort
@@ -68,6 +72,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     console.log "running on amazon-stage"
     nodePort = 80
     redisPort = 6379
+    socketPort = 443
     redisHost = "127.0.0.1"
     redisAuth = "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040"
     dal = new DAL(redisPort, redisHost, redisAuth)
@@ -115,7 +120,8 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     sessionStore = new RedisStore(
       host: "chubb.redistogo.com"
       port: 9473
-      pass: "c4e5ba6af0cce3ee5b48c3d4964089b6"
+      pass: "c4e5ba6-c +
+       caf0cce3ee5b48c3d4964089b6"
     )
     rc = createRedisClient(9473, "chubb.redistogo.com", "c4e5ba6af0cce3ee5b48c3d4964089b6")
     pub = createRedisClient(9473, "chubb.redistogo.com", "c4e5ba6af0cce3ee5b48c3d4964089b6")
@@ -146,7 +152,10 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     })
 
   app.listen nodePort
-  sio = require("socket.io").listen(443)
+  if nodePort == socketPort
+    sio = require("socket.io").listen(app)
+  else
+    sio = require("socket.io").listen(socketPort)
 
   app.configure "heroku-stage", ->
     sio.configure ->
@@ -226,10 +235,13 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
         username = req.body.username
         password = req.body.password
         publickey = req.body.publickey
+        device_gcm_id = req.body.device_gcm_id
+        console.log "gcmID: " + device_gcm_id
+
         userKey = "users:" + username
         bcrypt.genSalt 10, (err, salt) ->
           bcrypt.hash password, salt, (err, password) ->
-            rc.hmset userKey, "username", username, "password", password, "publickey", publickey, (err, data) ->
+            rc.hmset userKey, "username", username, "password", password, "publickey", publickey, "device_gcm_id", device_gcm_id, (err, data) ->
               console.log "set " + userKey + " in db"
               next new Error("[createNewUserAccount] SET failed for user: " + name + "password" + password)  if err
 
@@ -255,44 +267,6 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     console.log "user #{user} joining socket.io room"
     socket.join(user)
 
-    ###
-    console.log "rejoining spots"
-    rc.smembers "users:" + user + ":conversations", (err, data) ->
-      unless err
-        console.log "no rooms to join"  if data.length is 0
-        i = 0
-
-        while i < data.length
-          console.log "joining: " + data[i]
-          socket.join data[i]
-          i++
-      else
-        console.log "error joining rooms: " + err
-    ###
-
-
-
-    ### only needed for group chat
-    socket.on "create", (data) ->
-      console.log "received conversation keys from user: " + user
-      message = JSON.parse(data)
-      message.user = user
-      room = message.room
-      rc.hmset "conversations:#{room}:keys", user, message.mykey, message.theirname, message.theirkey, (err, data) ->
-        console.log "set keys: " + data
-        console.log "received create, joining room: " + room
-       # socket.join room
-        rc.sadd "users:" + user + ":conversations", room, (err, data) ->
-          console.log "created conversation: " + room
-
-    socket.on "join", (room) ->
-      #user = socket.handshake.session.passport.user
-      console.log "received join, joining room: " + room
-      socket.join room
-      rc.sadd "users:" + user + ":conversations", room, (err, data) ->
-        console.log "joined conversation: " + room
-    ###
-
     socket.on "message", (data) ->
       user = socket.handshake.session.passport.user
 
@@ -308,9 +282,34 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       room = getRoomName(from, to)
       console.log "sending message " + text + " to user:" + to
       newMessage = JSON.stringify(message)
-      rc.rpush "conversations:" + room + ":messages", newMessage
-      sio.sockets.to(to).emit "message", newMessage
-      sio.sockets.to(from).emit "message", newMessage
+      rc.rpush "conversations:" + room + ":messages", newMessage, ->
+        sio.sockets.to(to).emit "message", newMessage
+        sio.sockets.to(from).emit "message", newMessage
+
+
+
+        #send gcm message
+        userKey = "users:" + to
+        rc.hget userKey, "device_gcm_id", (err, gcm_id) ->
+          if err?
+            console.log ("ERROR: " + err)
+            return
+
+          if gcm_id?
+            console.log "sending gcm message"
+            gcmmessage = new gcm.Message()
+            sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+            gcmmessage.addDhow ata("to", message.to)
+            gcmmessage.addData("sentfrom", message.from)
+            gcmmessage.addData("text", message.text)
+            gcmmessage.delayWhileIdle = true
+            gcmmessage.timeToLive = 3
+            gcmmessage.collapseKey = "messagent"
+            regIds = [gcm_id]
+
+            sender.send gcmmessage, regIds, 4, (result) ->
+              console.log(result)
+
 
   )
 
@@ -332,6 +331,12 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   app.post "/users", createNewUserAccount, passport.authenticate("local"), (req, res) ->
     res.send()
 
+  app.post "/registergcm", passport.authenticate("local"), (req, res) ->
+    deviceId = req.body.device_gcm_id
+    userKey = "users:" + req.user.username
+    rc.hset userKey, "device_gcm_id", deviceId, (err) ->
+      next err if err
+      res.send()
 
   app.post "/invite/:friendname", ensureAuthenticated, (req, res, next) ->
     friendname = req.params.friendname
