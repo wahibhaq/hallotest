@@ -145,6 +145,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     )
     app.use passport.initialize()
     app.use passport.session()
+    app.use app.router
     app.use express.errorHandler({
       showMessage: true,
       showStack: false,
@@ -230,7 +231,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       next err  if err
       if exists
         console.log "user already exists"
-        next new Error("[createNewUserAccount] user already exists")
+        next new Error(409, "That username already exists please choose another.");
       else
         username = req.body.username
         password = req.body.password
@@ -240,16 +241,20 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
         userKey = "users:" + username
         bcrypt.genSalt 10, (err, salt) ->
+          next err if err
           bcrypt.hash password, salt, (err, password) ->
+            next err if err
             rc.hmset userKey, "username", username, "password", password, "publickey", publickey, "device_gcm_id", device_gcm_id, (err, data) ->
               console.log "set " + userKey + " in db"
-              next new Error("[createNewUserAccount] SET failed for user: " + name + "password" + password)  if err
+              next new Error("[createNewUserAccount] SET failed for user: " + username)  if err
 
               #return the password in the user object so we can auth
+              #todo build manually instead of reading back from redis
               rc.hgetall userKey, (err, user) ->
-
+                next err if err
                 # req.body.password = password;
                 #  req.logout();
+                #auth login
                 req.login user, null, ->
                   req.user = user
                   next()
@@ -327,10 +332,10 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
   app.post "/login", passport.authenticate("local"), (req, res) ->
     console.log "/login post"
-    res.send()
+    res.send 204
 
   app.post "/users", createNewUserAccount, passport.authenticate("local"), (req, res) ->
-    res.send()
+    res.send 204
 
   app.post "/registergcm", passport.authenticate("local"), (req, res) ->
     deviceId = req.body.device_gcm_id
@@ -359,7 +364,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
         #see if they are already friends
         dal.isFriend username, friendname, (err, result) ->
           #if they are, do nothing
-          if result is 1 then res.send()
+          if result is 1 then next new Error(409,"Already friends.")
           else
             #todo use transaction
             #add to the user's set of people he's invited
@@ -378,7 +383,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                   rc.hget userKey, "device_gcm_id", (err, gcm_id) ->
                     if err?
                       console.log ("ERROR: " + err)
-                      next new Error("Could not get gcm key") if err
+                      next new Error("No gcm key.")
 
                     if gcm_id?
                       console.log "sending gcm message"
@@ -393,7 +398,9 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
                       sender.send gcmmessage, regIds, 4, (result) ->
                         console.log(result)
-                res.send()
+                        res.send 204
+                else
+                  next new Error(409,"Already invited.")
 
 
 
@@ -418,12 +425,13 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
         else
           rc.sadd "ignores:#{username}", friendname, (err, data) ->
             next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err
-        res.send()
+        res.send 204
 
   app.get "/conversations/:remoteuser/messages", ensureAuthenticated, (req, res, next) ->
     #todo make sure they are friends
     rc.lrange "conversations:" + getRoomName(req.user.username, req.params.remoteuser) + ":messages", 0, -1, (err, data) ->
-      res.send data  unless err
+      next err if err
+      res.send data
 
 
   app.post "/logout", ensureAuthenticated, (req, res) ->
