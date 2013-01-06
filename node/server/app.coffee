@@ -299,12 +299,13 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
             console.log "sending gcm message"
             gcmmessage = new gcm.Message()
             sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
-            gcmmessage.addDhow ata("to", message.to)
+            gcmmessage.addData("type", "message")
+            gcmmessage.addData("to", message.to)
             gcmmessage.addData("sentfrom", message.from)
             gcmmessage.addData("text", message.text)
             gcmmessage.delayWhileIdle = true
             gcmmessage.timeToLive = 3
-            gcmmessage.collapseKey = "messagent"
+            gcmmessage.collapseKey = "message"
             regIds = [gcm_id]
 
             sender.send gcmmessage, regIds, 4, (result) ->
@@ -372,7 +373,28 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                 #todo push notification
                 if invitesCount > 0
                   sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
-                res.send()
+                  #send gcm message
+                  userKey = "users:" + friendname
+                  rc.hget userKey, "device_gcm_id", (err, gcm_id) ->
+                    if err?
+                      console.log ("ERROR: " + err)
+                      return
+
+                    if gcm_id?
+                      console.log "sending gcm message"
+                      gcmmessage = new gcm.Message()
+                      sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+                      gcmmessage.addData("type", "invite")
+                      gcmmessage.addData("user", username)
+                      gcmmessage.delayWhileIdle = true
+                      gcmmessage.timeToLive = 3
+                      gcmmessage.collapseKey = "invite"
+                      regIds = [gcm_id]
+
+                      sender.send gcmmessage, regIds, 4, (result) ->
+                        console.log(result)
+
+              res.send()
 
   app.post '/invites/:friendname/:action', ensureAuthenticated, (req, res, next) ->
     console.log 'POST /invites'
@@ -396,23 +418,6 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
           rc.sadd "ignores:#{username}", friendname, (err, data) ->
             next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err
         res.send()
-
-  ###
-  app.get "/conversations/:remoteuser/key", ensureAuthenticated, (req, res, next) ->
-    rc.hget "conversations:#{getRoomName(req.user.username, req.params.remoteuser)}:keys", req.user.username, (err, data) ->
-      next new Error("Could not get sym key")  if err
-      res.send data
-  ###
-
-  ###
-  app.get "/conversations", ensureAuthenticated, (req, res, next) ->
-    rc.smembers "users:" + req.user.username + ":conversations", (err, data) ->
-      next err  if err
-      if data.length is 0
-        res.send 204
-      else
-        res.send data
-  ###
 
   app.get "/conversations/:remoteuser/messages", ensureAuthenticated, (req, res, next) ->
     #todo make sure they are friends
