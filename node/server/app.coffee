@@ -393,9 +393,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
                       sender.send gcmmessage, regIds, 4, (result) ->
                         console.log(result)
-                        res.send()
-                    else
-                      res.send()
+                res.send()
 
 
 
