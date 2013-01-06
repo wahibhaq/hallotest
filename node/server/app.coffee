@@ -378,7 +378,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                   rc.hget userKey, "device_gcm_id", (err, gcm_id) ->
                     if err?
                       console.log ("ERROR: " + err)
-                      return
+                      next new Error("Could not get gcm key") if err
 
                     if gcm_id?
                       console.log "sending gcm message"
@@ -393,8 +393,11 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
                       sender.send gcmmessage, regIds, 4, (result) ->
                         console.log(result)
+                        res.send()
+                    else
+                      res.send()
 
-              res.send()
+
 
   app.post '/invites/:friendname/:action', ensureAuthenticated, (req, res, next) ->
     console.log 'POST /invites'
