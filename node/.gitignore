@@ -5,3 +5,4 @@ dump.rdb
 build/output
 assets/html
 assets/js/app
+server/*.js
