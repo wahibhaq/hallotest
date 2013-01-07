@@ -236,15 +236,15 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
         username = req.body.username
         password = req.body.password
         publickey = req.body.publickey
-        device_gcm_id = req.body.device_gcm_id
-        console.log "gcmID: " + device_gcm_id
+        gcmId = req.body.gcmId
+        console.log "gcmID: " + gcmId
 
         userKey = "users:" + username
         bcrypt.genSalt 10, (err, salt) ->
           next err if err
           bcrypt.hash password, salt, (err, password) ->
             next err if err
-            rc.hmset userKey, "username", username, "password", password, "publickey", publickey, "device_gcm_id", device_gcm_id, (err, data) ->
+            rc.hmset userKey, "username", username, "password", password, "publickey", publickey, "gcmId", gcmId, (err, data) ->
               console.log "set " + userKey + " in db"
               next new Error("[createNewUserAccount] SET failed for user: " + username)  if err
 
@@ -295,12 +295,12 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
         #send gcm message
         userKey = "users:" + to
-        rc.hget userKey, "device_gcm_id", (err, gcm_id) ->
+        rc.hget userKey, "gcmId", (err, gcm_id) ->
           if err?
             console.log ("ERROR: " + err)
             return
 
-          if gcm_id?
+          if gcm_id? && gcm_id.length > 0
             console.log "sending gcm message"
             gcmmessage = new gcm.Message()
             sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
@@ -315,6 +315,8 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
             sender.send gcmmessage, regIds, 4, (result) ->
               console.log(result)
+          else 
+            console.log "no gcm id for #{to}"
 
 
   )
@@ -342,10 +344,10 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   app.post "/users", createNewUserAccount, passport.authenticate("local"), (req, res) ->
     res.send 201
 
-  app.post "/registergcm", passport.authenticate("local"), (req, res) ->
-    deviceId = req.body.device_gcm_id
+  app.post "/registergcm", ensureAuthenticated, (req, res) ->
+    gcmId = req.body.gcmId
     userKey = "users:" + req.user.username
-    rc.hset userKey, "device_gcm_id", deviceId, (err) ->
+    rc.hset userKey, "gcmId", gcmId, (err) ->
       next err if err
       res.send 204
 
@@ -385,12 +387,12 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                   sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
                   #send gcm message
                   userKey = "users:" + friendname
-                  rc.hget userKey, "device_gcm_id", (err, gcm_id) ->
+                  rc.hget userKey, "gcmId", (err, gcmId) ->
                     if err?
                       console.log ("ERROR: " + err)
                       next new Error("No gcm key.")
 
-                    if gcm_id?
+                    if gcmId and gcmId.length > 0
                       console.log "sending gcm message"
                       gcmmessage = new gcm.Message()
                       sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
@@ -399,11 +401,13 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                       gcmmessage.delayWhileIdle = true
                       gcmmessage.timeToLive = 3
                       gcmmessage.collapseKey = "invite"
-                      regIds = [gcm_id]
+                      regIds = [gcmId]
 
                       sender.send gcmmessage, regIds, 4, (result) ->
                         console.log(result)
                         res.send 204
+                    else
+                      console.log "gcmId not set for #{friendname}"
                 else
                   res.send 403
 
