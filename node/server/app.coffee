@@ -121,7 +121,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       host: "chubb.redistogo.com"
       port: 9473
       pass: "c4e5ba6-c +
-       caf0cce3ee5b48c3d4964089b6"
+             caf0cce3ee5b48c3d4964089b6"
     )
     rc = createRedisClient(9473, "chubb.redistogo.com", "c4e5ba6af0cce3ee5b48c3d4964089b6")
     pub = createRedisClient(9473, "chubb.redistogo.com", "c4e5ba6af0cce3ee5b48c3d4964089b6")
@@ -133,8 +133,6 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     nodePort = process.env.PORT
 
   app.configure ->
-
-
     app.use express.logger()
     app.use express["static"](__dirname + "/../assets")
     app.use express.cookieParser()
@@ -147,9 +145,9 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     app.use passport.session()
     app.use app.router
     app.use express.errorHandler({
-      showMessage: true,
-      showStack: false,
-      dumpExceptions: false
+    showMessage: true,
+    showStack: false,
+    dumpExceptions: false
     })
 
   app.listen nodePort
@@ -213,7 +211,10 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       username = req.params.username
       rc.hget "users:" + username, "publickey", (err, data) ->
         next err  if err
-        res.send data
+        if data?
+          res.send data
+        else
+          res.send 404
     else
       next new Error("No username supplied.")
 
@@ -277,49 +278,79 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
       #todo check user == message.from
       #todo check from and to are friends
-
       message = JSON.parse(data)
+
       # message.user = user
       console.log "sending message from user #{user}"
+
       to = message.to
       from = message.from
       text = message.text
       room = getRoomName(from, to)
-      console.log "sending message " + text + " to user:" + to
-      newMessage = JSON.stringify(message)
-      rc.rpush "conversations:" + room + ":messages", newMessage, ->
-        sio.sockets.to(to).emit "message", newMessage
-        sio.sockets.to(from).emit "message", newMessage
+
+      #INCR per chat message id
+      rc.incr room + ":id", (err, id) ->
+        if err?
+          console.log ("ERROR: " + err)
+          return
 
 
+        message.id = id
 
-        #send gcm message
-        userKey = "users:" + to
-        rc.hget userKey, "gcmId", (err, gcm_id) ->
-          if err?
-            console.log ("ERROR: " + err)
-            return
+        console.log "sending message, id:  " + id + ", text: " + text + " to user:" + to
+        newMessage = JSON.stringify(message)
 
-          if gcm_id? && gcm_id.length > 0
-            console.log "sending gcm message"
-            gcmmessage = new gcm.Message()
-            sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
-            gcmmessage.addData("type", "message")
-            gcmmessage.addData("to", message.to)
-            gcmmessage.addData("sentfrom", message.from)
-            gcmmessage.addData("text", message.text)
-            gcmmessage.delayWhileIdle = true
-            gcmmessage.timeToLive = 3
-            gcmmessage.collapseKey = "message"
-            regIds = [gcm_id]
+        #store messages in sorted sets
+        rc.zadd "messages:" + room, id, newMessage, ->
+          sio.sockets.to(to).emit "message", newMessage
+          sio.sockets.to(from).emit "message", newMessage
 
-            sender.send gcmmessage, regIds, 4, (result) ->
-              console.log(result)
-          else 
-            console.log "no gcm id for #{to}"
+          #send gcm message
+          userKey = "users:" + to
+          rc.hget userKey, "gcmId", (err, gcm_id) ->
+            if err?
+              console.log ("ERROR: " + err)
+              return
+
+            if gcm_id? && gcm_id.length > 0
+              console.log "sending gcm message"
+              gcmmessage = new gcm.Message()
+              sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+              gcmmessage.addData("type", "message")
+              gcmmessage.addData("to", message.to)
+              gcmmessage.addData("sentfrom", message.from)
+              gcmmessage.addData("text", message.text)
+              gcmmessage.delayWhileIdle = true
+              gcmmessage.timeToLive = 3
+              gcmmessage.collapseKey = "message"
+              regIds = [gcm_id]
+
+              sender.send gcmmessage, regIds, 4, (result) ->
+                console.log(result)
+            else
+              console.log "no gcm id for #{to}"
 
 
   )
+
+  #get last x messages
+  app.get "/messages/:remoteuser", ensureAuthenticated, (req, res, next) ->
+    #todo make sure they are friends
+    #return last x messages
+    rc.zrange "messages:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
+      next err if err
+      res.send data
+
+
+  #get remote messages since id
+  app.get "/messages/:remoteuser/:id", ensureAuthenticated, (req, res, next) ->
+    #todo make sure they are friends
+    #return messages since id
+    rc.zrangebyscore "messages:" + getRoomName(req.user.username, req.params.remoteuser), "("+req.params.id, "+inf", (err, data) ->
+      next err if err
+      res.send data
+
+
 
   app.get "/test", (req, res) ->
     res.sendfile path.normalize __dirname + "/../assets/html/test.html"
@@ -330,11 +361,10 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   app.get "/friends", ensureAuthenticated, getFriends
   app.get "/publickey/:username", ensureAuthenticated, getPublicKey
   app.get "/notifications", ensureAuthenticated, getNotifications
-  app.get "/users/:username/exists", (req,res) ->
+  app.get "/users/:username/exists", (req, res) ->
     userExists req.params.username, (err, exists) ->
       next err  if err
       res.send exists
-
 
 
   app.post "/login", passport.authenticate("local"), (req, res) ->
@@ -412,7 +442,6 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                   res.send 403
 
 
-
   app.post '/invites/:friendname/:action', ensureAuthenticated, (req, res, next) ->
     console.log 'POST /invites'
     username = req.user.username
@@ -435,12 +464,6 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
           rc.sadd "ignores:#{username}", friendname, (err, data) ->
             next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err
         res.send 204
-
-  app.get "/conversations/:remoteuser/messages", ensureAuthenticated, (req, res, next) ->
-    #todo make sure they are friends
-    rc.lrange "conversations:" + getRoomName(req.user.username, req.params.remoteuser) + ":messages", 0, -1, (err, data) ->
-      next err if err
-      res.send data
 
 
   app.post "/logout", ensureAuthenticated, (req, res) ->
