@@ -200,6 +200,10 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   getRoomName = (from, to) ->
     if from < to then from + ":" + to else to + ":" + from
 
+  getOtherUser = (room, user) ->
+    users = room.split ":"
+    if user == users[0] then return users[1] else return users[0]
+
   getFriends = (req, res, next) ->
     username = req.user.username
     dal.getFriends username, (err, data) ->
@@ -262,11 +266,11 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
   getNotifications = (req, res, next) ->
     rc.smembers "invites:#{req.user.username}", (err, users) ->
-      next err  if err
+      next err if err
       res.send _.map users, (user) -> {type: 'invite', data: user}
 
 
-  room = sio.on("connection", (socket) ->
+  room = sio.on "connection", (socket) ->
     user = socket.handshake.session.passport.user
 
     #join user's room
@@ -277,7 +281,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       user = socket.handshake.session.passport.user
 
       #todo check user == message.from
-      #todo check from and to are friends
+      #todo check from and to exist and are friends
       message = JSON.parse(data)
 
       # message.user = user
@@ -288,12 +292,11 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       text = message.text
       room = getRoomName(from, to)
 
-      #INCR per chat message id
+      #INCR message id
       rc.incr room + ":id", (err, id) ->
         if err?
-          console.log ("ERROR: " + err)
+          console.log ("ERROR: Socket.io onmessage, " + err)
           return
-
 
         message.id = id
 
@@ -301,7 +304,23 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
         newMessage = JSON.stringify(message)
 
         #store messages in sorted sets
-        rc.zadd "messages:" + room, id, newMessage, ->
+        rc.zadd "messages:" + room, id, newMessage, (err, addcount) ->
+          if err?
+            console.log ("ERROR: Socket.io onmessage, " + err)
+            return
+
+          #if this is the first message, add the "room" to the user's list of rooms
+          if (id == 1)
+            rc.sadd "conversations:"+from, room, (err,data) ->
+              if err?
+                console.log ("ERROR: Socket.io onmessage, " + err)
+                return
+
+              rc.sadd "conversations:"+to, room, (err,data) ->
+                if err
+                  console.log ("ERROR: Socket.io onmessage, " + err)
+                  return
+
           sio.sockets.to(to).emit "message", newMessage
           sio.sockets.to(from).emit "message", newMessage
 
@@ -309,7 +328,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
           userKey = "users:" + to
           rc.hget userKey, "gcmId", (err, gcm_id) ->
             if err?
-              console.log ("ERROR: " + err)
+              console.log ("ERROR: Socket.io onmessage, " + err)
               return
 
             if gcm_id? && gcm_id.length > 0
@@ -330,9 +349,6 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
             else
               console.log "no gcm id for #{to}"
 
-
-  )
-
   #get last x messages
   app.get "/messages/:remoteuser", ensureAuthenticated, (req, res, next) ->
     #todo make sure they are friends
@@ -343,13 +359,23 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
 
   #get remote messages since id
-  app.get "/messages/:remoteuser/:id", ensureAuthenticated, (req, res, next) ->
-    #todo make sure they are friends
+  app.get "/messages/:remoteuser/:messageid", ensureAuthenticated, (req, res, next) ->
     #return messages since id
-    rc.zrangebyscore "messages:" + getRoomName(req.user.username, req.params.remoteuser), "("+req.params.id, "+inf", (err, data) ->
+    rc.zrangebyscore "messages:" + getRoomName(req.user.username, req.params.remoteuser), "("+req.params.messageid, "+inf", (err, data) ->
       next err if err
       res.send data
 
+  #get last message ids of conversations
+  app.get "/conversations/ids", ensureAuthenticated, (req, res, next) ->
+    rc.smembers "conversations:" + req.user.username, (err, conversations) ->
+      next err if err
+      conversationsWithId = _.map conversations, (conversation) -> conversation + ":id"
+      rc.mget conversationsWithId, (err, ids) ->
+        next err if err
+        some = {}
+        _.each(conversations, (conversation,i) ->
+          some[getOtherUser(conversation,req.user.username)] = ids[i])
+        res.send some
 
 
   app.get "/test", (req, res) ->
