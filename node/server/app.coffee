@@ -70,7 +70,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
   app.configure "amazon-stage", ->
     console.log "running on amazon-stage"
-    nodePort = 80
+    nodePort = 8080
     redisPort = 6379
     socketPort = 443
     redisHost = "127.0.0.1"
