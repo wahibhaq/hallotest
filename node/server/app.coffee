@@ -437,7 +437,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                       next new Error("No gcm key.")
 
                     if gcmId and gcmId.length > 0
-                      console.log "sending gcm message"
+                      console.log "sending gcm notification"
                       gcmmessage = new gcm.Message()
                       sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
                       gcmmessage.addData("type", "invite")
@@ -473,7 +473,32 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
             rc.sadd "friends:#{friendname}", username, (err, data) ->
               return next new Error("[friend] sadd failed for username: " + friendname + ", friendname" + username) if err
               sio.sockets.to(friendname).emit "inviteResponse",JSON.stringify { user: username, response: req.params.action }
-              res.send 204
+
+              if (req.params.action == "accept")
+                userKey = "users:" + friendname
+                rc.hget userKey, "gcmId", (err, gcmId) ->
+                  if err?
+                    console.log ("ERROR: " + err)
+                    next new Error("No gcm key.")
+
+                  if gcmId and gcmId.length > 0
+                    console.log "sending gcm notification"
+                    gcmmessage = new gcm.Message()
+                    sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+                    gcmmessage.addData("type", "inviteResponse")
+                    gcmmessage.addData("user", username)
+                    gcmmessage.addData("response", req.params.action)
+                    gcmmessage.delayWhileIdle = true
+                    gcmmessage.timeToLive = 3
+                    gcmmessage.collapseKey = "inviteResponse"
+                    regIds = [gcmId]
+
+                    sender.send gcmmessage, regIds, 4, (result) ->
+                      console.log(result)
+                      res.send 204
+                  else
+                    console.log "gcmId not set for #{friendname}"
+                    res.send 204
 
         else
           rc.sadd "ignores:#{username}", friendname, (err, data) ->
