@@ -204,23 +204,17 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     users = room.split ":"
     if user == users[0] then return users[1] else return users[0]
 
-  getFriends = (req, res, next) ->
-    username = req.user.username
-    dal.getFriends username, (err, data) ->
-      next err  if err
-      res.send data
-
   getPublicKey = (req, res, next) ->
     if req.params.username
       username = req.params.username
       rc.hget "users:" + username, "publickey", (err, data) ->
-        next err  if err
+        return next err if err
         if data?
           res.send data
         else
           res.send 404
     else
-      next new Error("No username supplied.")
+      return next new Error("No username supplied.")
 
   userExists = (username, fn) ->
     userKey = "users:" + username
@@ -233,7 +227,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
     #var newUser = {name:name, email:email };
     userExists req.body.username, (err, exists) ->
-      next err  if err
+      return next err if err
       if exists
         console.log "user already exists"
         res.send 409
@@ -246,29 +240,23 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
         userKey = "users:" + username
         bcrypt.genSalt 10, (err, salt) ->
-          next err if err
+          return next err if err
           bcrypt.hash password, salt, (err, password) ->
-            next err if err
+            return next err if err
             rc.hmset userKey, "username", username, "password", password, "publickey", publickey, "gcmId", gcmId, (err, data) ->
               console.log "set " + userKey + " in db"
-              next new Error("[createNewUserAccount] SET failed for user: " + username)  if err
+              return next new Error("[createNewUserAccount] SET failed for user: " + username) if err
 
               #return the password in the user object so we can auth
               #todo build manually instead of reading back from redis
               rc.hgetall userKey, (err, user) ->
-                next err if err
+                return next err if err
                 # req.body.password = password;
                 #  req.logout();
                 #auth login
                 req.login user, null, ->
                   req.user = user
                   next()
-
-  getNotifications = (req, res, next) ->
-    rc.smembers "invites:#{req.user.username}", (err, users) ->
-      next err if err
-      res.send _.map users, (user) -> {type: 'invite', data: user}
-
 
   room = sio.on "connection", (socket) ->
     user = socket.handshake.session.passport.user
@@ -354,7 +342,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     #todo make sure they are friends
     #return last x messages
     rc.zrange "messages:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
-      next err if err
+      return next err if err
       res.send data
 
 
@@ -362,20 +350,20 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   app.get "/messages/:remoteuser/:messageid", ensureAuthenticated, (req, res, next) ->
     #return messages since id
     rc.zrangebyscore "messages:" + getRoomName(req.user.username, req.params.remoteuser), "("+req.params.messageid, "+inf", (err, data) ->
-      next err if err
+      return next err if err
       res.send data
 
   #get last message ids of conversations
   app.get "/conversations/ids", ensureAuthenticated, (req, res, next) ->
     rc.smembers "conversations:" + req.user.username, (err, conversations) ->
-      next err if err
+      return next err if err
       conversationsWithId = _.map conversations, (conversation) -> conversation + ":id"
       rc.mget conversationsWithId, (err, ids) ->
-        next err if err
+        return next err if err
         some = {}
-        _.each(conversations, (conversation,i) ->
-          some[getOtherUser(conversation,req.user.username)] = ids[i])
+        _.each conversations, (conversation,i) -> some[getOtherUser conversation,req.user.username] = ids[i]
         res.send some
+
 
 
   app.get "/test", (req, res) ->
@@ -384,12 +372,12 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   app.get "/", (req, res) ->
     res.sendfile path.normalize __dirname + "/../assets/html/layout.html"
 
-  app.get "/friends", ensureAuthenticated, getFriends
+
   app.get "/publickey/:username", ensureAuthenticated, getPublicKey
-  app.get "/notifications", ensureAuthenticated, getNotifications
+
   app.get "/users/:username/exists", (req, res) ->
     userExists req.params.username, (err, exists) ->
-      next err  if err
+      return next err if err
       res.send exists
 
 
@@ -404,7 +392,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     gcmId = req.body.gcmId
     userKey = "users:" + req.user.username
     rc.hset userKey, "gcmId", gcmId, (err) ->
-      next err if err
+      return next err if err
       res.send 204
 
   app.post "/invite/:friendname", ensureAuthenticated, (req, res, next) ->
@@ -416,7 +404,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     console.log "#{username} inviting #{friendname} to be friends"
     #todo check both users exist
     userExists friendname, (err, exists) ->
-      next err  if err
+      return next err if err
       unless exists
         console.log "no such user"
         res.send 404
@@ -475,21 +463,44 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     accept = req.params.action is 'accept'
     #todo use transaction?
     rc.srem "invited:#{friendname}", username, (err, data) ->
-      next new Error("[friend] srem failed for invited:#{friendname}: " + username) if err
+      return next new Error("[friend] srem failed for invited:#{friendname}: " + username) if err
       rc.srem "invites:#{username}", friendname, (err, data) ->
         #send to room
         #TOdo push\
         if accept
           rc.sadd "friends:#{username}", friendname, (err, data) ->
-            next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err
+            return next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err
             rc.sadd "friends:#{friendname}", username, (err, data) ->
-              next new Error("[friend] sadd failed for username: " + friendname + ", friendname" + username) if err
-              sio.sockets.to(friendname).emit "friend", username
+              return next new Error("[friend] sadd failed for username: " + friendname + ", friendname" + username) if err
+              sio.sockets.to(friendname).emit "inviteResponse",JSON.stringify { user: username, response: req.params.action }
+              res.send 204
 
         else
           rc.sadd "ignores:#{username}", friendname, (err, data) ->
-            next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err
-        res.send 204
+            return next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err
+            sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: req.params.action }
+            res.send 204
+
+
+
+  getFriends = (req, res, next) ->
+    username = req.user.username
+
+    dal.getFriends username, (err, rfriends) ->
+      return next err if err
+      friends = []
+      _.each rfriends, (name) -> friends.push {status: "friend", name: name}
+
+      rc.smembers "invites:#{username}", (err, invites) ->
+        return next err if err
+        _.each invites, (name) -> friends.push {status: "invitee", name: name}
+
+        rc.smembers "invited:#{username}", (err, invited) ->
+          return next err if err
+          _.each invited, (name) -> friends.push {status: "invited", name: name}
+          console.log ("friends: " + friends)
+          res.send friends
+  app.get "/friends", ensureAuthenticated, getFriends
 
 
   app.post "/logout", ensureAuthenticated, (req, res) ->
