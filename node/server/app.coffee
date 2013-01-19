@@ -216,6 +216,12 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     else
       return next new Error("No username supplied.")
 
+  getMessages = (room, count, fn) ->
+    #return last x messages
+    rc.zrange "messages:" + room, -count, -1, (err, data) ->
+      return fn err if err
+      fn null, data
+
   userExists = (username, fn) ->
     userKey = "users:" + username
     rc.hlen userKey, (err, hlen) ->
@@ -278,70 +284,87 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       to = message.to
       from = message.from
       text = message.text
+      resend = message.resend
       room = getRoomName(from, to)
 
-      #INCR message id
-      rc.incr room + ":id", (err, id) ->
-        if err?
-          console.log ("ERROR: Socket.io onmessage, " + err)
-          return
+      found = false
+      #check for dupes if message has been resent
+      if (resend)
+        #check last 10 messages (todo pass in last received id)
+        getMessages room, 10, (err,data) ->
+          return next err if err
+          found = _.find data, (checkMessage) ->
+            checkMessage.to == message.to && checkMessage.from == message.from && checkMessage.text == message.text
 
-        message.id = id
-
-        console.log "sending message, id:  " + id + ", text: " + text + " to user:" + to
-        newMessage = JSON.stringify(message)
-
-        #store messages in sorted sets
-        rc.zadd "messages:" + room, id, newMessage, (err, addcount) ->
+      if (found)
+        console.log "message already sent, not adding to db"
+        sio.sockets.to(to).emit "message", message
+        sio.sockets.to(from).emit "message", message
+      else
+        console.log "new message"
+        #INCR message id
+        rc.incr room + ":id", (err, id) ->
           if err?
             console.log ("ERROR: Socket.io onmessage, " + err)
             return
 
-          #if this is the first message, add the "room" to the user's list of rooms
-          if (id == 1)
-            rc.sadd "conversations:"+from, room, (err,data) ->
-              if err?
-                console.log ("ERROR: Socket.io onmessage, " + err)
-                return
+          message.id = id
 
-              rc.sadd "conversations:"+to, room, (err,data) ->
-                if err
-                  console.log ("ERROR: Socket.io onmessage, " + err)
-                  return
+          console.log "sending message, id:  " + id + ", text: " + text + " to user:" + to
+          newMessage = JSON.stringify(message)
 
-          sio.sockets.to(to).emit "message", newMessage
-          sio.sockets.to(from).emit "message", newMessage
-
-          #send gcm message
-          userKey = "users:" + to
-          rc.hget userKey, "gcmId", (err, gcm_id) ->
+          #store messages in sorted sets
+          rc.zadd "messages:" + room, id, newMessage, (err, addcount) ->
             if err?
               console.log ("ERROR: Socket.io onmessage, " + err)
               return
 
-            if gcm_id? && gcm_id.length > 0
-              console.log "sending gcm message"
-              gcmmessage = new gcm.Message()
-              sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
-              gcmmessage.addData("type", "message")
-              gcmmessage.addData("to", message.to)
-              gcmmessage.addData("sentfrom", message.from)
-              gcmmessage.addData("text", message.text)
-              gcmmessage.delayWhileIdle = true
-              gcmmessage.timeToLive = 3
-              gcmmessage.collapseKey = "message"
-              regIds = [gcm_id]
+            #if this is the first message, add the "room" to the user's list of rooms
+            if (id == 1)
+              rc.sadd "conversations:"+from, room, (err,data) ->
+                if err?
+                  console.log ("ERROR: Socket.io onmessage, " + err)
+                  return
 
-              sender.send gcmmessage, regIds, 4, (result) ->
-                console.log(result)
-            else
-              console.log "no gcm id for #{to}"
+                rc.sadd "conversations:"+to, room, (err,data) ->
+                  if err
+                    console.log ("ERROR: Socket.io onmessage, " + err)
+                    return
+
+            sio.sockets.to(to).emit "message", newMessage
+            sio.sockets.to(from).emit "message", newMessage
+
+            #send gcm message
+            userKey = "users:" + to
+            rc.hget userKey, "gcmId", (err, gcm_id) ->
+              if err?
+                console.log ("ERROR: Socket.io onmessage, " + err)
+                return
+
+              if gcm_id? && gcm_id.length > 0
+                console.log "sending gcm message"
+                gcmmessage = new gcm.Message()
+                sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+                gcmmessage.addData("type", "message")
+                gcmmessage.addData("to", message.to)
+                gcmmessage.addData("sentfrom", message.from)
+                gcmmessage.addData("text", message.text)
+                gcmmessage.delayWhileIdle = true
+                gcmmessage.timeToLive = 3
+                gcmmessage.collapseKey = "message"
+                regIds = [gcm_id]
+
+                sender.send gcmmessage, regIds, 4, (result) ->
+                  console.log(result)
+              else
+                console.log "no gcm id for #{to}"
 
   #get last x messages
   app.get "/messages/:remoteuser", ensureAuthenticated, (req, res, next) ->
     #todo make sure they are friends
     #return last x messages
-    rc.zrange "messages:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
+    getMessages getRoomName(req.user.username, req.params.remoteuser), 50, (err, data) ->
+#    rc.zrange "messages:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
       return next err if err
       res.send data
 
@@ -483,6 +506,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
                   if gcmId and gcmId.length > 0
                     console.log "sending gcm notification"
+                    
                     gcmmessage = new gcm.Message()
                     sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
                     gcmmessage.addData("type", "inviteResponse")
