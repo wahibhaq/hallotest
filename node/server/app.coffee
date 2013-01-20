@@ -269,6 +269,29 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                   req.user = user
                   next()
 
+  checkForDuplicateMessage = (resendId, room, message, callback) ->
+    if (resendId?)
+      if (resendId > 0)
+        console.log "searching room: #{room} from id: #{resendId} for duplicate messages"
+        #check messages client doesn't have for dupes
+        getMessagesSinceId room, resendId, (err,data) ->
+          return callback err if err
+          found = _.find data, (checkMessageJSON) ->
+            checkMessage = JSON.parse(checkMessageJSON)
+            checkMessage.to == message.to && checkMessage.from == message.from && checkMessage.text == message.text
+          callback null,found
+      else
+        console.log "searching 30 messages from room: #{room} for duplicates"
+        #check last 30 for dupes
+        getMessages room, 30, (err,data) ->
+          return callback err if err
+          found = _.find data, (checkMessageJSON) ->
+            checkMessage = JSON.parse(checkMessageJSON)
+            checkMessage.to == message.to && checkMessage.from == message.from && checkMessage.text == message.text
+          callback null, found
+    else
+      callback null, false
+
   room = sio.on "connection", (socket) ->
     user = socket.handshake.session.passport.user
 
@@ -292,86 +315,71 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       resendId = message.resendId
       room = getRoomName(from, to)
 
-      found = false
       #check for dupes if message has been resent
-      if (resendId?)
-        if (resendId > 0)
-          console.log "searching room: #{room} from id: #{resendId} for duplicate messages"
-          #check messages client doesn't have for dupes
-          getMessagesSinceId room, resendId, (err,data) ->
-            return next err if err
-            found = _.find data, (checkMessage) ->
-              checkMessage.to == message.to && checkMessage.from == message.from && checkMessage.text == message.text
+      checkForDuplicateMessage resendId, room, message, (err, found) ->
+        if (found)
+          console.log "found duplicate, not adding to db"
+          sio.sockets.to(to).emit "message", found
+          sio.sockets.to(from).emit "message", found
         else
-          console.log "searching all messages from room: #{room} for duplicates"
-          #check last 30 for dupes
-          getMessages room, 30, (err,data) ->
-            return next err if err
-            found = _.find data, (checkMessage) ->
-              checkMessage.to == message.to && checkMessage.from == message.from && checkMessage.text == message.text
-
-      if (found)
-        console.log "found duplicate, not adding to db"
-        sio.sockets.to(to).emit "message", data
-        sio.sockets.to(from).emit "message", data
-      else
-        console.log "new message"
-        #INCR message id
-        rc.incr room + ":id", (err, id) ->
-          if err?
-            console.log ("ERROR: Socket.io onmessage, " + err)
-            return
-
-          message.id = id
-
-          console.log "sending message, id:  " + id + ", text: " + text + " to user:" + to
-          newMessage = JSON.stringify(message)
-
-          #store messages in sorted sets
-          rc.zadd "messages:" + room, id, newMessage, (err, addcount) ->
+          console.log "new message"
+          #INCR message id
+          rc.incr room + ":id", (err, id) ->
             if err?
               console.log ("ERROR: Socket.io onmessage, " + err)
               return
 
-            #if this is the first message, add the "room" to the user's list of rooms
-            if (id == 1)
-              rc.sadd "conversations:"+from, room, (err,data) ->
-                if err?
-                  console.log ("ERROR: Socket.io onmessage, " + err)
-                  return
+            message.id = id
 
-                rc.sadd "conversations:"+to, room, (err,data) ->
-                  if err
-                    console.log ("ERROR: Socket.io onmessage, " + err)
-                    return
+            console.log "sending message, id:  " + id + ", text: " + text + " to user:" + to
+            newMessage = JSON.stringify(message)
 
-            sio.sockets.to(to).emit "message", newMessage
-            sio.sockets.to(from).emit "message", newMessage
-
-            #send gcm message
-            userKey = "users:" + to
-            rc.hget userKey, "gcmId", (err, gcm_id) ->
+            #store messages in sorted sets
+            rc.zadd "messages:" + room, id, newMessage, (err, addcount) ->
               if err?
                 console.log ("ERROR: Socket.io onmessage, " + err)
                 return
 
-              if gcm_id? && gcm_id.length > 0
-                console.log "sending gcm message"
-                gcmmessage = new gcm.Message()
-                sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
-                gcmmessage.addData("type", "message")
-                gcmmessage.addData("to", message.to)
-                gcmmessage.addData("sentfrom", message.from)
-                gcmmessage.addData("text", message.text)
-                gcmmessage.delayWhileIdle = true
-                gcmmessage.timeToLive = 3
-                gcmmessage.collapseKey = "message"
-                regIds = [gcm_id]
+              #if this is the first message, add the "room" to the user's list of rooms
+              if (id == 1)
+                rc.sadd "conversations:"+from, room, (err,data) ->
+                  if err?
+                    console.log ("ERROR: Socket.io onmessage, " + err)
+                    return
 
-                sender.send gcmmessage, regIds, 4, (result) ->
-                  console.log(result)
-              else
-                console.log "no gcm id for #{to}"
+                  rc.sadd "conversations:"+to, room, (err,data) ->
+                    if err
+                      console.log ("ERROR: Socket.io onmessage, " + err)
+                      return
+
+              sio.sockets.to(to).emit "message", newMessage
+              sio.sockets.to(from).emit "message", newMessage
+
+              #send gcm message
+              userKey = "users:" + to
+              rc.hget userKey, "gcmId", (err, gcm_id) ->
+                if err?
+                  console.log ("ERROR: Socket.io onmessage, " + err)
+                  return
+
+                if gcm_id? && gcm_id.length > 0
+                  console.log "sending gcm message"
+                  gcmmessage = new gcm.Message()
+                  sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+                  gcmmessage.addData("type", "message")
+                  gcmmessage.addData("to", message.to)
+                  gcmmessage.addData("sentfrom", message.from)
+                  gcmmessage.addData("text", message.text)
+                  gcmmessage.delayWhileIdle = true
+                  gcmmessage.timeToLive = 3
+                  gcmmessage.collapseKey = "message"
+                  regIds = [gcm_id]
+
+                  sender.send gcmmessage, regIds, 4, (result) ->
+                    console.log "sendGcm result: #{result}"
+                else
+                  console.log "no gcm id for #{to}"
+
 
   #get last x messages
   app.get "/messages/:remoteuser", ensureAuthenticated, (req, res, next) ->
