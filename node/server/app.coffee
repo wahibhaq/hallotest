@@ -294,7 +294,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
       found = false
       #check for dupes if message has been resent
-      if (resendId > 0)
+      if (resendId? && resendId > 0)
         console.log "searching room: #{room} from id: #{resendId} for duplicate messages"
         #check messages client doesn't have for dupes
         getMessagesSinceId room, resendId, (err,data) ->
@@ -385,6 +385,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   #get remote messages since id
   app.get "/messages/:remoteuser/:messageid", ensureAuthenticated, (req, res, next) ->
     #return messages since id
+    #todo once infinite scroll is in place just return the last x messages
     getMessagesSinceId getRoomName(req.user.username, req.params.remoteuser), req.params.messageid, (err, data) ->
       return next err if err
       res.send data
