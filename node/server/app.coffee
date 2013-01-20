@@ -222,6 +222,11 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       return fn err if err
       fn null, data
 
+  getMessagesSinceId = (room, id, fn) ->
+    rc.zrangebyscore "messages:" + room, "("+id, "+inf", (err, data) ->
+      return fn err if err
+      fn null, data
+
   userExists = (username, fn) ->
     userKey = "users:" + username
     rc.hlen userKey, (err, hlen) ->
@@ -284,20 +289,28 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       to = message.to
       from = message.from
       text = message.text
-      resend = message.resend
+      resendId = message.resendId
       room = getRoomName(from, to)
 
       found = false
       #check for dupes if message has been resent
-      if (resend)
-        #check last 10 messages (todo pass in last received id)
-        getMessages room, 10, (err,data) ->
+      if (resendId > 0)
+        console.log "searching room: #{room} from id: #{resendId} for duplicate messages"
+        #check messages client doesn't have for dupes
+        getMessagesSinceId room, resendId, (err,data) ->
+          return next err if err
+          found = _.find data, (checkMessage) ->
+            checkMessage.to == message.to && checkMessage.from == message.from && checkMessage.text == message.text
+      else
+        console.log "searching all messages from room: #{room} for duplicates"
+        #check last 30 for dupes
+        getMessages room, 30, (err,data) ->
           return next err if err
           found = _.find data, (checkMessage) ->
             checkMessage.to == message.to && checkMessage.from == message.from && checkMessage.text == message.text
 
       if (found)
-        console.log "message already sent, not adding to db"
+        console.log "found duplicate, not adding to db"
         sio.sockets.to(to).emit "message", message
         sio.sockets.to(from).emit "message", message
       else
@@ -372,7 +385,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   #get remote messages since id
   app.get "/messages/:remoteuser/:messageid", ensureAuthenticated, (req, res, next) ->
     #return messages since id
-    rc.zrangebyscore "messages:" + getRoomName(req.user.username, req.params.remoteuser), "("+req.params.messageid, "+inf", (err, data) ->
+    getMessagesSinceId getRoomName(req.user.username, req.params.remoteuser), req.params.messageid, (err, data) ->
       return next err if err
       res.send data
 
