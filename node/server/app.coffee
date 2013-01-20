@@ -294,20 +294,21 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
       found = false
       #check for dupes if message has been resent
-      if (resendId? && resendId > 0)
-        console.log "searching room: #{room} from id: #{resendId} for duplicate messages"
-        #check messages client doesn't have for dupes
-        getMessagesSinceId room, resendId, (err,data) ->
-          return next err if err
-          found = _.find data, (checkMessage) ->
-            checkMessage.to == message.to && checkMessage.from == message.from && checkMessage.text == message.text
-      else
-        console.log "searching all messages from room: #{room} for duplicates"
-        #check last 30 for dupes
-        getMessages room, 30, (err,data) ->
-          return next err if err
-          found = _.find data, (checkMessage) ->
-            checkMessage.to == message.to && checkMessage.from == message.from && checkMessage.text == message.text
+      if (resendId?)
+        if (resendId > 0)
+          console.log "searching room: #{room} from id: #{resendId} for duplicate messages"
+          #check messages client doesn't have for dupes
+          getMessagesSinceId room, resendId, (err,data) ->
+            return next err if err
+            found = _.find data, (checkMessage) ->
+              checkMessage.to == message.to && checkMessage.from == message.from && checkMessage.text == message.text
+        else
+          console.log "searching all messages from room: #{room} for duplicates"
+          #check last 30 for dupes
+          getMessages room, 30, (err,data) ->
+            return next err if err
+            found = _.find data, (checkMessage) ->
+              checkMessage.to == message.to && checkMessage.from == message.from && checkMessage.text == message.text
 
       if (found)
         console.log "found duplicate, not adding to db"
