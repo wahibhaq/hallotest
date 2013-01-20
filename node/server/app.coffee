@@ -311,8 +311,8 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
       if (found)
         console.log "found duplicate, not adding to db"
-        sio.sockets.to(to).emit "message", message
-        sio.sockets.to(from).emit "message", message
+        sio.sockets.to(to).emit "message", data
+        sio.sockets.to(from).emit "message", data
       else
         console.log "new message"
         #INCR message id
