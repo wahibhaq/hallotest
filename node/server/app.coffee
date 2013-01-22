@@ -380,7 +380,9 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                   gcmmessage.addData("type", "message")
                   gcmmessage.addData("to", message.to)
                   gcmmessage.addData("sentfrom", message.from)
+                  #todo add data? (won't be large when image is a url)
                  # gcmmessage.addData("data", message.data)
+
                   gcmmessage.addData("mimeType", message.mimeType)
                   gcmmessage.delayWhileIdle = true
                   gcmmessage.timeToLive = 3
