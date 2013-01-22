@@ -240,6 +240,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     userExists req.body.username, (err, exists) ->
       return next err if err
       if exists
+
         console.log "user already exists"
         res.send 409
       else
@@ -278,7 +279,12 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
           return callback err if err
           found = _.find data, (checkMessageJSON) ->
             checkMessage = JSON.parse(checkMessageJSON)
-            checkMessage.to == message.to && checkMessage.from == message.from && checkMessage.text == message.text
+            if checkMessage.id? and message.id?
+              console.log "comparing ids"
+              checkMessage.id == message.id
+            else
+              console.log "comparing ivs"
+              checkMessage.iv == message.iv
           callback null,found
       else
         console.log "searching 30 messages from room: #{room} for duplicates"
@@ -287,7 +293,12 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
           return callback err if err
           found = _.find data, (checkMessageJSON) ->
             checkMessage = JSON.parse(checkMessageJSON)
-            checkMessage.to == message.to && checkMessage.from == message.from && checkMessage.text == message.text
+            if checkMessage.id? and message.id?
+              console.log "comparing ids"
+              checkMessage.id == message.id
+            else
+              console.log "comparing ivs"
+              checkMessage.iv == message.iv
           callback null, found
     else
       callback null, false
@@ -311,7 +322,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
       to = message.to
       from = message.from
-      text = message.text
+      text = message.data
       resendId = message.resendId
       room = getRoomName(from, to)
 
@@ -369,7 +380,8 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                   gcmmessage.addData("type", "message")
                   gcmmessage.addData("to", message.to)
                   gcmmessage.addData("sentfrom", message.from)
-                  gcmmessage.addData("text", message.text)
+                 # gcmmessage.addData("data", message.data)
+                  gcmmessage.addData("mimeType", message.mimeType)
                   gcmmessage.delayWhileIdle = true
                   gcmmessage.timeToLive = 3
                   gcmmessage.collapseKey = "message"
