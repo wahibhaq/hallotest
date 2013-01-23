@@ -156,10 +156,9 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   else
     sio = require("socket.io").listen(socketPort)
 
-  app.configure "heroku-stage", ->
+  app.configure "amazon-stage", ->
     sio.configure ->
-      sio.set "transports", ["xhr-polling"]
-      sio.set "polling duration", 10
+      sio.set "log level", 3
 
 
   sioRedisStore = require("socket.io/lib/stores/redis")
