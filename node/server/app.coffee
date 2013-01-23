@@ -157,8 +157,8 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     sio = require("socket.io").listen(socketPort)
 
   sio.configure "amazon-stage", ->
-    console.log "setting socket.io log level to 1"
-    sio.set "log level", 1
+    console.log "setting socket.io log level to 2"
+    sio.set "log level", 2
 
   sio.configure "development", ->
     console.log "setting socket.io log level"
