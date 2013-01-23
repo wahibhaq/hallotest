@@ -348,7 +348,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
             message.id = id
 
-            console.log "sending message, id:  " + id + ", text: " + text + " to user:" + to
+            console.log "sending message, id:  " + id + ",  to user:" + to
             newMessage = JSON.stringify(message)
 
             #store messages in sorted sets
