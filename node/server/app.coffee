@@ -446,7 +446,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   oneYear = 31557600000
   staticMiddleware = express["static"](__dirname + "/static", { maxAge: oneYear})
 
-  app.get "/images/:room/:id",  (req,res,next) ->
+  app.get "/images/:room/:id",  ensureAuthenticated, (req,res,next) ->
     #todo validate user is a member of this room
     #req.url = "/images/" + req.params.room + "/" + req.params.id
     #authenticate but use static so we can use http caching
