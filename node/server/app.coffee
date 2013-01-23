@@ -156,10 +156,13 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   else
     sio = require("socket.io").listen(socketPort)
 
-  app.configure "amazon-stage", ->
-    sio.configure ->
-      sio.set "log level", 3
+  sio.configure "amazon-stage", ->
+    console.log "setting socket.io log level to 1"
+    sio.set "log level", 1
 
+  sio.configure "development", ->
+    console.log "setting socket.io log level"
+    sio.set "log level", 3
 
   sioRedisStore = require("socket.io/lib/stores/redis")
   sio.set "store", new sioRedisStore(
