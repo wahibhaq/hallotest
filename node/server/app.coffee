@@ -18,6 +18,8 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   path = require 'path'
   util = require("util")
   gcm = require("node-gcm")
+  fs = require("fs")
+  mkdirp = require("mkdirp")
   nodePort = 3000
   socketPort = 3000
   sio = undefined
@@ -160,10 +162,6 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     console.log "setting socket.io log level to 2"
     sio.set "log level", 2
 
-  sio.configure "development", ->
-    console.log "setting socket.io log level"
-    sio.set "log level", 3
-
   sioRedisStore = require("socket.io/lib/stores/redis")
   sio.set "store", new sioRedisStore(
     redisPub: pub
@@ -221,17 +219,17 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   getMessages = (room, count, fn) ->
     #return last x messages
     rc.zrange "messages:" + room, -count, -1, (err, data) ->
-      return fn err if err
+      return fn err if err?
       fn null, data
 
   getMessagesAfterId = (room, id, fn) ->
     rc.zrangebyscore "messages:" + room, "("+id, "+inf", (err, data) ->
-      return fn err if err
+      return fn err if err?
       fn null, data
 
   getMessagesBeforeId = (room, id, fn) ->
     rc.zrangebyscore "messages:" + room,  id-30, "("+id , (err, data) ->
-      return fn err if err
+      return fn err if err?
       fn null, data
 
 
@@ -246,9 +244,8 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
     #var newUser = {name:name, email:email };
     userExists req.body.username, (err, exists) ->
-      return next err if err
+      return next err if err?
       if exists
-
         console.log "user already exists"
         res.send 409
       else
@@ -260,17 +257,17 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
         userKey = "users:" + username
         bcrypt.genSalt 10, (err, salt) ->
-          return next err if err
+          return next err if err?
           bcrypt.hash password, salt, (err, password) ->
-            return next err if err
+            return next err if err?
             rc.hmset userKey, "username", username, "password", password, "publickey", publickey, "gcmId", gcmId, (err, data) ->
               console.log "set " + userKey + " in db"
-              return next new Error("[createNewUserAccount] SET failed for user: " + username) if err
+              return next new Error("[createNewUserAccount] SET failed for user: " + username) if err?
 
               #return the password in the user object so we can auth
               #todo build manually instead of reading back from redis
               rc.hgetall userKey, (err, user) ->
-                return next err if err
+                return next err if err?
                 # req.body.password = password;
                 #  req.logout();
                 #auth login
@@ -311,6 +308,86 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     else
       callback null, false
 
+  getNextMessageId = (room, id, callback) ->
+    return callback id if id?
+    #INCR message id
+    rc.incr room + ":id", (err, newId) ->
+      if err?
+        console.log "ERROR: getNextMessageId, room: #{room}, error: #{err}"
+        callback null
+      else
+        callback newId
+
+
+
+
+
+  createAndSendMessage = (from,to,iv,data,mimeType, id) ->
+    console.log "new message"
+    message = {}
+    message.to = to
+    message.from = from
+    message.iv = iv
+    message.data = data
+    message.mimeType = mimeType
+
+    #INCR message id
+    getNextMessageId room, id, (id)->
+      return unless id?
+      message.id = id
+
+      console.log "sending message, id:  " + id + ", iv: " + iv + ", data: " + data + " to user:" + to
+      newMessage = JSON.stringify(message)
+
+      #store messages in sorted sets
+      rc.zadd "messages:" + room, id, newMessage, (err, addcount) ->
+        if err?
+          console.log ("ERROR: Socket.io onmessage, " + err)
+          return
+
+        #if this is the first message, add the "room" to the user's list of rooms
+        if (id == 1)
+          rc.sadd "conversations:"+from, room, (err,data) ->
+            if err?
+              console.log ("ERROR: Socket.io onmessage, " + err)
+              return
+
+            rc.sadd "conversations:"+to, room, (err,data) ->
+              if err
+                console.log ("ERROR: Socket.io onmessage, " + err)
+                return
+
+        sio.sockets.to(to).emit "message", newMessage
+        sio.sockets.to(from).emit "message", newMessage
+
+        #send gcm message
+        userKey = "users:" + to
+        rc.hget userKey, "gcmId", (err, gcm_id) ->
+          if err?
+            console.log ("ERROR: Socket.io onmessage, " + err)
+            return
+
+          if gcm_id?.length > 0
+            console.log "sending gcm message"
+            gcmmessage = new gcm.Message()
+            sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+            gcmmessage.addData("type", "message")
+            gcmmessage.addData("to", message.to)
+            gcmmessage.addData("sentfrom", message.from)
+            #todo add data? (won't be large when image is a url)
+            # gcmmessage.addData("data", message.data)
+
+            gcmmessage.addData("mimeType", message.mimeType)
+            gcmmessage.delayWhileIdle = true
+            gcmmessage.timeToLive = 3
+            gcmmessage.collapseKey = "message"
+            regIds = [gcm_id]
+
+            sender.send gcmmessage, regIds, 4, (result) ->
+              console.log "sendGcm result: #{result}"
+          else
+            console.log "no gcm id for #{to}"
+
   room = sio.on "connection", (socket) ->
     user = socket.handshake.session.passport.user
 
@@ -330,8 +407,10 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
       to = message.to
       from = message.from
-      text = message.data
+      cipherdata = message.data
+      iv = message.iv
       resendId = message.resendId
+      mimeType = message.mimeType
       room = getRoomName(from, to)
 
       #check for dupes if message has been resent
@@ -341,66 +420,38 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
           sio.sockets.to(to).emit "message", found
           sio.sockets.to(from).emit "message", found
         else
-          console.log "new message"
-          #INCR message id
-          rc.incr room + ":id", (err, id) ->
-            if err?
-              console.log ("ERROR: Socket.io onmessage, " + err)
-              return
+          createAndSendMessage from, to, iv, cipherdata, mimeType
 
-            message.id = id
 
-            console.log "sending message, id:  " + id + ", iv: " + message.iv + ", to user:" + to
-            newMessage = JSON.stringify(message)
+  app.post "/images/:remoteuser", ensureAuthenticated, (req,res,next) ->
+    #create a message and send it to chat recipients
+    room = getRoomName req.user.username, req.params.remoteuser
+    getNextMessageId room, null, (id) ->
+      return unless id?
+      #todo env var for base location
+      relUri = "/images/" + room
+      newPath = __dirname + "/static" + relUri
+      mkdirp newPath, (err) ->
+        filename = newPath + "/#{id}"
+        relUri += "/#{id}"
+        return next err if err
+        ins = fs.createReadStream req.files.image.path
+        out = fs.createWriteStream filename
+        ins.pipe out
+        ins.on "end", ->
+          createAndSendMessage req.user.username, req.params.remoteuser, req.files.image.name, relUri, "image/", id
+          fs.unlinkSync req.files.image.path
+          res.send 202, { 'Location': relUri }
 
-            #store messages in sorted sets
-            rc.zadd "messages:" + room, id, newMessage, (err, addcount) ->
-              if err?
-                console.log ("ERROR: Socket.io onmessage, " + err)
-                return
+  oneYear = 31557600000
+  staticMiddleware = express["static"](__dirname + "/static", { maxAge: oneYear})
 
-              #if this is the first message, add the "room" to the user's list of rooms
-              if (id == 1)
-                rc.sadd "conversations:"+from, room, (err,data) ->
-                  if err?
-                    console.log ("ERROR: Socket.io onmessage, " + err)
-                    return
+  app.get "/images/:room/:id",  (req,res,next) ->
+    #todo validate user is a member of this room
+    #req.url = "/images/" + req.params.room + "/" + req.params.id
+    #authenticate but use static so we can use http caching
+     staticMiddleware req,res,next
 
-                  rc.sadd "conversations:"+to, room, (err,data) ->
-                    if err
-                      console.log ("ERROR: Socket.io onmessage, " + err)
-                      return
-
-              sio.sockets.to(to).emit "message", newMessage
-              sio.sockets.to(from).emit "message", newMessage
-
-              #send gcm message
-              userKey = "users:" + to
-              rc.hget userKey, "gcmId", (err, gcm_id) ->
-                if err?
-                  console.log ("ERROR: Socket.io onmessage, " + err)
-                  return
-
-                if gcm_id? && gcm_id.length > 0
-                  console.log "sending gcm message"
-                  gcmmessage = new gcm.Message()
-                  sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
-                  gcmmessage.addData("type", "message")
-                  gcmmessage.addData("to", message.to)
-                  gcmmessage.addData("sentfrom", message.from)
-                  #todo add data? (won't be large when image is a url)
-                 # gcmmessage.addData("data", message.data)
-
-                  gcmmessage.addData("mimeType", message.mimeType)
-                  gcmmessage.delayWhileIdle = true
-                  gcmmessage.timeToLive = 3
-                  gcmmessage.collapseKey = "message"
-                  regIds = [gcm_id]
-
-                  sender.send gcmmessage, regIds, 4, (result) ->
-                    console.log "sendGcm result: #{result}"
-                else
-                  console.log "no gcm id for #{to}"
 
 
   #get last x messages
@@ -409,7 +460,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     #return last x messages
     getMessages getRoomName(req.user.username, req.params.remoteuser), 30, (err, data) ->
 #    rc.zrange "messages:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
-      return next err if err
+      return next err if err?
       res.send data
 
 
@@ -417,23 +468,23 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   app.get "/messages/:remoteuser/after/:messageid", ensureAuthenticated, (req, res, next) ->
     #return messages since id
     getMessagesAfterId getRoomName(req.user.username, req.params.remoteuser), req.params.messageid, (err, data) ->
-      return next err if err
+      return next err if err?
       res.send data
 
   #get remote messages before id
   app.get "/messages/:remoteuser/before/:messageid", ensureAuthenticated, (req, res, next) ->
     #return messages since id
     getMessagesBeforeId getRoomName(req.user.username, req.params.remoteuser), req.params.messageid, (err, data) ->
-      return next err if err
+      return next err if err?
       res.send data
 
   #get last message ids of conversations
   app.get "/conversations/ids", ensureAuthenticated, (req, res, next) ->
     rc.smembers "conversations:" + req.user.username, (err, conversations) ->
-      return next err if err
+      return next err if err?
       conversationsWithId = _.map conversations, (conversation) -> conversation + ":id"
       rc.mget conversationsWithId, (err, ids) ->
-        return next err if err
+        return next err if err?
         some = {}
         _.each conversations, (conversation,i) -> some[getOtherUser conversation,req.user.username] = ids[i]
         res.send some
@@ -451,7 +502,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
   app.get "/users/:username/exists", (req, res) ->
     userExists req.params.username, (err, exists) ->
-      return next err if err
+      return next err if err?
       res.send exists
 
 
@@ -466,7 +517,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     gcmId = req.body.gcmId
     userKey = "users:" + req.user.username
     rc.hset userKey, "gcmId", gcmId, (err) ->
-      return next err if err
+      return next err if err?
       res.send 204
 
   app.post "/invite/:friendname", ensureAuthenticated, (req, res, next) ->
@@ -478,8 +529,8 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     console.log "#{username} inviting #{friendname} to be friends"
     #todo check both users exist
     userExists friendname, (err, exists) ->
-      return next err if err
-      unless exists
+      return next err if err?
+      unless exists?
         console.log "no such user"
         res.send 404
       else
@@ -537,15 +588,15 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     accept = req.params.action is 'accept'
     #todo use transaction?
     rc.srem "invited:#{friendname}", username, (err, data) ->
-      return next new Error("[friend] srem failed for invited:#{friendname}: " + username) if err
+      return next new Error("[friend] srem failed for invited:#{friendname}: " + username) if err?
       rc.srem "invites:#{username}", friendname, (err, data) ->
         #send to room
         #TOdo push\
         if accept
           rc.sadd "friends:#{username}", friendname, (err, data) ->
-            return next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err
+            return next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
             rc.sadd "friends:#{friendname}", username, (err, data) ->
-              return next new Error("[friend] sadd failed for username: " + friendname + ", friendname" + username) if err
+              return next new Error("[friend] sadd failed for username: " + friendname + ", friendname" + username) if err?
               sio.sockets.to(friendname).emit "inviteResponse",JSON.stringify { user: username, response: req.params.action }
 
               if (req.params.action == "accept")
@@ -557,7 +608,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
                   if gcmId and gcmId.length > 0
                     console.log "sending gcm notification"
-                    
+
                     gcmmessage = new gcm.Message()
                     sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
                     gcmmessage.addData("type", "inviteResponse")
@@ -577,7 +628,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
         else
           rc.sadd "ignores:#{username}", friendname, (err, data) ->
-            return next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err
+            return next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
             sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: req.params.action }
             res.send 204
 
@@ -587,16 +638,16 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     username = req.user.username
 
     dal.getFriends username, (err, rfriends) ->
-      return next err if err
+      return next err if err?
       friends = []
       _.each rfriends, (name) -> friends.push {status: "friend", name: name}
 
       rc.smembers "invites:#{username}", (err, invites) ->
-        return next err if err
+        return next err if err?
         _.each invites, (name) -> friends.push {status: "invitee", name: name}
 
         rc.smembers "invited:#{username}", (err, invited) ->
-          return next err if err
+          return next err if err?
           _.each invited, (name) -> friends.push {status: "invited", name: name}
           console.log ("friends: " + friends)
           res.send friends
@@ -611,26 +662,26 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   process.on "uncaughtException", uncaught = (err) ->
     console.log "Uncaught Exception: ", err
 
-  passport.use new LocalStrategy((username, password, done) ->
+  passport.use new LocalStrategy (username, password, done) ->
     userKey = "users:" + username
     console.log "looking for: " + userKey
     console.log "password: " + password
     rc.hgetall userKey, (err, user) ->
-      return done(err)  if err
+      return done(err)  if err?
       unless user
         return done(null, false,
           message: "Unknown user"
         )
       console.log "user.password: " + user.password
       bcrypt.compare password, user.password, (err, res) ->
-        return fn(new Error("[bcrypt.compare] failed with error: " + err))  if err
+        return fn(new Error("[bcrypt.compare] failed with error: " + err))  if err?
         console.log res
         return done(null, user)  if res is true
         done null, false,
           message: "Invalid password"
 
 
-  )
+
 
   passport.serializeUser (user, done) ->
     console.log "serializeUser, username: " + user.username
