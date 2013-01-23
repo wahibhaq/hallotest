@@ -222,10 +222,16 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       return fn err if err
       fn null, data
 
-  getMessagesSinceId = (room, id, fn) ->
+  getMessagesAfterId = (room, id, fn) ->
     rc.zrangebyscore "messages:" + room, "("+id, "+inf", (err, data) ->
       return fn err if err
       fn null, data
+
+  getMessagesBeforeId = (room, id, fn) ->
+    rc.zrangebyscore "messages:" + room,  id-30, "("+id , (err, data) ->
+      return fn err if err
+      fn null, data
+
 
   userExists = (username, fn) ->
     userKey = "users:" + username
@@ -275,7 +281,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       if (resendId > 0)
         console.log "searching room: #{room} from id: #{resendId} for duplicate messages"
         #check messages client doesn't have for dupes
-        getMessagesSinceId room, resendId, (err,data) ->
+        getMessagesAfterId room, resendId, (err,data) ->
           return callback err if err
           found = _.find data, (checkMessageJSON) ->
             checkMessage = JSON.parse(checkMessageJSON)
@@ -406,10 +412,16 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
 
   #get remote messages since id
-  app.get "/messages/:remoteuser/:messageid", ensureAuthenticated, (req, res, next) ->
+  app.get "/messages/:remoteuser/after/:messageid", ensureAuthenticated, (req, res, next) ->
     #return messages since id
-    #todo once infinite scroll is in place just return the last x messages
-    getMessagesSinceId getRoomName(req.user.username, req.params.remoteuser), req.params.messageid, (err, data) ->
+    getMessagesAfterId getRoomName(req.user.username, req.params.remoteuser), req.params.messageid, (err, data) ->
+      return next err if err
+      res.send data
+
+  #get remote messages before id
+  app.get "/messages/:remoteuser/before/:messageid", ensureAuthenticated, (req, res, next) ->
+    #return messages since id
+    getMessagesBeforeId getRoomName(req.user.username, req.params.remoteuser), req.params.messageid, (err, data) ->
       return next err if err
       res.send data
 
