@@ -348,7 +348,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
             message.id = id
 
-            console.log "sending message, id:  " + id + ",  to user:" + to
+            console.log "sending message, id:  " + id + ", iv: " + message.iv + ", to user:" + to
             newMessage = JSON.stringify(message)
 
             #store messages in sorted sets
@@ -405,7 +405,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   app.get "/messages/:remoteuser", ensureAuthenticated, (req, res, next) ->
     #todo make sure they are friends
     #return last x messages
-    getMessages getRoomName(req.user.username, req.params.remoteuser), 50, (err, data) ->
+    getMessages getRoomName(req.user.username, req.params.remoteuser), 30, (err, data) ->
 #    rc.zrange "messages:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
       return next err if err
       res.send data
