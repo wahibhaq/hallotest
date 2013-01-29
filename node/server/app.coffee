@@ -482,8 +482,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       res.send data
 
   #get remote messages before id
-  #todo can we cache?
-  app.get "/messages/:remoteuser/before/:messageid", ensureAuthenticated, setCache(oneYear), (req, res, next) ->
+  app.get "/messages/:remoteuser/before/:messageid", ensureAuthenticated, setNoCache, (req, res, next) ->
     #return messages since id
     getMessagesBeforeId getRoomName(req.user.username, req.params.remoteuser), req.params.messageid, (err, data) ->
       return next err if err?
