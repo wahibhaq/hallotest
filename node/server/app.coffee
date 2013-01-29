@@ -339,6 +339,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     message.iv = iv
     message.data = data
     message.mimeType = mimeType
+    message.datetime = Date.now()
 
     #INCR message id
     getNextMessageId room, id, (id)->
