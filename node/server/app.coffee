@@ -197,6 +197,14 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       console.log "401"
       res.send 401
 
+  setNoCache = (req,res,next) ->
+    res.setHeader "Cache-Control", "no-cache"
+    next()
+
+  setCache = (seconds) -> (req,res,next) ->
+    res.setHeader "Cache-Control", "public, max-age=#{oneYear}"
+    next()
+
   getRoomName = (from, to) ->
     if from < to then from + ":" + to else to + ":" + from
 
@@ -210,6 +218,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       rc.hget "users:" + username, "publickey", (err, data) ->
         return next err if err
         if data?
+          res.setHeader "Cache-Control", "public, max-age=#{oneYear}"
           res.send data
         else
           res.send 404
@@ -396,6 +405,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     socket.join(user)
 
     socket.on "message", (data) ->
+
       user = socket.handshake.session.passport.user
 
       #todo check user == message.from
@@ -455,7 +465,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
 
   #get last x messages
-  app.get "/messages/:remoteuser", ensureAuthenticated, (req, res, next) ->
+  app.get "/messages/:remoteuser", ensureAuthenticated, setNoCache, (req, res, next) ->
     #todo make sure they are friends
     #return last x messages
     getMessages getRoomName(req.user.username, req.params.remoteuser), 30, (err, data) ->
@@ -465,21 +475,22 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
 
   #get remote messages since id
-  app.get "/messages/:remoteuser/after/:messageid", ensureAuthenticated, (req, res, next) ->
+  app.get "/messages/:remoteuser/after/:messageid", ensureAuthenticated, setNoCache, (req, res, next) ->
     #return messages since id
     getMessagesAfterId getRoomName(req.user.username, req.params.remoteuser), req.params.messageid, (err, data) ->
       return next err if err?
       res.send data
 
   #get remote messages before id
-  app.get "/messages/:remoteuser/before/:messageid", ensureAuthenticated, (req, res, next) ->
+  #todo can we cache?
+  app.get "/messages/:remoteuser/before/:messageid", ensureAuthenticated, setCache(oneYear), (req, res, next) ->
     #return messages since id
     getMessagesBeforeId getRoomName(req.user.username, req.params.remoteuser), req.params.messageid, (err, data) ->
       return next err if err?
       res.send data
 
   #get last message ids of conversations
-  app.get "/conversations/ids", ensureAuthenticated, (req, res, next) ->
+  app.get "/conversations/ids", ensureAuthenticated, setNoCache, (req, res, next) ->
     rc.smembers "conversations:" + req.user.username, (err, conversations) ->
       return next err if err?
       conversationsWithId = _.map conversations, (conversation) -> conversation + ":id"
@@ -498,9 +509,9 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     res.sendfile path.normalize __dirname + "/../assets/html/layout.html"
 
 
-  app.get "/publickey/:username", ensureAuthenticated, getPublicKey
+  app.get "/publickey/:username", ensureAuthenticated, setCache(30*oneYear), getPublicKey
 
-  app.get "/users/:username/exists", (req, res) ->
+  app.get "/users/:username/exists", setNoCache, (req, res) ->
     userExists req.params.username, (err, exists) ->
       return next err if err?
       res.send exists
@@ -651,7 +662,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
           _.each invited, (name) -> friends.push {status: "invited", name: name}
           console.log ("friends: " + friends)
           res.send friends
-  app.get "/friends", ensureAuthenticated, getFriends
+  app.get "/friends", ensureAuthenticated, setNoCache, getFriends
 
 
   app.post "/logout", ensureAuthenticated, (req, res) ->
