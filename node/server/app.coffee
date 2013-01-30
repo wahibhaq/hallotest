@@ -452,7 +452,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
         ins.on "end", ->
           createAndSendMessage req.user.username, req.params.remoteuser, req.files.image.name, relUri, "image/", id
           fs.unlinkSync req.files.image.path
-          res.send relUri
+          res.send 202, { 'Location': relUri }
 
   oneYear = 31557600000
   staticMiddleware = express["static"](__dirname + "/static", { maxAge: oneYear})
