@@ -493,13 +493,15 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   app.get "/conversations/ids", ensureAuthenticated, setNoCache, (req, res, next) ->
     rc.smembers "conversations:" + req.user.username, (err, conversations) ->
       return next err if err?
-      conversationsWithId = _.map conversations, (conversation) -> conversation + ":id"
-      rc.mget conversationsWithId, (err, ids) ->
-        return next err if err?
-        some = {}
-        _.each conversations, (conversation,i) -> some[getOtherUser conversation,req.user.username] = ids[i]
-        res.send some
-
+      if (conversations.length > 0)
+        conversationsWithId = _.map conversations, (conversation) -> conversation + ":id"
+        rc.mget conversationsWithId, (err, ids) ->
+          return next err if err?
+          some = {}
+          _.each conversations, (conversation,i) -> some[getOtherUser conversation,req.user.username] = ids[i]
+          res.send some
+      else
+          res.send 204
 
 
   app.get "/test", (req, res) ->
