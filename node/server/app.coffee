@@ -21,6 +21,9 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   fs = require("fs")
   mkdirp = require("mkdirp")
   logger = require("winston")
+  logger.add(winston.transports.File, { filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false })
+
+
   expressWinston = require "express-winston"
 
   nodePort = 3000
@@ -148,23 +151,12 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     app.use passport.initialize()
     app.use passport.session()
     app.use expressWinston.logger({
-      transports: [
-        new winston.transports.Console({
-          json: false,
-          colorize: true
-        }),
-        new winston.transports.File { filename: 'server.log', maxsize: 1048576, maxFiles: 10, json: false }
-      ]
+      transports: [logger]
     })
     app.use app.router
     app.use expressWinston.errorLogger({
-      transports: [
-        new winston.transports.Console({
-          json: false,
-          colorize: true
-        }),
-        new winston.transports.File { filename: 'errors.log', maxsize: 1048576, maxFiles: 10, json: false }
-      ]})
+      transports: [logger]
+    })
 
 
     app.use express.errorHandler({
