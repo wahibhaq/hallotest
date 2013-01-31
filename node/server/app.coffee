@@ -69,24 +69,9 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     sub = createRedisClient()
     client = createRedisClient()
 
-  app.configure "amazon-dev-home", ->
-    logger.debug "running on amazon-dev"
-    nodePort = 3000
-    redisPort = 6379
-    socketPort = 3000
-    sessionStore = new RedisStore(
-      host: "ec2.2fours.com"
-      port: redisPort
-      pass: "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040"
-    )
-    rc = createRedisClient(redisPort, "ec2.2fours.com", "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040")
-    pub = createRedisClient(redisPort, "ec2.2fours.com", "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040")
-    sub = createRedisClient(redisPort, "ec2.2fours.com", "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040")
-    client = createRedisClient(redisPort, "ec2.2fours.com", "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040")
-
   app.configure "amazon-stage", ->
     logger.debug "running on amazon-stage"
-    nodePort = 8080
+    nodePort = 443
     redisPort = 6379
     socketPort = 443
     redisHost = "127.0.0.1"
@@ -102,51 +87,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     sub = createRedisClient(redisPort, redisHost, redisAuth)
     client = createRedisClient(redisPort, redisHost, redisAuth)
 
-  app.configure "nodester-amazon", ->
-    logger.debug "running on nodester"
-    nodePort = process.env["app_port"]
-    redisPort = 6379
-    dal = new DAL(redisPort, "ec2.2fours.com", "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040")
-    sessionStore = new RedisStore(
-      host: "ec2.2fours.com"
-      port: redisPort
-      pass: "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040"
-    )
-    rc = createRedisClient(redisPort, "ec2.2fours.com", "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040")
-    pub = createRedisClient(redisPort, "ec2.2fours.com", "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040")
-    sub = createRedisClient(redisPort, "ec2.2fours.com", "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040")
-    client = createRedisClient(redisPort, "ec2.2fours.com", "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040")
 
-  app.configure "redistogo-dev", ->
-    logger.debug "running on nodester"
-    nodePort = 3000
-    sessionStore = new RedisStore(
-      host: "chubb.redistogo.com"
-      port: 9473
-      pass: "c4e5ba6af0cce3ee5b48c3d4964089b6"
-    )
-    rc = createRedisClient(9473, "chubb.redistogo.com", "c4e5ba6af0cce3ee5b48c3d4964089b6")
-    pub = createRedisClient(9473, "chubb.redistogo.com", "c4e5ba6af0cce3ee5b48c3d4964089b6")
-    sub = createRedisClient(9473, "chubb.redistogo.com", "c4e5ba6af0cce3ee5b48c3d4964089b6")
-    client = createRedisClient(9473, "chubb.redistogo.com", "c4e5ba6af0cce3ee5b48c3d4964089b6")
-
-  app.configure "nodester-stage", ->
-    logger.debug "running on nodester"
-    nodePort = process.env["app_port"]
-    sessionStore = new RedisStore(
-      host: "chubb.redistogo.com"
-      port: 9473
-      pass: "c4e5ba6-c +
-             caf0cce3ee5b48c3d4964089b6"
-    )
-    rc = createRedisClient(9473, "chubb.redistogo.com", "c4e5ba6af0cce3ee5b48c3d4964089b6")
-    pub = createRedisClient(9473, "chubb.redistogo.com", "c4e5ba6af0cce3ee5b48c3d4964089b6")
-    sub = createRedisClient(9473, "chubb.redistogo.com", "c4e5ba6af0cce3ee5b48c3d4964089b6")
-    client = createRedisClient(9473, "chubb.redistogo.com", "c4e5ba6af0cce3ee5b48c3d4964089b6")
-
-  app.configure "heroku-stage", ->
-    logger.debug "running on heroku"
-    nodePort = process.env.PORT
 
   app.configure ->
     app.use express["static"](__dirname + "/../assets")
@@ -527,11 +468,11 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
           res.send 204
 
 
-  app.get "/test", (req, res) ->
-    res.sendfile path.normalize __dirname + "/../assets/html/test.html"
+  #app.get "/test", (req, res) ->
+   # res.sendfile path.normalize __dirname + "/../assets/html/test.html"
 
-  app.get "/", (req, res) ->
-    res.sendfile path.normalize __dirname + "/../assets/html/layout.html"
+  #app.get "/", (req, res) ->
+   # res.sendfile path.normalize __dirname + "/../assets/html/layout.html"
 
 
   app.get "/publickey/:username", ensureAuthenticated, setCache(30*oneYear), getPublicKey
