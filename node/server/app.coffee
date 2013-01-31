@@ -116,9 +116,15 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
   app.listen nodePort
   if nodePort == socketPort
-    sio = require("socket.io").listen(app)
+    sio = require("socket.io").listen(app, {
+      key: fs.readFileSync('ssl/surespot.key'),
+      cert: fs.readFileSync('ssl/www_surespot_me.crt'),
+      ca: fs.readFileSync('ssl/PositiveSSLCA2.crt')})
   else
-    sio = require("socket.io").listen(socketPort)
+    sio = require("socket.io").listen(socketPort, {
+      key: fs.readFileSync('ssl/surespot.key'),
+      cert: fs.readFileSync('ssl/www_surespot_me.crt'),
+      ca: fs.readFileSync('ssl/PositiveSSLCA2.crt')})
 
   sio.configure "amazon-stage", ->
     sio.set "log level", 3
