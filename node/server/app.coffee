@@ -21,7 +21,9 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   fs = require("fs")
   mkdirp = require("mkdirp")
   logger = require("winston")
-  logger.add(winston.transports.File, { filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false })
+  logger.remove winston.transports.Console
+  logger.add winston.transports.Console, {'colorize':true}
+  logger.add winston.transports.File, { filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false }
 
 
   expressWinston = require "express-winston"
