@@ -53,11 +53,11 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   dev = process.env.NODE_ENV is "development"
 
   app = module.exports = express.createServer(
-#    {
-#      key: fs.readFileSync('ssl/surespot.key'),
-#      cert: fs.readFileSync('ssl/www_surespot_me.crt'),
-#      ca: fs.readFileSync('ssl/PositiveSSLCA2.crt')
-#    }
+    {
+      key: fs.readFileSync('ssl/surespot.key'),
+      cert: fs.readFileSync('ssl/www_surespot_me.crt'),
+      ca: fs.readFileSync('ssl/PositiveSSLCA2.crt')
+    }
   )
 
 
@@ -118,10 +118,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
   app.listen nodePort
   if nodePort == socketPort
-    sio = require("socket.io").listen(app, {
-      key: fs.readFileSync('ssl/surespot.key'),
-      cert: fs.readFileSync('ssl/www_surespot_me.crt'),
-      ca: fs.readFileSync('ssl/PositiveSSLCA2.crt')})
+    sio = require("socket.io").listen(app)
   else
     sio = require("socket.io").listen(socketPort, {
       key: fs.readFileSync('ssl/surespot.key'),
