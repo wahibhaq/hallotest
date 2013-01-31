@@ -8,7 +8,7 @@ paths:
   }
 }
 
-requirejs ['cs!dal', 'underscore'], (DAL, _) ->
+requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   cookie = require("cookie")
   express = require("express")
   passport = require("passport")
@@ -20,6 +20,9 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   gcm = require("node-gcm")
   fs = require("fs")
   mkdirp = require("mkdirp")
+  logger = require("winston")
+  expressWinston = require "express-winston"
+
   nodePort = 3000
   socketPort = 3000
   sio = undefined
@@ -41,8 +44,8 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
   app = module.exports = express.createServer()
 
-  console.log "process.env.NODE_ENV: " + process.env.NODE_ENV
-  console.log "__dirname: #{__dirname}"
+  logger.debug "process.env.NODE_ENV: " + process.env.NODE_ENV
+  logger.debug "__dirname: #{__dirname}"
   dev = process.env.NODE_ENV is "development"
 
   app.configure "development", ->
@@ -56,7 +59,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     client = createRedisClient()
 
   app.configure "amazon-dev-home", ->
-    console.log "running on amazon-dev"
+    logger.debug "running on amazon-dev"
     nodePort = 3000
     redisPort = 6379
     socketPort = 3000
@@ -71,7 +74,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     client = createRedisClient(redisPort, "ec2.2fours.com", "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040")
 
   app.configure "amazon-stage", ->
-    console.log "running on amazon-stage"
+    logger.debug "running on amazon-stage"
     nodePort = 8080
     redisPort = 6379
     socketPort = 443
@@ -89,7 +92,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     client = createRedisClient(redisPort, redisHost, redisAuth)
 
   app.configure "nodester-amazon", ->
-    console.log "running on nodester"
+    logger.debug "running on nodester"
     nodePort = process.env["app_port"]
     redisPort = 6379
     dal = new DAL(redisPort, "ec2.2fours.com", "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040")
@@ -104,7 +107,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     client = createRedisClient(redisPort, "ec2.2fours.com", "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040")
 
   app.configure "redistogo-dev", ->
-    console.log "running on nodester"
+    logger.debug "running on nodester"
     nodePort = 3000
     sessionStore = new RedisStore(
       host: "chubb.redistogo.com"
@@ -117,7 +120,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     client = createRedisClient(9473, "chubb.redistogo.com", "c4e5ba6af0cce3ee5b48c3d4964089b6")
 
   app.configure "nodester-stage", ->
-    console.log "running on nodester"
+    logger.debug "running on nodester"
     nodePort = process.env["app_port"]
     sessionStore = new RedisStore(
       host: "chubb.redistogo.com"
@@ -131,11 +134,10 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     client = createRedisClient(9473, "chubb.redistogo.com", "c4e5ba6af0cce3ee5b48c3d4964089b6")
 
   app.configure "heroku-stage", ->
-    console.log "running on heroku"
+    logger.debug "running on heroku"
     nodePort = process.env.PORT
 
   app.configure ->
-    app.use express.logger()
     app.use express["static"](__dirname + "/../assets")
     app.use express.cookieParser()
     app.use express.bodyParser()
@@ -145,11 +147,30 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     )
     app.use passport.initialize()
     app.use passport.session()
+    app.use expressWinston.logger({
+      transports: [
+        new winston.transports.Console({
+          json: false,
+          colorize: true
+        }),
+        new winston.transports.File { filename: 'server.log', maxsize: 1048576, maxFiles: 10, json: false }
+      ]
+    })
     app.use app.router
+    app.use expressWinston.errorLogger({
+      transports: [
+        new winston.transports.Console({
+          json: false,
+          colorize: true
+        }),
+        new winston.transports.File { filename: 'errors.log', maxsize: 1048576, maxFiles: 10, json: false }
+      ]})
+
+
     app.use express.errorHandler({
-    showMessage: true,
-    showStack: false,
-    dumpExceptions: false
+      showMessage: true,
+      showStack: false,
+      dumpExceptions: false
     })
 
   app.listen nodePort
@@ -159,8 +180,10 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     sio = require("socket.io").listen(socketPort)
 
   sio.configure "amazon-stage", ->
-    console.log "setting socket.io log level to 2"
-    sio.set "log level", 2
+    sio.set "log level", 3
+
+  #winston up some socket.io
+  sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warn, error: logger.error }
 
   sioRedisStore = require("socket.io/lib/stores/redis")
   sio.set "store", new sioRedisStore(
@@ -170,7 +193,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   )
 
   sio.set "authorization", (req, accept) ->
-    console.log 'socket.io auth'
+    logger.debug 'socket.io auth'
     if req.headers.cookie
       parsedCookie = cookie.parse(req.headers.cookie)
       req.sessionID = parsedCookie["connect.sid"]
@@ -189,12 +212,12 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
 
   ensureAuthenticated = (req, res, next) ->
-    console.log "ensureAuth"
+    logger.debug "ensureAuth"
     if req.isAuthenticated()
-      console.log "authorized"
+      logger.debug "authorized"
       next()
     else
-      console.log "401"
+      logger.debug "401"
       res.send 401
 
   setNoCache = (req,res,next) ->
@@ -249,20 +272,20 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       fn null, hlen > 0
 
   createNewUserAccount = (req, res, next) ->
-    console.log "createNewUserAccount"
+    logger.debug "createNewUserAccount"
 
     #var newUser = {name:name, email:email };
     userExists req.body.username, (err, exists) ->
       return next err if err?
       if exists
-        console.log "user already exists"
+        logger.debug "user already exists"
         res.send 409
       else
         username = req.body.username
         password = req.body.password
         publickey = req.body.publickey
         gcmId = req.body.gcmId
-        console.log "gcmID: " + gcmId
+        logger.debug "gcmID: " + gcmId
 
         userKey = "users:" + username
         bcrypt.genSalt 10, (err, salt) ->
@@ -270,7 +293,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
           bcrypt.hash password, salt, (err, password) ->
             return next err if err?
             rc.hmset userKey, "username", username, "password", password, "publickey", publickey, "gcmId", gcmId, (err, data) ->
-              console.log "set " + userKey + " in db"
+              logger.debug "set " + userKey + " in db"
               return next new Error("[createNewUserAccount] SET failed for user: " + username) if err?
 
               #return the password in the user object so we can auth
@@ -287,31 +310,31 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
   checkForDuplicateMessage = (resendId, room, message, callback) ->
     if (resendId?)
       if (resendId > 0)
-        console.log "searching room: #{room} from id: #{resendId} for duplicate messages"
+        logger.debug "searching room: #{room} from id: #{resendId} for duplicate messages"
         #check messages client doesn't have for dupes
         getMessagesAfterId room, resendId, (err,data) ->
           return callback err if err
           found = _.find data, (checkMessageJSON) ->
             checkMessage = JSON.parse(checkMessageJSON)
             if checkMessage.id? and message.id?
-              console.log "comparing ids"
+              logger.debug "comparing ids"
               checkMessage.id == message.id
             else
-              console.log "comparing ivs"
+              logger.debug "comparing ivs"
               checkMessage.iv == message.iv
           callback null,found
       else
-        console.log "searching 30 messages from room: #{room} for duplicates"
+        logger.debug "searching 30 messages from room: #{room} for duplicates"
         #check last 30 for dupes
         getMessages room, 30, (err,data) ->
           return callback err if err
           found = _.find data, (checkMessageJSON) ->
             checkMessage = JSON.parse(checkMessageJSON)
             if checkMessage.id? and message.id?
-              console.log "comparing ids"
+              logger.debug "comparing ids"
               checkMessage.id == message.id
             else
-              console.log "comparing ivs"
+              logger.debug "comparing ivs"
               checkMessage.iv == message.iv
           callback null, found
     else
@@ -322,7 +345,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     #INCR message id
     rc.incr room + ":id", (err, newId) ->
       if err?
-        console.log "ERROR: getNextMessageId, room: #{room}, error: #{err}"
+        logger.error "ERROR: getNextMessageId, room: #{room}, error: #{err}"
         callback null
       else
         callback newId
@@ -332,7 +355,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
 
   createAndSendMessage = (from,to,iv,data,mimeType, id) ->
-    console.log "new message"
+    logger.debug "new message"
     message = {}
     message.to = to
     message.from = from
@@ -346,25 +369,25 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       return unless id?
       message.id = id
 
-      console.log "sending message, id:  " + id + ", iv: " + iv + ", data: " + data + " to user:" + to
+      logger.debug "sending message, id:  " + id + ", iv: " + iv + ", data: " + data + " to user:" + to
       newMessage = JSON.stringify(message)
 
       #store messages in sorted sets
       rc.zadd "messages:" + room, id, newMessage, (err, addcount) ->
         if err?
-          console.log ("ERROR: Socket.io onmessage, " + err)
+          logger.error ("ERROR: Socket.io onmessage, " + err)
           return
 
         #if this is the first message, add the "room" to the user's list of rooms
         if (id == 1)
           rc.sadd "conversations:"+from, room, (err,data) ->
             if err?
-              console.log ("ERROR: Socket.io onmessage, " + err)
+              logger.error ("ERROR: Socket.io onmessage, " + err)
               return
 
             rc.sadd "conversations:"+to, room, (err,data) ->
               if err
-                console.log ("ERROR: Socket.io onmessage, " + err)
+                logger.error ("ERROR: Socket.io onmessage, " + err)
                 return
 
         sio.sockets.to(to).emit "message", newMessage
@@ -374,11 +397,11 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
         userKey = "users:" + to
         rc.hget userKey, "gcmId", (err, gcm_id) ->
           if err?
-            console.log ("ERROR: Socket.io onmessage, " + err)
+            logger.error ("ERROR: Socket.io onmessage, " + err)
             return
 
           if gcm_id?.length > 0
-            console.log "sending gcm message"
+            logger.debug "sending gcm message"
             gcmmessage = new gcm.Message()
             sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
             gcmmessage.addData("type", "message")
@@ -394,15 +417,15 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
             regIds = [gcm_id]
 
             sender.send gcmmessage, regIds, 4, (result) ->
-              console.log "sendGcm result: #{result}"
+              logger.debug "sendGcm result: #{result}"
           else
-            console.log "no gcm id for #{to}"
+            logger.debug "no gcm id for #{to}"
 
   room = sio.on "connection", (socket) ->
     user = socket.handshake.session.passport.user
 
     #join user's room
-    console.log "user #{user} joining socket.io room"
+    logger.debug "user #{user} joining socket.io room"
     socket.join(user)
 
     socket.on "message", (data) ->
@@ -414,7 +437,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       message = JSON.parse(data)
 
       # message.user = user
-      console.log "sending message from user #{user}"
+      logger.debug "sending message from user #{user}"
 
       to = message.to
       from = message.from
@@ -427,7 +450,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
       #check for dupes if message has been resent
       checkForDuplicateMessage resendId, room, message, (err, found) ->
         if (found)
-          console.log "found duplicate, not adding to db"
+          logger.debug "found duplicate, not adding to db"
           sio.sockets.to(to).emit "message", found
           sio.sockets.to(from).emit "message", found
         else
@@ -520,7 +543,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
 
   app.post "/login", passport.authenticate("local"), (req, res) ->
-    console.log "/login post"
+    logger.debug "/login post"
     res.send 204
 
   app.post "/users", createNewUserAccount, passport.authenticate("local"), (req, res) ->
@@ -539,12 +562,12 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
     username = req.user.username
     spot = req.body.spot
 
-    console.log "#{username} inviting #{friendname} to be friends"
+    logger.debug "#{username} inviting #{friendname} to be friends"
     #todo check both users exist
     userExists friendname, (err, exists) ->
       return next err if err?
       unless exists?
-        console.log "no such user"
+        logger.debug "no such user"
         res.send 404
       else
         #todo check if friendname has ignored username
@@ -571,11 +594,11 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                   userKey = "users:" + friendname
                   rc.hget userKey, "gcmId", (err, gcmId) ->
                     if err?
-                      console.log ("ERROR: " + err)
+                      logger.error ("ERROR: " + err)
                       next new Error("No gcm key.")
 
                     if gcmId and gcmId.length > 0
-                      console.log "sending gcm notification"
+                      logger.debug "sending gcm notification"
                       gcmmessage = new gcm.Message()
                       sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
                       gcmmessage.addData("type", "invite")
@@ -586,16 +609,16 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                       regIds = [gcmId]
 
                       sender.send gcmmessage, regIds, 4, (result) ->
-                        console.log(result)
+                        logger.debug(result)
                         res.send 204
                     else
-                      console.log "gcmId not set for #{friendname}"
+                      logger.debug "gcmId not set for #{friendname}"
                 else
                   res.send 403
 
 
   app.post '/invites/:friendname/:action', ensureAuthenticated, (req, res, next) ->
-    console.log 'POST /invites'
+    logger.debug 'POST /invites'
     username = req.user.username
     friendname = req.params.friendname
     accept = req.params.action is 'accept'
@@ -616,11 +639,11 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                 userKey = "users:" + friendname
                 rc.hget userKey, "gcmId", (err, gcmId) ->
                   if err?
-                    console.log ("ERROR: " + err)
+                    logger.error ("ERROR: " + err)
                     next new Error("No gcm key.")
 
                   if gcmId and gcmId.length > 0
-                    console.log "sending gcm notification"
+                    logger.debug "sending gcm notification"
 
                     gcmmessage = new gcm.Message()
                     sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
@@ -633,10 +656,10 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
                     regIds = [gcmId]
 
                     sender.send gcmmessage, regIds, 4, (result) ->
-                      console.log(result)
+                      logger.debug(result)
                       res.send 204
                   else
-                    console.log "gcmId not set for #{friendname}"
+                    logger.debug "gcmId not set for #{friendname}"
                     res.send 204
 
         else
@@ -662,7 +685,7 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
         rc.smembers "invited:#{username}", (err, invited) ->
           return next err if err?
           _.each invited, (name) -> friends.push {status: "invited", name: name}
-          console.log ("friends: " + friends)
+          logger.debug ("friends: " + friends)
           res.send friends
   app.get "/friends", ensureAuthenticated, setNoCache, getFriends
 
@@ -673,22 +696,22 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
 
   process.on "uncaughtException", uncaught = (err) ->
-    console.log "Uncaught Exception: ", err
+    logger.error "Uncaught Exception: ", err
 
   passport.use new LocalStrategy (username, password, done) ->
     userKey = "users:" + username
-    console.log "looking for: " + userKey
-    console.log "password: " + password
+    logger.debug "looking for: " + userKey
+    logger.debug "password: " + password
     rc.hgetall userKey, (err, user) ->
       return done(err)  if err?
       unless user
         return done(null, false,
           message: "Unknown user"
         )
-      console.log "user.password: " + user.password
+      logger.debug "user.password: " + user.password
       bcrypt.compare password, user.password, (err, res) ->
         return fn(new Error("[bcrypt.compare] failed with error: " + err))  if err?
-        console.log res
+        logger.debug res
         return done(null, user)  if res is true
         done null, false,
           message: "Invalid password"
@@ -697,10 +720,10 @@ requirejs ['cs!dal', 'underscore'], (DAL, _) ->
 
 
   passport.serializeUser (user, done) ->
-    console.log "serializeUser, username: " + user.username
+    logger.debug "serializeUser, username: " + user.username
     done null, user.username
 
   passport.deserializeUser (username, done) ->
-    console.log "deserializeUser, user:" + username
+    logger.debug "deserializeUser, user:" + username
     rc.hgetall "users:" + username, (err, user) ->
       done err, user

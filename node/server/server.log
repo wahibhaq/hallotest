@@ -1,0 +1,248 @@
+2013-01-31T02:07:10.823Z - debug: process.env.NODE_ENV: development
+2013-01-31T02:07:10.823Z - debug: __dirname: /home/adam/dev/surespot/web/node/server
+2013-01-31T02:07:11.101Z - debug: setting request
+2013-01-31T02:07:11.101Z - debug: set heartbeat interval for client 2uw8QVfvObhztJJDW2zo
+2013-01-31T02:07:11.102Z - debug: websocket writing 7:::1+0
+2013-01-31T02:07:11.102Z - warn: client not handshaken client should reconnect
+2013-01-31T02:07:11.102Z - info: transport end (error)
+2013-01-31T02:07:11.102Z - debug: set close timeout for client 2uw8QVfvObhztJJDW2zo
+2013-01-31T02:07:11.103Z - debug: cleared close timeout for client 2uw8QVfvObhztJJDW2zo
+2013-01-31T02:07:11.103Z - debug: cleared heartbeat interval for client 2uw8QVfvObhztJJDW2zo
+2013-01-31T02:07:11.104Z - debug: discarding transport
+2013-01-31T02:07:12.153Z - debug: socket.io auth
+2013-01-31T02:07:12.154Z - debug: authorized
+2013-01-31T02:07:12.156Z - info: handshake authorized d9A2GFaCF6aJ-rIPW5Ac
+2013-01-31T02:07:12.185Z - debug: setting request
+2013-01-31T02:07:12.185Z - debug: set heartbeat interval for client d9A2GFaCF6aJ-rIPW5Ac
+2013-01-31T02:07:12.187Z - debug: client authorized for 
+2013-01-31T02:07:12.187Z - debug: websocket writing 1::
+2013-01-31T02:07:12.187Z - debug: user adam joining socket.io room
+2013-01-31T02:07:37.186Z - debug: emitting heartbeat for client d9A2GFaCF6aJ-rIPW5Ac
+2013-01-31T02:07:37.187Z - debug: websocket writing 2::
+2013-01-31T02:07:37.187Z - debug: set heartbeat timeout for client d9A2GFaCF6aJ-rIPW5Ac
+2013-01-31T02:07:37.211Z - debug: got heartbeat packet
+2013-01-31T02:07:37.211Z - debug: cleared heartbeat timeout for client d9A2GFaCF6aJ-rIPW5Ac
+2013-01-31T02:07:37.211Z - debug: set heartbeat interval for client d9A2GFaCF6aJ-rIPW5Ac
+2013-01-31T02:07:44.485Z - debug: got disconnection packet
+2013-01-31T02:07:44.485Z - info: transport end by forced client disconnection
+2013-01-31T02:07:44.486Z - debug: websocket writing 0::
+2013-01-31T02:07:44.486Z - info: transport end (booted)
+2013-01-31T02:07:44.486Z - debug: set close timeout for client d9A2GFaCF6aJ-rIPW5Ac
+2013-01-31T02:07:44.487Z - debug: cleared close timeout for client d9A2GFaCF6aJ-rIPW5Ac
+2013-01-31T02:07:44.487Z - debug: cleared heartbeat interval for client d9A2GFaCF6aJ-rIPW5Ac
+2013-01-31T02:07:44.487Z - debug: discarding transport
+2013-01-31T02:07:44.623Z - debug: socket.io auth
+2013-01-31T02:07:44.624Z - debug: authorized
+2013-01-31T02:07:44.625Z - info: handshake authorized u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:07:44.656Z - debug: setting request
+2013-01-31T02:07:44.656Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:07:44.657Z - debug: client authorized for 
+2013-01-31T02:07:44.660Z - debug: websocket writing 1::
+2013-01-31T02:07:44.660Z - debug: user adam joining socket.io room
+2013-01-31T02:07:44.738Z - debug: deserializeUser, user:adam
+2013-01-31T02:07:44.740Z - debug: ensureAuth
+2013-01-31T02:07:44.742Z - debug: authorized
+2013-01-31T02:07:44.771Z - debug: deserializeUser, user:adam
+2013-01-31T02:07:44.776Z - debug: ensureAuth
+2013-01-31T02:07:44.776Z - debug: authorized
+2013-01-31T02:07:44.782Z - debug: deserializeUser, user:adam
+2013-01-31T02:07:44.782Z - debug: ensureAuth
+2013-01-31T02:07:44.782Z - debug: authorized
+2013-01-31T02:07:44.791Z - debug: deserializeUser, user:adam
+2013-01-31T02:07:44.791Z - debug: ensureAuth
+2013-01-31T02:07:44.791Z - debug: authorized
+2013-01-31T02:07:44.847Z - debug: deserializeUser, user:adam
+2013-01-31T02:07:44.848Z - debug: ensureAuth
+2013-01-31T02:07:44.849Z - debug: authorized
+2013-01-31T02:07:44.872Z - debug: deserializeUser, user:adam
+2013-01-31T02:07:44.872Z - debug: ensureAuth
+2013-01-31T02:07:44.872Z - debug: authorized
+2013-01-31T02:07:44.928Z - debug: deserializeUser, user:adam
+2013-01-31T02:07:44.929Z - debug: ensureAuth
+2013-01-31T02:07:44.929Z - debug: authorized
+2013-01-31T02:07:45.701Z - debug: deserializeUser, user:adam
+2013-01-31T02:07:45.702Z - debug: ensureAuth
+2013-01-31T02:07:45.702Z - debug: authorized
+2013-01-31T02:07:45.726Z - debug: deserializeUser, user:adam
+2013-01-31T02:07:45.726Z - debug: ensureAuth
+2013-01-31T02:07:45.726Z - debug: authorized
+2013-01-31T02:07:46.841Z - debug: deserializeUser, user:adam
+2013-01-31T02:07:46.841Z - debug: ensureAuth
+2013-01-31T02:07:46.841Z - debug: authorized
+2013-01-31T02:07:46.865Z - debug: deserializeUser, user:adam
+2013-01-31T02:07:46.865Z - debug: ensureAuth
+2013-01-31T02:07:46.865Z - debug: authorized
+2013-01-31T02:07:48.467Z - debug: deserializeUser, user:adam
+2013-01-31T02:07:48.467Z - debug: ensureAuth
+2013-01-31T02:07:48.467Z - debug: authorized
+2013-01-31T02:08:09.657Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:08:09.657Z - debug: websocket writing 2::
+2013-01-31T02:08:09.657Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:08:09.775Z - debug: got heartbeat packet
+2013-01-31T02:08:09.776Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:08:09.776Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:08:34.776Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:08:34.776Z - debug: websocket writing 2::
+2013-01-31T02:08:34.776Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:08:34.863Z - debug: got heartbeat packet
+2013-01-31T02:08:34.863Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:08:34.864Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:08:59.863Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:08:59.864Z - debug: websocket writing 2::
+2013-01-31T02:08:59.864Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:08:59.951Z - debug: got heartbeat packet
+2013-01-31T02:08:59.951Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:08:59.951Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:09:24.951Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:09:24.951Z - debug: websocket writing 2::
+2013-01-31T02:09:24.951Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:09:25.040Z - debug: got heartbeat packet
+2013-01-31T02:09:25.040Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:09:25.040Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:09:50.041Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:09:50.041Z - debug: websocket writing 2::
+2013-01-31T02:09:50.041Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:09:50.137Z - debug: got heartbeat packet
+2013-01-31T02:09:50.138Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:09:50.138Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:10:15.138Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:10:15.138Z - debug: websocket writing 2::
+2013-01-31T02:10:15.139Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:10:15.326Z - debug: got heartbeat packet
+2013-01-31T02:10:15.326Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:10:15.327Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:10:40.327Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:10:40.327Z - debug: websocket writing 2::
+2013-01-31T02:10:40.327Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:10:40.410Z - debug: got heartbeat packet
+2013-01-31T02:10:40.410Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:10:40.410Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:11:05.410Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:11:05.410Z - debug: websocket writing 2::
+2013-01-31T02:11:05.411Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:11:05.500Z - debug: got heartbeat packet
+2013-01-31T02:11:05.500Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:11:05.500Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:11:30.500Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:11:30.500Z - debug: websocket writing 2::
+2013-01-31T02:11:30.501Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:11:30.588Z - debug: got heartbeat packet
+2013-01-31T02:11:30.588Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:11:30.588Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:11:55.588Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:11:55.589Z - debug: websocket writing 2::
+2013-01-31T02:11:55.589Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:11:55.677Z - debug: got heartbeat packet
+2013-01-31T02:11:55.678Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:11:55.678Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:12:20.678Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:12:20.678Z - debug: websocket writing 2::
+2013-01-31T02:12:20.678Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:12:20.765Z - debug: got heartbeat packet
+2013-01-31T02:12:20.765Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:12:20.765Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:12:45.765Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:12:45.765Z - debug: websocket writing 2::
+2013-01-31T02:12:45.765Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:12:45.859Z - debug: got heartbeat packet
+2013-01-31T02:12:45.860Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:12:45.860Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:13:10.860Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:13:10.861Z - debug: websocket writing 2::
+2013-01-31T02:13:10.861Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:13:10.944Z - debug: got heartbeat packet
+2013-01-31T02:13:10.944Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:13:10.944Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:13:35.944Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:13:35.944Z - debug: websocket writing 2::
+2013-01-31T02:13:35.944Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:13:36.033Z - debug: got heartbeat packet
+2013-01-31T02:13:36.034Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:13:36.034Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:14:01.034Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:14:01.034Z - debug: websocket writing 2::
+2013-01-31T02:14:01.034Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:14:01.122Z - debug: got heartbeat packet
+2013-01-31T02:14:01.122Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:14:01.122Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:14:26.122Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:14:26.122Z - debug: websocket writing 2::
+2013-01-31T02:14:26.123Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:14:26.212Z - debug: got heartbeat packet
+2013-01-31T02:14:26.212Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:14:26.212Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:14:51.212Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:14:51.212Z - debug: websocket writing 2::
+2013-01-31T02:14:51.212Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:14:51.303Z - debug: got heartbeat packet
+2013-01-31T02:14:51.303Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:14:51.303Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:15:16.303Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:15:16.304Z - debug: websocket writing 2::
+2013-01-31T02:15:16.304Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:15:16.391Z - debug: got heartbeat packet
+2013-01-31T02:15:16.391Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:15:16.392Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:15:41.391Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:15:41.391Z - debug: websocket writing 2::
+2013-01-31T02:15:41.392Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:15:41.479Z - debug: got heartbeat packet
+2013-01-31T02:15:41.479Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:15:41.479Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:16:06.479Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:16:06.479Z - debug: websocket writing 2::
+2013-01-31T02:16:06.479Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:16:06.568Z - debug: got heartbeat packet
+2013-01-31T02:16:06.568Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:16:06.568Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:16:31.569Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:16:31.570Z - debug: websocket writing 2::
+2013-01-31T02:16:31.570Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:16:31.759Z - debug: got heartbeat packet
+2013-01-31T02:16:31.759Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:16:31.759Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:16:56.760Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:16:56.760Z - debug: websocket writing 2::
+2013-01-31T02:16:56.760Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:16:56.849Z - debug: got heartbeat packet
+2013-01-31T02:16:56.850Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:16:56.850Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:17:21.850Z - debug: emitting heartbeat for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:17:21.850Z - debug: websocket writing 2::
+2013-01-31T02:17:21.850Z - debug: set heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:17:21.937Z - debug: got heartbeat packet
+2013-01-31T02:17:21.937Z - debug: cleared heartbeat timeout for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:17:21.937Z - debug: set heartbeat interval for client u7nRUJ-Uozy8RjxDW5Ad
+2013-01-31T02:26:25.859Z - info: HTTP POST /login httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), content-length=27, content-type=application/x-www-form-urlencoded; charset=UTF-8, host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), accept-encoding=gzip, url=/login, method=POST, originalUrl=/login, 
+2013-01-31T02:26:26.406Z - info: HTTP GET /friends httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/friends, method=GET, originalUrl=/friends, 
+2013-01-31T02:26:26.580Z - info: HTTP GET /conversations/ids httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/conversations/ids, method=GET, originalUrl=/conversations/ids, 
+2013-01-31T02:27:38.577Z - info: HTTP GET /messages/ics4/before/46 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/ics4/before/46, method=GET, originalUrl=/messages/ics4/before/46, 
+2013-01-31T02:27:38.614Z - info: HTTP GET /messages/ics4/after/75 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/ics4/after/75, method=GET, originalUrl=/messages/ics4/after/75, 
+2013-01-31T02:27:38.641Z - info: HTTP GET /messages/map/before/28 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/map/before/28, method=GET, originalUrl=/messages/map/before/28, 
+2013-01-31T02:27:38.676Z - info: HTTP GET /messages/vangelo1/before/55 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/vangelo1/before/55, method=GET, originalUrl=/messages/vangelo1/before/55, 
+2013-01-31T02:27:38.696Z - info: HTTP GET /messages/map/after/57 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/map/after/57, method=GET, originalUrl=/messages/map/after/57, 
+2013-01-31T02:27:38.716Z - info: HTTP GET /messages/vangelo1/after/84 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/vangelo1/after/84, method=GET, originalUrl=/messages/vangelo1/after/84, 
+2013-01-31T02:27:38.846Z - info: HTTP GET /images/adam:map/57 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/images/adam:map/57, method=GET, originalUrl=/images/adam:map/57, 
+2013-01-31T02:27:38.876Z - info: HTTP GET /images/adam:map/52 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/images/adam:map/52, method=GET, originalUrl=/images/adam:map/52, 
+2013-01-31T02:27:38.918Z - info: HTTP GET /publickey/vangelo1 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/publickey/vangelo1, method=GET, originalUrl=/publickey/vangelo1, 
+2013-01-31T02:27:40.582Z - info: HTTP GET /images/adam:vangelo1/77 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/images/adam:vangelo1/77, method=GET, originalUrl=/images/adam:vangelo1/77, 
+2013-01-31T02:31:31.357Z - info: HTTP GET /messages/ics4/before/46 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/ics4/before/46, method=GET, originalUrl=/messages/ics4/before/46, 
+2013-01-31T02:31:31.385Z - info: HTTP GET /messages/map/before/28 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/map/before/28, method=GET, originalUrl=/messages/map/before/28, 
+2013-01-31T02:31:31.388Z - info: HTTP GET /messages/vangelo1/before/55 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/vangelo1/before/55, method=GET, originalUrl=/messages/vangelo1/before/55, 
+2013-01-31T02:31:31.607Z - info: HTTP GET /images/adam:map/57 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/images/adam:map/57, method=GET, originalUrl=/images/adam:map/57, 
+2013-01-31T02:31:31.641Z - info: HTTP GET /images/adam:map/52 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/images/adam:map/52, method=GET, originalUrl=/images/adam:map/52, 
+2013-01-31T02:31:31.673Z - info: HTTP GET /images/adam:vangelo1/77 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/images/adam:vangelo1/77, method=GET, originalUrl=/images/adam:vangelo1/77, 
+2013-01-31T02:31:32.070Z - info: HTTP GET /messages/ics4/before/46 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/ics4/before/46, method=GET, originalUrl=/messages/ics4/before/46, 
+2013-01-31T02:31:32.143Z - info: HTTP GET /messages/map/before/28 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/map/before/28, method=GET, originalUrl=/messages/map/before/28, 
+2013-01-31T02:31:32.163Z - info: HTTP GET /messages/vangelo1/before/55 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/vangelo1/before/55, method=GET, originalUrl=/messages/vangelo1/before/55, 
+2013-01-31T02:31:32.409Z - info: HTTP GET /images/adam:map/57 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/images/adam:map/57, method=GET, originalUrl=/images/adam:map/57, 
+2013-01-31T02:31:32.438Z - info: HTTP GET /images/adam:map/52 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/images/adam:map/52, method=GET, originalUrl=/images/adam:map/52, 
+2013-01-31T02:31:32.443Z - info: HTTP GET /messages/ics4/after/75 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/ics4/after/75, method=GET, originalUrl=/messages/ics4/after/75, 
+2013-01-31T02:31:32.449Z - info: HTTP GET /messages/map/after/57 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/map/after/57, method=GET, originalUrl=/messages/map/after/57, 
+2013-01-31T02:31:32.468Z - info: HTTP GET /messages/ics4/after/75 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/ics4/after/75, method=GET, originalUrl=/messages/ics4/after/75, 
+2013-01-31T02:31:32.482Z - info: HTTP GET /messages/vangelo1/after/84 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/vangelo1/after/84, method=GET, originalUrl=/messages/vangelo1/after/84, 
+2013-01-31T02:31:32.488Z - info: HTTP GET /messages/vangelo1/after/84 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/vangelo1/after/84, method=GET, originalUrl=/messages/vangelo1/after/84, 
+2013-01-31T02:31:32.507Z - info: HTTP GET /messages/map/after/57 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/messages/map/after/57, method=GET, originalUrl=/messages/map/after/57, 
+2013-01-31T02:31:32.538Z - info: HTTP GET /images/adam:vangelo1/77 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/images/adam:vangelo1/77, method=GET, originalUrl=/images/adam:vangelo1/77, 
+2013-01-31T02:31:32.643Z - info: HTTP GET /images/adam:map/57 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/images/adam:map/57, method=GET, originalUrl=/images/adam:map/57, 
+2013-01-31T02:31:32.674Z - info: HTTP GET /images/adam:map/52 httpVersion=1.1, via=1.1 localhost (Apache-HttpClient/UNAVAILABLE (cache)), host=192.168.10.68:3000, connection=Keep-Alive, user-agent=android-async-http/1.4.1 (http://loopj.com/android-async-http), cookie=connect.sid=5ZMq4Dt5owyexbYHu7TMZtRM.W6rv1HpB3jtk0%2BDxEaL2c%2B16DqCBMWKQ87MM11nru54, cookie2=$Version=1, accept-encoding=gzip, url=/images/adam:map/52, method=GET, originalUrl=/images/adam:map/52, 
