@@ -75,7 +75,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     logger.debug "running on amazon-stage"
     nodePort = 443
     redisPort = 6379
-    socketPort = 8080
+    socketPort = 443
     redisHost = "127.0.0.1"
     redisAuth = "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040"
     dal = new DAL(redisPort, redisHost, redisAuth)
