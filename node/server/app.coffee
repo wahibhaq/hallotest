@@ -20,13 +20,14 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   gcm = require("node-gcm")
   fs = require("fs")
   mkdirp = require("mkdirp")
+  expressWinston = require "express-winston"
   logger = require("winston")
   logger.remove winston.transports.Console
   logger.add winston.transports.Console, {'colorize':true}
   logger.add winston.transports.File, { filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false }
 
 
-  expressWinston = require "express-winston"
+
 
   nodePort = 3000
   socketPort = 3000
@@ -47,11 +48,16 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       require("redis").createClient()
 
 
-  app = module.exports = express.createServer()
-
   logger.debug "process.env.NODE_ENV: " + process.env.NODE_ENV
   logger.debug "__dirname: #{__dirname}"
   dev = process.env.NODE_ENV is "development"
+
+  app = module.exports = express.createServer({
+    key: fs.readFileSync('ssl/surespot.key'),
+    cert: fs.readFileSync('ssl/www_surespot_me.crt'),
+    ca: fs.readFileSync('ssl/PositiveSSLCA2.crt')
+  })
+
 
   app.configure "development", ->
     nodePort = 3000
