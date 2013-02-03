@@ -38,6 +38,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   sub = undefined
   client = undefined
   dal = undefined
+  app = undefined
 
   createRedisClient = (port, hostname, password) ->
     if port? and hostname? and password?
@@ -49,21 +50,40 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
 
   logger.debug "process.env.NODE_ENV: " + process.env.NODE_ENV
+  logger.debug "process.env.NODE_SSL: " + process.env.NODE_SSL
   logger.debug "__dirname: #{__dirname}"
   dev = process.env.NODE_ENV is "development"
+  ssl = process.env.NODE_SSL is "true"
 
-  app = module.exports = express.createServer(
-    {
+
+
+  if not dev
+    ssloptions = {
       key: fs.readFileSync('ssl/surespot.key'),
       cert: fs.readFileSync('ssl/www_surespot_me.crt'),
       ca: fs.readFileSync('ssl/PositiveSSLCA2.crt')
     }
-  )
+
+  else
+    ssloptions = {
+      key: fs.readFileSync('ssllocal/local.key'),
+      cert: fs.readFileSync('ssllocal/local.crt')
+    }
+
+
+  if ssl is true
+    app = module.exports = express.createServer ssloptions
+  else
+    app = module.exports = express.createServer()
 
 
   app.configure "development", ->
-    nodePort = 3000
-    socketPort = 3000
+    if ssl == true
+      nodePort = 443
+      socketPort = 443
+    else
+      nodePort = 3000
+      socketPort = 3000
     sessionStore = new RedisStore()
     dal = new DAL()
     rc = createRedisClient()
@@ -118,12 +138,15 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
   app.listen nodePort
   if nodePort == socketPort
-    sio = require("socket.io").listen(app)
+    if ssl
+      sio = require("socket.io").listen app #,  ssloptions
+    else
+      sio = require("socket.io").listen app
   else
-    sio = require("socket.io").listen(socketPort, {
-      key: fs.readFileSync('ssl/surespot.key'),
-      cert: fs.readFileSync('ssl/www_surespot_me.crt'),
-      ca: fs.readFileSync('ssl/PositiveSSLCA2.crt')})
+    if ssl
+      sio = require("socket.io").listen socketPort, ssloptions
+    else
+      sio = require("socket.io").listen socketPort
 
   sio.configure "amazon-stage", ->
     sio.set "log level", 3
