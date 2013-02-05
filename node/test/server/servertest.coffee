@@ -33,14 +33,14 @@ signup = (username, password, done,  callback) ->
 
 
 describe "surespot server", () ->
-  describe "POST /users with valid form encoded username password", () ->
+  describe "create user", () ->
     it "should respond with 204", (done) ->
       signup "test","test", done, (res, body) ->
         #should get a no content
         res.statusCode.should.equal 201
         done()
 
-    it "should exist", (done) ->
+    it "and subsequently exist", (done) ->
       http.get
         url: baseUri + "/users/test/exists",
         (err,res,body) ->
@@ -51,57 +51,100 @@ describe "surespot server", () ->
             done()
 
 
-  describe "POST /login form encoded username password", ->
-    it "should return 401 with invalid credentials", (done) ->
+  describe "login with invalid credentials", ->
+    it "should return 401", (done) ->
       login "your", "mama", done, (res, body) ->
         #should get a no content
         res.statusCode.should.equal 401
         done()
 
-    it "should respond with 204 given valid credentials", (done) ->
+  describe "login with valid credentials", ->
+    it "should return 204", (done) ->
       login "test","test",done,(res,body) ->
         #should get a no content
         res.statusCode.should.equal 204
         done()
 
   describe "valid invite exchange", ->
-    it "should create another user", (done) ->
+    it "should create a user", (done) ->
       signup "test1","test1", done, (res, body) ->
         #should get a no content
         res.statusCode.should.equal 201
         done()
 
-
-    it "should be friends", (done) ->
+    it "who invites another user", (done) ->
       http.post
         url: baseUri + "/invite/test", (err, res, body) =>
           if err
             done err
           else
             res.statusCode.should.equal 204
-            login "test","test",done,(res, body) ->
-              http.post
-                url: baseUri + "/invites/test1/accept", (err, res, body) ->
-                if err
-                  done err
-                else
-                  res.statusCode.should.equal 204
-                  done()
+            done()
+
+    it "who accepts their invite", (done) ->
+      login "test","test",done,(res, body) ->
+        http.post
+          url: baseUri + "/invites/test1/accept", (err, res, body) ->
+            if err
+              done err
+            else
+              res.statusCode.should.equal 204
+              done()
+
+  describe "inviting non existent user", ->
+    it "should return 404", (done) ->
+      http.post
+        url: baseUri + "/invites/nosuchuser", (err, res, body) ->
+          if err
+            done err
+          else
+            res.statusCode.should.equal 404
+            done()
 
   describe "getting the public key of a non friend user", ->
-    it "creating a non friend user", (done) ->
+    it "should not be allowed", (done) ->
       signup "notafriend", "notafriend", done, (res, body) ->
-        done()
+        http.get
+          url: baseUri + "/publickey/test", (err, res, body) ->
+            if err
+              done err
+            else
+              res.statusCode.should.equal 403
+              done()
+
+  describe "getting other user's last 30 messages", ->
+    it "should not be allowed", (done) ->
+      http.get
+        url: baseUri + "/messages/test", (err, res, body) ->
+          if err
+            done err
+          else
+            res.statusCode.should.equal 403
+            done()
+  describe "getting other user's messages after x", ->
+    it "should not be allowed", (done) ->
+      http.get
+        url: baseUri + "/messages/test/after/0", (err, res, body) ->
+          if err
+            done err
+          else
+            res.statusCode.should.equal 403
+            done()
+  describe "getting other user's messages before x", ->
+    it "should not be allowed", (done) ->
+      http.get
+        url: baseUri + "/messages/test/before/100", (err, res, body) ->
+          if err
+            done err
+          else
+            res.statusCode.should.equal 403
+            done()
 
 
-
-    #it "should fail", (done) ->
-     # http.get
-      #  url: baseUri + "/publickey/nonfriend"
 
 
   after (done) ->
-    keys = ["users:test", "users:test1", "friends:test", "friends:test1", "invites:test", "invited:test1"]
+    keys = ["users:test", "users:test1", "friends:test", "friends:test1", "invites:test", "invited:test","users:notafriend"]
     rc.del keys,(err, res) ->
       done()
 
