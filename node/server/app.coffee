@@ -13,7 +13,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   express = require("express")
   passport = require("passport")
   LocalStrategy = require("passport-local").Strategy
-  bcrypt = require("bcrypt")
+  bcrypt = require("bcrypt"
   RedisStore = require("connect-redis")(express)
   path = require 'path'
   util = require("util")
@@ -29,8 +29,8 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
 
 
-  nodePort = 3000
-  socketPort = 3000
+  nodePort = 443
+  socketPort = 443
   sio = undefined
   sessionStore = undefined
   rc = undefined
@@ -138,15 +138,9 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
   app.listen nodePort
   if nodePort == socketPort
-    if ssl
-      sio = require("socket.io").listen app #,  ssloptions
-    else
-      sio = require("socket.io").listen app
+    sio = require("socket.io").listen app
   else
-    if ssl
-      sio = require("socket.io").listen socketPort, ssloptions
-    else
-      sio = require("socket.io").listen socketPort
+    sio = require("socket.io").listen socketPort
 
   sio.configure "amazon-stage", ->
     sio.set "log level", 3
