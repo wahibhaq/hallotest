@@ -13,7 +13,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   express = require("express")
   passport = require("passport")
   LocalStrategy = require("passport-local").Strategy
-  bcrypt = require("bcrypt"
+  bcrypt = require "bcrypt"
   RedisStore = require("connect-redis")(express)
   path = require 'path'
   util = require("util")
@@ -26,9 +26,6 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   logger.add winston.transports.Console, {colorize:true, timestamp: true}
   logger.add winston.transports.File, { filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false }
 
-
-
-
   nodePort = 443
   socketPort = 443
   sio = undefined
@@ -39,6 +36,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   client = undefined
   dal = undefined
   app = undefined
+  ssloptions = undefined
 
   createRedisClient = (port, hostname, password) ->
     if port? and hostname? and password?
@@ -63,7 +61,6 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       cert: fs.readFileSync('ssl/www_surespot_me.crt'),
       ca: fs.readFileSync('ssl/PositiveSSLCA2.crt')
     }
-
   else
     ssloptions = {
       key: fs.readFileSync('ssllocal/local.key'),
@@ -71,14 +68,14 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     }
 
 
-  if ssl is true
+  if ssl
     app = module.exports = express.createServer ssloptions
   else
     app = module.exports = express.createServer()
 
 
   app.configure "development", ->
-    if ssl == true
+    if ssl
       nodePort = 443
       socketPort = 443
     else
@@ -169,10 +166,8 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
             accept null, true
           else
             accept "Error", false
-
     else
       accept "No cookie transmitted.", false
-
 
   ensureAuthenticated = (req, res, next) ->
     logger.debug "ensureAuth"
@@ -188,8 +183,32 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     next()
 
   setCache = (seconds) -> (req,res,next) ->
-    res.setHeader "Cache-Control", "public, max-age=#{oneYear}"
+    res.setHeader "Cache-Control", "public, max-age=#{seconds}"
     next()
+
+  userExists = (username, fn) ->
+    userKey = "users:" + username
+    rc.hlen userKey, (err, hlen) ->
+      return fn(new Error("[userExists] failed for user: " + username)) if err
+      fn null, hlen > 0
+
+  validateUsernameExists = (req, res, next) ->
+    userExists req.params.username, (err, exists) ->
+      return next err if err?
+      if not exists
+        res.send 401
+      else
+        next()
+
+  validateAreFriends = (req, res, next) ->
+    username = req.user.username
+    friendname = req.params.username
+    dal.isFriend username, friendname, (err, result) ->
+      return next err if err?
+      if result
+        next()
+      else
+        res.send 403
 
   getRoomName = (from, to) ->
     if from < to then from + ":" + to else to + ":" + from
@@ -226,13 +245,6 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     rc.zrangebyscore "messages:" + room,  id-30, "("+id , (err, data) ->
       return fn err if err?
       fn null, data
-
-
-  userExists = (username, fn) ->
-    userKey = "users:" + username
-    rc.hlen userKey, (err, hlen) ->
-      return fn(new Error("[userExists] failed for user: " + username))  if err
-      fn null, hlen > 0
 
   createNewUserAccount = (req, res, next) ->
     logger.debug "createNewUserAccount"
@@ -312,10 +324,6 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         callback null
       else
         callback newId
-
-
-
-
 
   createAndSendMessage = (from,to,iv,data,mimeType, id) ->
     logger.debug "new message"
@@ -447,31 +455,29 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     #todo validate user is a member of this room
     #req.url = "/images/" + req.params.room + "/" + req.params.id
     #authenticate but use static so we can use http caching
-     staticMiddleware req,res,next
-
-
+    staticMiddleware req,res,next
 
   #get last x messages
-  app.get "/messages/:remoteuser", ensureAuthenticated, setNoCache, (req, res, next) ->
+  app.get "/messages/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
     #todo make sure they are friends
     #return last x messages
-    getMessages getRoomName(req.user.username, req.params.remoteuser), 30, (err, data) ->
+    getMessages getRoomName(req.user.username, req.params.username), 30, (err, data) ->
 #    rc.zrange "messages:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
       return next err if err?
       res.send data
 
 
   #get remote messages since id
-  app.get "/messages/:remoteuser/after/:messageid", ensureAuthenticated, setNoCache, (req, res, next) ->
+  app.get "/messages/:username/after/:messageid", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
     #return messages since id
-    getMessagesAfterId getRoomName(req.user.username, req.params.remoteuser), req.params.messageid, (err, data) ->
+    getMessagesAfterId getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
       return next err if err?
       res.send data
 
   #get remote messages before id
-  app.get "/messages/:remoteuser/before/:messageid", ensureAuthenticated, setNoCache, (req, res, next) ->
+  app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
     #return messages since id
-    getMessagesBeforeId getRoomName(req.user.username, req.params.remoteuser), req.params.messageid, (err, data) ->
+    getMessagesBeforeId getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
       return next err if err?
       res.send data
 
@@ -496,14 +502,12 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   #app.get "/", (req, res) ->
    # res.sendfile path.normalize __dirname + "/../assets/html/layout.html"
 
-
-  app.get "/publickey/:username", ensureAuthenticated, setCache(30*oneYear), getPublicKey
+  app.get "/publickey/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setCache(30*oneYear), getPublicKey
 
   app.get "/users/:username/exists", setNoCache, (req, res) ->
     userExists req.params.username, (err, exists) ->
       return next err if err?
       res.send exists
-
 
   app.post "/login", passport.authenticate("local"), (req, res) ->
     logger.debug "/login post"
@@ -519,71 +523,62 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       return next err if err?
       res.send 204
 
-  app.post "/invite/:friendname", ensureAuthenticated, (req, res, next) ->
-    friendname = req.params.friendname
+  app.post "/invite/:username", ensureAuthenticated, validateUsernameExists, (req, res, next) ->
+    friendname = req.params.username
     # the caller wants to add himself as a friend
     username = req.user.username
     spot = req.body.spot
 
     logger.debug "#{username} inviting #{friendname} to be friends"
-    #todo check both users exist
-    userExists friendname, (err, exists) ->
-      return next err if err?
-      unless exists?
-        logger.debug "no such user"
-        res.send 404
-      else
-        #todo check if friendname has ignored username
+      #todo check if friendname has ignored username
+      #see if they are already friends
+      dal.isFriend username, friendname, (err, result) ->
+        #if they are, do nothing
+        if result is 1 then res.send 409
+        else
+          #todo use transaction
+          #add to the user's set of people he's invited
+          rc.sadd "invited:#{username}", friendname, (err, invitedCount) ->
+            next new Error("Could not set invited") if err
+
+            rc.sadd "invites:#{friendname}", username, (err, invitesCount) ->
+              next new Error("Could not set invites") if err
+
+              #send to room
+              #todo push notification
+              if invitesCount > 0
+                sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
+                #send gcm message
+                userKey = "users:" + friendname
+                rc.hget userKey, "gcmId", (err, gcmId) ->
+                  if err?
+                    logger.error ("ERROR: " + err)
+                    next new Error("No gcm key.")
+
+                  if gcmId and gcmId.length > 0
+                    logger.debug "sending gcm notification"
+                    gcmmessage = new gcm.Message()
+                    sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+                    gcmmessage.addData("type", "invite")
+                    gcmmessage.addData("user", username)
+                    gcmmessage.delayWhileIdle = true
+                    gcmmessage.timeToLive = 3
+                    gcmmessage.collapseKey = "invite"
+                    regIds = [gcmId]
+
+                    sender.send gcmmessage, regIds, 4, (result) ->
+                      logger.debug(result)
+                      res.send 204
+                  else
+                    logger.debug "gcmId not set for #{friendname}"
+              else
+                res.send 403
 
 
-        #see if they are already friends
-        dal.isFriend username, friendname, (err, result) ->
-          #if they are, do nothing
-          if result is 1 then res.send 409
-          else
-            #todo use transaction
-            #add to the user's set of people he's invited
-            rc.sadd "invited:#{username}", friendname, (err, invitedCount) ->
-              next new Error("Could not set invited") if err
-
-              rc.sadd "invites:#{friendname}", username, (err, invitesCount) ->
-                next new Error("Could not set invites") if err
-
-                #send to room
-                #todo push notification
-                if invitesCount > 0
-                  sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
-                  #send gcm message
-                  userKey = "users:" + friendname
-                  rc.hget userKey, "gcmId", (err, gcmId) ->
-                    if err?
-                      logger.error ("ERROR: " + err)
-                      next new Error("No gcm key.")
-
-                    if gcmId and gcmId.length > 0
-                      logger.debug "sending gcm notification"
-                      gcmmessage = new gcm.Message()
-                      sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
-                      gcmmessage.addData("type", "invite")
-                      gcmmessage.addData("user", username)
-                      gcmmessage.delayWhileIdle = true
-                      gcmmessage.timeToLive = 3
-                      gcmmessage.collapseKey = "invite"
-                      regIds = [gcmId]
-
-                      sender.send gcmmessage, regIds, 4, (result) ->
-                        logger.debug(result)
-                        res.send 204
-                    else
-                      logger.debug "gcmId not set for #{friendname}"
-                else
-                  res.send 403
-
-
-  app.post '/invites/:friendname/:action', ensureAuthenticated, (req, res, next) ->
+  app.post '/invites/:username/:action', ensureAuthenticated, (req, res, next) ->
     logger.debug 'POST /invites'
     username = req.user.username
-    friendname = req.params.friendname
+    friendname = req.params.username
     accept = req.params.action is 'accept'
     #todo use transaction?
     rc.srem "invited:#{friendname}", username, (err, data) ->
@@ -650,6 +645,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
           _.each invited, (name) -> friends.push {status: "invited", name: name}
           logger.debug ("friends: " + friends)
           res.send friends
+
   app.get "/friends", ensureAuthenticated, setNoCache, getFriends
 
 
