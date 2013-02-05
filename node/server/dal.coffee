@@ -16,3 +16,8 @@ define ['redis'], (redis) ->
       @_rc.sismember "friends:#{username}", friendname, callback
 
 
+    inviteExists: (username, friendname, callback) ->
+      @_rc.sismember "invited:#{username}", friendname, (err, result) =>
+        return callback err if err?
+        return callback null, false if not result
+        @_rc.sismember "invites:#{friendname}", username, callback

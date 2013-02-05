@@ -65,14 +65,24 @@ describe "surespot server", () ->
         res.statusCode.should.equal 204
         done()
 
-  describe "valid invite exchange", ->
-    it "should create a user", (done) ->
+  describe "invite exchange", ->
+    it "create user", (done) ->
       signup "test1","test1", done, (res, body) ->
         #should get a no content
         res.statusCode.should.equal 201
         done()
 
-    it "who invites another user", (done) ->
+    it "who invites himself should not be allowed", (done) ->
+      http.post
+        url: baseUri + "/invite/test1", (err, res, body) =>
+          if err
+            done err
+          else
+            res.statusCode.should.equal 403
+            done()
+
+
+    it "who invites another user successfully should receive 204", (done) ->
       http.post
         url: baseUri + "/invite/test", (err, res, body) =>
           if err
@@ -81,7 +91,17 @@ describe "surespot server", () ->
             res.statusCode.should.equal 204
             done()
 
-    it "who accepts their invite", (done) ->
+    it "who invites them again should receive 403", (done) ->
+      http.post
+        url: baseUri + "/invite/test", (err, res, body) =>
+          if err
+            done err
+          else
+            #res.body.should b
+            res.statusCode.should.equal 403
+            done()
+
+    it "who accepts their invite should receive 204", (done) ->
       login "test","test",done,(res, body) ->
         http.post
           url: baseUri + "/invites/test1/accept", (err, res, body) ->
@@ -90,6 +110,26 @@ describe "surespot server", () ->
             else
               res.statusCode.should.equal 204
               done()
+
+    it "who accepts a non existent invite should receive 404", (done) ->
+      http.post
+        url: baseUri + "/invites/nosuchinvite/accept", (err, res, body) ->
+          if err
+            done err
+          else
+            res.statusCode.should.equal 404
+            done()
+
+
+    it "who invites them again should receive a 409", (done) ->
+      http.post
+        url: baseUri + "/invite/test1", (err, res, body) =>
+          if err
+            done err
+          else
+            res.statusCode.should.equal 409
+            done()
+
 
   describe "inviting non existent user", ->
     it "should return 404", (done) ->
@@ -144,7 +184,16 @@ describe "surespot server", () ->
 
 
   after (done) ->
-    keys = ["users:test", "users:test1", "friends:test", "friends:test1", "invites:test", "invited:test","users:notafriend"]
+    keys = [
+      "users:test",
+      "users:test1",
+      "friends:test",
+      "friends:test1",
+      "invites:test",
+      "invited:test",
+      "invites:test1",
+      "invited:test1",
+      "users:notafriend"]
     rc.del keys,(err, res) ->
       done()
 
