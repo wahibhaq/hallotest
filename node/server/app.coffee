@@ -187,7 +187,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     next()
 
   userExists = (username, fn) ->
-    userKey = "users:" + username
+    userKey = "users:" + username.toLowerCase()
     rc.hlen userKey, (err, hlen) ->
       return fn(new Error("[userExists] failed for user: " + username)) if err
       fn null, hlen > 0
@@ -418,6 +418,9 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       mimeType = message.mimeType
       room = getRoomName(from, to)
 
+      #validate
+
+
       #check for dupes if message has been resent
       checkForDuplicateMessage resendId, room, message, (err, found) ->
         if (found)
@@ -562,7 +565,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
               rc.hget userKey, "gcmId", (err, gcmId) ->
                 if err?
                   logger.error ("ERROR: " + err)
-                  next new Error("No gcm key.")
+                  return next new Error err
 
                 if gcmId and gcmId.length > 0
                   logger.debug "sending gcm notification"
@@ -612,7 +615,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
                   rc.hget userKey, "gcmId", (err, gcmId) ->
                     if err?
                       logger.error ("ERROR: " + err)
-                      next new Error("No gcm key.")
+                      return next new Error err
 
                     if gcmId and gcmId.length > 0
                       logger.debug "sending gcm notification"

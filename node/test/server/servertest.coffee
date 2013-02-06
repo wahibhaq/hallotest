@@ -75,25 +75,42 @@ describe "surespot server", () ->
             body.should.equal "true"
             done()
 
+    it "even if the request case is different", (done) ->
+      http.get
+        url: baseUri + "/users/TEST/exists",
+        (err,res,body) ->
+          if err
+            done err
+          else
+            body.should.equal "true"
+            done()
+
+    it "shouldn't be allowed to be created again", (done) ->
+      signup "test","test", done, (res, body) ->
+        res.statusCode.should.equal 409
+        done()
+
+    it "even if the request case is different", (done) ->
+      signup "tEsT","test", done, (res, body) ->
+
+        res.statusCode.should.equal 409
+        done()
 
   describe "login with invalid credentials", ->
     it "should return 401", (done) ->
       login "your", "mama", done, (res, body) ->
-        #should get a no content
         res.statusCode.should.equal 401
         done()
 
   describe "login with valid credentials", ->
     it "should return 204", (done) ->
       login "test","test",done,(res,body) ->
-        #should get a no content
         res.statusCode.should.equal 204
         done()
 
   describe "invite exchange", ->
     it "create user", (done) ->
       signup "test1","test1", done, (res, body) ->
-        #should get a no content
         res.statusCode.should.equal 201
         done()
 
@@ -122,7 +139,6 @@ describe "surespot server", () ->
           if err
             done err
           else
-            #res.body.should b
             res.statusCode.should.equal 403
             done()
 
