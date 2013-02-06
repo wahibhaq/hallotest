@@ -3,6 +3,7 @@ should = require("should")
 http = require("request")
 redis = require("redis")
 util = require("util")
+fs = require("fs")
 rc = redis.createClient()
 port = 443
 baseUri = "https://localhost:" + port
@@ -82,7 +83,7 @@ describe "surespot server", () ->
             done()
 
 
-    it "who invites another user successfully should receive 204", (done) ->
+    it "who invites a user successfully should receive 204", (done) ->
       http.post
         url: baseUri + "/invite/test", (err, res, body) =>
           if err
@@ -180,10 +181,69 @@ describe "surespot server", () ->
             res.statusCode.should.equal 403
             done()
 
+  describe "uploading an image to a valid spot", ->
+    location = undefined
+    it "should return the location header and 202", (done) ->
+      login "test", "test", done, (res, body) ->
+        r = http.post baseUri + "/images/test1", (err, res, body) ->
+          if err
+            done err
+          else
+            res.statusCode.should.equal 202
+            location = res.headers["location"]
+            should.exists location
+            done()
+
+        form = r.form()
+        form.append "image", fs.createReadStream "test"
+        #todo set filename explicitly
+
+    it "should return the same image when location url requested", (done) ->
+      http.get
+        url: baseUri + location, (err, res, body) ->
+          if err
+            done err
+          else
+            res.statusCode.should.equal 200
+            res.body.should.equal "madman\n"
+            done()
+  describe "getting images from non existent spots", ->
+    it "should return 404", (done) ->
+      http.get
+        url: baseUri + "/images/test:test1/6000", (err, res, body) ->
+          if err
+            done err
+          else
+            res.statusCode.should.equal 404
+            done()
+
+  describe "getting images from spots we don't belong to", ->
+    it "should not be allowed", (done) ->
+      http.get
+        url: baseUri + "/images/a:room/1", (err, res, body) ->
+          if err
+            done err
+          else
+            res.statusCode.should.equal 403
+            done()
+
+  describe "uploading an image to a spot we don't belong to", ->
+    it "should not be allowed", (done) ->
+      login "notafriend", "notafriend", done, (res, body) ->
+        r = http.post baseUri + "/images/test1", (err, res, body) ->
+          if err
+            done err
+          else
+            res.statusCode.should.equal 403
+            done()
+
+        form = r.form()
+        form.append "image", fs.createReadStream "test"
+  #todo set filename explicitly
 
 
 
-  after (done) ->
+  before (done) ->
     keys = [
       "users:test",
       "users:test1",
@@ -193,7 +253,9 @@ describe "surespot server", () ->
       "invited:test",
       "invites:test1",
       "invited:test1",
-      "users:notafriend"]
+      "users:notafriend",
+      "test:test1:id",
+      "messages:test:test1"]
     rc.del keys,(err, res) ->
       done()
 

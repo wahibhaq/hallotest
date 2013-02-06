@@ -428,7 +428,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
           createAndSendMessage from, to, iv, cipherdata, mimeType
 
 
-  app.post "/images/:username", ensureAuthenticated, (req,res,next) ->
+  app.post "/images/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req,res,next) ->
     #create a message and send it to chat recipients
     room = getRoomName req.user.username, req.params.username
     getNextMessageId room, null, (id) ->
@@ -444,7 +444,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         out = fs.createWriteStream filename
         ins.pipe out
         ins.on "end", ->
-          createAndSendMessage req.user.username, req.params.remoteuser, req.files.image.name, relUri, "image/", id
+          createAndSendMessage req.user.username, req.params.username, req.files.image.name, relUri, "image/", id
           fs.unlinkSync req.files.image.path
           res.send 202, { 'Location': relUri }
 
@@ -452,14 +452,22 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   staticMiddleware = express["static"](__dirname + "/static", { maxAge: oneYear})
 
   app.get "/images/:room/:id",  ensureAuthenticated, (req,res,next) ->
-    #todo validate user is a member of this room
-    #req.url = "/images/" + req.params.room + "/" + req.params.id
-    #authenticate but use static so we can use http caching
-    staticMiddleware req,res,next
+    username = req.user.username
+    room = req.params.room
+    users = room.split ":"
+    if users.length != 2
+      return next new Error "Invalid room name."
+
+    otherUser = getOtherUser room, username
+    dal.isFriend username, otherUser, (err, result) ->
+      return res.send 403 if not result
+
+      #req.url = "/images/" + req.params.room + "/" + req.params.id
+      #authenticate but use static so we can use http caching
+      staticMiddleware req,res,next
 
   #get last x messages
   app.get "/messages/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
-    #todo make sure they are friends
     #return last x messages
     getMessages getRoomName(req.user.username, req.params.username), 30, (err, data) ->
 #    rc.zrange "messages:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
