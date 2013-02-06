@@ -187,7 +187,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     next()
 
   userExists = (username, fn) ->
-    userKey = "users:" + username.toLowerCase()
+    userKey = "users:" + username
     rc.hlen userKey, (err, hlen) ->
       return fn(new Error("[userExists] failed for user: " + username)) if err
       fn null, hlen > 0
