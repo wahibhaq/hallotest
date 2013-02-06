@@ -207,6 +207,7 @@ describe "surespot server", () ->
             res.statusCode.should.equal 200
             res.body.should.equal "madman\n"
             done()
+  
   describe "getting images from non existent spots", ->
     it "should return 404", (done) ->
       http.get
