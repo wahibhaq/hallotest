@@ -76,15 +76,15 @@ describe "surespot server", () ->
             body.should.equal "true"
             done()
 
-    it "even if the request case is different", (done) ->
-      http.get
-        url: baseUri + "/users/TEST/exists",
-        (err,res,body) ->
-          if err
-            done err
-          else
-            body.should.equal "true"
-            done()
+#    it "even if the request case is different", (done) ->
+#      http.get
+#        url: baseUri + "/users/TEST/exists",
+#        (err,res,body) ->
+#          if err
+#            done err
+#          else
+#            body.should.equal "true"
+#            done()
 
     it "shouldn't be allowed to be created again", (done) ->
       signup "test","test", done, (res, body) ->
