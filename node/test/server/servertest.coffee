@@ -8,6 +8,27 @@ rc = redis.createClient()
 port = 443
 baseUri = "https://localhost:" + port
 
+cleanup = (done) ->
+  keys = [
+    "users:test",
+    "users:test1",
+    "friends:test",
+    "friends:test1",
+    "invites:test",
+    "invited:test",
+    "invites:test1",
+    "invited:test1",
+    "users:notafriend",
+    "test:test1:id",
+    "messages:test:test1",
+    "conversations:test1",
+    "conversations:test"]
+  rc.del keys,(err, data) ->
+    if err
+      done err
+    else
+      done()
+
 login = (username, password, done,  callback) ->
   http.post
     url: baseUri + "/login"
@@ -34,6 +55,9 @@ signup = (username, password, done,  callback) ->
 
 
 describe "surespot server", () ->
+
+  before (done) -> cleanup done
+
   describe "create user", () ->
     it "should respond with 204", (done) ->
       signup "test","test", done, (res, body) ->
@@ -207,7 +231,7 @@ describe "surespot server", () ->
             res.statusCode.should.equal 200
             res.body.should.equal "madman\n"
             done()
-  
+
   describe "getting images from non existent spots", ->
     it "should return 404", (done) ->
       http.get
@@ -241,23 +265,4 @@ describe "surespot server", () ->
         form = r.form()
         form.append "image", fs.createReadStream "test"
   #todo set filename explicitly
-
-
-
-  before (done) ->
-    keys = [
-      "users:test",
-      "users:test1",
-      "friends:test",
-      "friends:test1",
-      "invites:test",
-      "invited:test",
-      "invites:test1",
-      "invited:test1",
-      "users:notafriend",
-      "test:test1:id",
-      "messages:test:test1"]
-    rc.del keys,(err, res) ->
-      done()
-
-
+  after (done) -> cleanup done
