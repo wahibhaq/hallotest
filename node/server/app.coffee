@@ -196,7 +196,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     userExists req.params.username, (err, exists) ->
       return next err if err?
       if not exists
-        res.send 401
+        res.send 404
       else
         next()
 
@@ -583,6 +583,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
                     res.send 204
                 else
                   logger.debug "gcmId not set for #{friendname}"
+                  res.send 204
             else
               res.send 403
 

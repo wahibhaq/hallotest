@@ -12,17 +12,18 @@ cleanup = (done) ->
   keys = [
     "users:test",
     "users:test1",
+    "users:notafriend",
     "friends:test",
     "friends:test1",
     "invites:test",
     "invited:test",
     "invites:test1",
     "invited:test1",
-    "users:notafriend",
     "test:test1:id",
     "messages:test:test1",
     "conversations:test1",
-    "conversations:test"]
+    "conversations:test",
+    "conversations:notafriend"]
   rc.del keys,(err, data) ->
     if err
       done err
@@ -109,12 +110,12 @@ describe "surespot server", () ->
         done()
 
   describe "invite exchange", ->
-    it "create user", (done) ->
+    it "created user", (done) ->
       signup "test1","test1", done, (res, body) ->
         res.statusCode.should.equal 201
         done()
 
-    it "who invites himself should not be allowed", (done) ->
+    it "should not be allowed to invite himself", (done) ->
       http.post
         url: baseUri + "/invite/test1", (err, res, body) =>
           if err
@@ -176,6 +177,17 @@ describe "surespot server", () ->
     it "should return 404", (done) ->
       http.post
         url: baseUri + "/invites/nosuchuser", (err, res, body) ->
+          if err
+            done err
+          else
+            res.statusCode.should.equal 404
+            done()
+
+
+  describe "getting the public key of a non existant user", ->
+    it "should return not found", (done) ->
+      http.get
+        url: baseUri + "/publickey/nosuchuser", (err, res, body) ->
           if err
             done err
           else
