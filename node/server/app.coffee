@@ -397,13 +397,10 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
     #join user's room
     logger.debug "user #{user} joining socket.io room"
-    socket.join(user)
-
+    socket.join user
     socket.on "message", (data) ->
-
       user = socket.handshake.session.passport.user
 
-      #todo check user == message.from
       #todo check from and to exist and are friends
       message = JSON.parse(data)
 
@@ -411,24 +408,32 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       logger.debug "sending message from user #{user}"
 
       to = message.to
+      return if to is null
       from = message.from
-      cipherdata = message.data
-      iv = message.iv
-      resendId = message.resendId
-      mimeType = message.mimeType
-      room = getRoomName(from, to)
+      return if from is null
+      #if this message isn't from the logged in user we have problems
+      if user isnt from then socket.disconnect()
+      userExists from, (err, exists) ->
+        return if err?
+        if exists
+          #if they're not friends disconnect them, wtf are they trying to do here?
+          dal.isFriend user, to, (err, isFriend) ->
+            return if err?
+            return socket.disconnect() if not isFriend
+            cipherdata = message.data
+            iv = message.iv
+            resendId = message.resendId
+            mimeType = message.mimeType
+            room = getRoomName(from, to)
 
-      #validate
-
-
-      #check for dupes if message has been resent
-      checkForDuplicateMessage resendId, room, message, (err, found) ->
-        if (found)
-          logger.debug "found duplicate, not adding to db"
-          sio.sockets.to(to).emit "message", found
-          sio.sockets.to(from).emit "message", found
-        else
-          createAndSendMessage from, to, iv, cipherdata, mimeType
+            #check for dupes if message has been resent
+            checkForDuplicateMessage resendId, room, message, (err, found) ->
+              if (found)
+                logger.debug "found duplicate, not adding to db"
+                sio.sockets.to(to).emit "message", found
+                sio.sockets.to(from).emit "message", found
+              else
+                createAndSendMessage from, to, iv, cipherdata, mimeType
 
 
   app.post "/images/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req,res,next) ->

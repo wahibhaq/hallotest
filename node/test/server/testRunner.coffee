@@ -8,5 +8,6 @@ mocha = new Mocha(
 
   })
 
-mocha.addFile 'servertest.js'
+#mocha.addFile 'chattest.js'
+mocha.addFile 'chattest.js'
 mocha.run()
