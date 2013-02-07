@@ -91,7 +91,7 @@ describe "surespot chat test", () ->
 
   client = undefined
   client1 = undefined
-  jsonMessage = {to:"test",from:"test1",iv:1,data:"message data",mimeType:"text/plain",id:1}
+  jsonMessage = {to:"test",from:"test1",iv:1,data:"message data",mimeType:"text/plain"}
 
   it 'client 1 connect', (done) ->
     signup 'test', 'test',jar1, done, (res, body) ->
@@ -119,6 +119,7 @@ describe "surespot chat test", () ->
     client1.once 'message', (receivedMessage) ->
       receivedMessage = JSON.parse receivedMessage
       receivedMessage.to.should.equal jsonMessage.to
+      receivedMessage.id.should.equal 1
       receivedMessage.from.should.equal jsonMessage.from
       receivedMessage.data.should.equal jsonMessage.data
       receivedMessage.mimeType.should.equal jsonMessage.mimeType
