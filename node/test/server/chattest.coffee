@@ -118,7 +118,6 @@ describe "surespot chat test", () ->
     # make them friends
     client1.once 'message', (receivedMessage) ->
       receivedMessage = JSON.parse receivedMessage
-      receivedMessage.id.should.equal jsonMessage.id
       receivedMessage.to.should.equal jsonMessage.to
       receivedMessage.from.should.equal jsonMessage.from
       receivedMessage.data.should.equal jsonMessage.data
