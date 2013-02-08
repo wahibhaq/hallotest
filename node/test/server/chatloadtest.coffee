@@ -12,7 +12,7 @@ port = 443
 baseUri = "https://localhost:" + port
 j=undefined
 minclient = 0
-clients = 2000
+clients = 5
 #http.globalAgent.maxSockets = 100
 #http.request {agent: false}
 
