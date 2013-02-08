@@ -9,6 +9,8 @@ paths:
 }
 
 requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
+  http = require 'http'
+ # http.globalAgent.maxSockets = 100
   cookie = require("cookie")
   express = require("express")
   passport = require("passport")
@@ -23,8 +25,8 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   expressWinston = require "express-winston"
   logger = require("winston")
   logger.remove winston.transports.Console
-  logger.add winston.transports.Console, {colorize:true, timestamp: true}
-  logger.add winston.transports.File, { filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false }
+  logger.add winston.transports.Console, {colorize:true, timestamp: true, level: 'error'}
+  #logger.add winston.transports.File, { filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'error' }
 
   nodePort = 443
   socketPort = 443
@@ -37,6 +39,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   dal = undefined
   app = undefined
   ssloptions = undefined
+  connectionCount = 0
 
   createRedisClient = (port, hostname, password) ->
     if port? and hostname? and password?
@@ -139,8 +142,8 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   else
     sio = require("socket.io").listen socketPort
 
-  sio.configure "amazon-stage", ->
-    sio.set "log level", 3
+  #sio.configure "amazon-stage", ->
+  sio.set "log level", 0
 
   #winston up some socket.io
   sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warn, error: logger.error }
@@ -394,6 +397,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
   room = sio.on "connection", (socket) ->
     user = socket.handshake.session.passport.user
+    logger.error 'connections: ' + connectionCount++
 
     #join user's room
     logger.debug "user #{user} joining socket.io room"
