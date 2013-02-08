@@ -7,12 +7,14 @@ util = require("util")
 fs = require("fs")
 io = require 'socket.io-client'
 async = require 'async'
+_ = require 'underscore'
 rc = redis.createClient()
+
 port = 443
 baseUri = "https://localhost:" + port
-#j=undefined
 minclient = 0
-clients = 5
+clients = 1000
+sockets = []
 #http.globalAgent.maxSockets = 100
 #http.request {agent: false}
 
@@ -64,55 +66,36 @@ signup = (username, password, jar, done, callback) ->
     else
       callback res, body
 
-#patch things to send auth cookie in socket.io handshake...thanks to https://gist.github.com/jfromaniello/4087861
-#for this to work socket.io-client package.json needs to be changed to use xmlhttprequest version 1.5.0
-# then npm update
+
+
+connect = (i, done) =>
+  j = request.jar()
+  #console.log 'i: ' + i
+  signup 'test' + i, 'test' + i,j, done, (res, body) ->
+    cookie = j.get({ url: baseUri }).map((c) -> c.name + "=" + c.value ).join("; ")
+    client = io.connect baseUri, { 'force new connection': true}, cookie
+    client.once 'connect', ->
+      done(null, client)
+
+makef = (i) ->
+  return (callback) ->
+    connect i, callback
 
 
 
-#originalRequest = require('socket.io-client/node_modules/xmlhttprequest').XMLHttpRequest
-#
-#` require('socket.io-client/node_modules/xmlhttprequest').XMLHttpRequest = function(){
-#    originalRequest.apply(this, arguments);
-#    this.setDisableHeaderCheck(true);
-#    var stdOpen = this.open;
-#
-#    /*
-#    * don't know how to do this in coffeescript, it always returns a value
-#    */
-#    this.open = function() {
-#      stdOpen.apply(this, arguments);
-#      var header = j.get({ url: baseUri })
-#      .map(function (c) {
-#        return c.name + "=" + c.value;
-#      }).join("; ");
-#       this.setRequestHeader('cookie', header);
-#    };
-#  };`
-
-
-connectAll = (num, done, finished) ->
-  curr = minclient
-  connect = (i) ->
-    j = request.jar()
-    signup 'test' + i, 'test' + i,j, done, (res, body) ->
-      header = j.get({ url: baseUri }).map((c) -> c.name + "=" + c.value ).join("; ")
-      client = io.connect baseUri, { 'force new connection': true}, header
-      client.once 'connect', ->
-        if i < num
-          connect ++curr
-        else
-          finished()
-  connect curr
 
 describe "surespot chat test", () ->
   before (done) -> cleanup done
 
-  it 'connects 10 users', (done) ->
-    connectAll clients, done, ->
+  it "connects #{clients} users", (done) ->
+    tasks = []
+
+    for i in [minclient..minclient+clients] by 1
+      tasks.push makef i
+
+    async.parallel tasks, (err, sockets) ->
+      _.each sockets, (socket) -> socket.disconnect()
       done()
-
-
 
 
   after (done) -> cleanup done

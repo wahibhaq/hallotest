@@ -25,7 +25,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   expressWinston = require "express-winston"
   logger = require("winston")
   logger.remove winston.transports.Console
-  logger.add winston.transports.Console, {colorize:true, timestamp: true, level: 'error'}
+  #logger.add winston.transports.Console, {colorize:true, timestamp: true}
   #logger.add winston.transports.File, { filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'error' }
 
   nodePort = 443
@@ -143,7 +143,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     sio = require("socket.io").listen socketPort
 
   #sio.configure "amazon-stage", ->
-  sio.set "log level", 0
+  #sio.set "log level", 0
 
   #winston up some socket.io
   sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warn, error: logger.error }
@@ -397,7 +397,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
   room = sio.on "connection", (socket) ->
     user = socket.handshake.session.passport.user
-    logger.error 'connections: ' + connectionCount++
+    logger.info 'connections: ' + connectionCount++
 
     #join user's room
     logger.debug "user #{user} joining socket.io room"
