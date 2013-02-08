@@ -156,7 +156,7 @@
   util.request = function (xdomain) {
     // if node
     var XMLHttpRequest = require('xmlhttprequest').XMLHttpRequest;
-    return new XMLHttpRequest();
+    var req = new XMLHttpRequest();
     // end node
 
     if (xdomain && 'undefined' != typeof XDomainRequest && !util.ua.hasCORS) {

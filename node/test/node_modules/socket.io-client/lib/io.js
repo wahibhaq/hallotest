@@ -166,7 +166,7 @@
    * @api public
    */
 
-  io.connect = function (host, details) {
+  io.connect = function (host, details, cookie) {
     var uri = io.util.parseUri(host)
       , uuri
       , socket;
@@ -185,6 +185,7 @@
       , secure: 'https' == uri.protocol
       , port: uri.port || ('https' == uri.protocol ? 443 : 80)
       , query: uri.query || ''
+      , cookie: cookie
     };
 
     io.util.merge(options, details);

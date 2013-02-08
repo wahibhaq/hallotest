@@ -146,9 +146,12 @@
         script.parentNode.removeChild(script);
       });
     } else {
-      var xhr = io.util.request();
+      var xhr = io.util.request(null);
 
       xhr.open('GET', url, true);
+      xhr.setDisableHeaderCheck(true);
+      xhr.setRequestHeader('cookie', options.cookie);
+
       if (this.isXDomain()) {
         xhr.withCredentials = true;
       }

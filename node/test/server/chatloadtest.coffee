@@ -10,7 +10,7 @@ async = require 'async'
 rc = redis.createClient()
 port = 443
 baseUri = "https://localhost:" + port
-j=undefined
+#j=undefined
 minclient = 0
 clients = 5
 #http.globalAgent.maxSockets = 100
@@ -70,25 +70,25 @@ signup = (username, password, jar, done, callback) ->
 
 
 
-originalRequest = require('socket.io-client/node_modules/xmlhttprequest').XMLHttpRequest
-
-` require('socket.io-client/node_modules/xmlhttprequest').XMLHttpRequest = function(){
-    originalRequest.apply(this, arguments);
-    this.setDisableHeaderCheck(true);
-    var stdOpen = this.open;
-
-    /*
-    * don't know how to do this in coffeescript, it always returns a value
-    */
-    this.open = function() {
-      stdOpen.apply(this, arguments);
-      var header = j.get({ url: baseUri })
-      .map(function (c) {
-        return c.name + "=" + c.value;
-      }).join("; ");
-       this.setRequestHeader('cookie', header);
-    };
-  };`
+#originalRequest = require('socket.io-client/node_modules/xmlhttprequest').XMLHttpRequest
+#
+#` require('socket.io-client/node_modules/xmlhttprequest').XMLHttpRequest = function(){
+#    originalRequest.apply(this, arguments);
+#    this.setDisableHeaderCheck(true);
+#    var stdOpen = this.open;
+#
+#    /*
+#    * don't know how to do this in coffeescript, it always returns a value
+#    */
+#    this.open = function() {
+#      stdOpen.apply(this, arguments);
+#      var header = j.get({ url: baseUri })
+#      .map(function (c) {
+#        return c.name + "=" + c.value;
+#      }).join("; ");
+#       this.setRequestHeader('cookie', header);
+#    };
+#  };`
 
 
 connectAll = (num, done, finished) ->
@@ -96,7 +96,8 @@ connectAll = (num, done, finished) ->
   connect = (i) ->
     j = request.jar()
     signup 'test' + i, 'test' + i,j, done, (res, body) ->
-      client = io.connect baseUri, { 'force new connection': true}
+      header = j.get({ url: baseUri }).map((c) -> c.name + "=" + c.value ).join("; ")
+      client = io.connect baseUri, { 'force new connection': true}, header
       client.once 'connect', ->
         if i < num
           connect ++curr
