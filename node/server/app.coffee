@@ -108,6 +108,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       pass: redisAuth
     )
     rc = createRedisClient(redisPort, redisHost, redisAuth)
+    rcs = createRedisClient(redisPort, redisHost, redisAuth)
     pub = createRedisClient(redisPort, redisHost, redisAuth)
     sub = createRedisClient(redisPort, redisHost, redisAuth)
     client = createRedisClient(redisPort, redisHost, redisAuth)
