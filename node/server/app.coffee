@@ -149,7 +149,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
 
   #winston up some socket.io
-  sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warn, error: logger.error }
+  sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warning, error: logger.error }
 
   sio.set "log level", 'info'
 
