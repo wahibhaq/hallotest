@@ -7,13 +7,14 @@ util = require("util")
 fs = require("fs")
 io = require 'socket.io-client'
 async = require 'async'
+
 _ = require 'underscore'
 rc = redis.createClient()
 
 port = 443
-baseUri = "https://localhost:" + port
-minclient = 0
-clients = 1000
+baseUri = "https://www.surespot.me:" + port
+minclient = 1000
+clients = 100
 
 http.globalAgent.maxSockets = 1000
 

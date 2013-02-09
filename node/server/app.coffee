@@ -699,7 +699,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
 
   process.on "uncaughtException", uncaught = (err) ->
-    logger.error "Uncaught Exception: ", err
+    logger.error "Uncaught Exception: " + err
 
   passport.use new LocalStrategy (username, password, done) ->
     userKey = "users:" + username
