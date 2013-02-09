@@ -14,13 +14,14 @@ port = 443
 baseUri = "https://localhost:" + port
 minclient = 0
 clients = 1000
-sockets = []
-#http.globalAgent.maxSockets = 100
-#http.request {agent: false}
+
+http.globalAgent.maxSockets = 1000
+
+
 
 cleanup = (done) ->
 
-  for i in [minclient..minclient+clients] by 1
+  for i in [minclient..minclient+clients-1] by 1
     num = i
     keys = [
       "users:test#{num}",
@@ -40,7 +41,8 @@ cleanup = (done) ->
 
 login = (username, password, jar, done, callback) ->
   request.post
-    #agent: false
+    agent: false
+    maxSockets: 1000
     url: baseUri + "/login"
     jar: jar
     json:
@@ -54,7 +56,8 @@ login = (username, password, jar, done, callback) ->
 
 signup = (username, password, jar, done, callback) ->
   request.post
-    #agent: false
+    agent: false
+    maxSockets: 1000
     url: baseUri + "/users"
     jar: jar
     json:
@@ -68,36 +71,84 @@ signup = (username, password, jar, done, callback) ->
 
 
 
-connect = (i, done) =>
+createUsers = (i, callback) ->
   j = request.jar()
   #console.log 'i: ' + i
-  signup 'test' + i, 'test' + i,j, done, (res, body) ->
+  signup 'test' + i, 'test' + i,j, callback, (res, body) ->
     cookie = j.get({ url: baseUri }).map((c) -> c.name + "=" + c.value ).join("; ")
-    client = io.connect baseUri, { 'force new connection': true}, cookie
-    client.once 'connect', ->
-      done(null, client)
+    callback null, cookie
 
-makef = (i) ->
+loginUsers = (i, callback) ->
+  j = request.jar()
+  #console.log 'i: ' + i
+  login 'test' + i, 'test' + i,j, callback, (res, body) ->
+    cookie = j.get({ url: baseUri }).map((c) -> c.name + "=" + c.value ).join("; ")
+    callback null, cookie
+
+connectChats = (cookie, callback) ->
+  client = io.connect baseUri, { 'force new connection': true}, cookie
+  client.on 'connect', ->
+    callback null, client
+
+makeCreate = (i) ->
   return (callback) ->
-    connect i, callback
+    createUsers i, callback
 
 
+makeLogin = (i) ->
+  return (callback) ->
+    loginUsers i, callback
+
+makeConnect = (cookie) ->
+  return (callback) ->
+    connectChats cookie, callback
 
 
 describe "surespot chat test", () ->
   before (done) -> cleanup done
 
-  it "connects #{clients} users", (done) ->
+  tasks = []
+  cookies = undefined
+  sockets = undefined
+
+  it "create #{clients} users", (done) ->
+
+
+    #create connect clients tasks
+    for i in [minclient..minclient+clients-1] by 1
+      tasks.push makeCreate i
+
+    #execute the tasks which creates the cookie jars
+    async.parallel tasks, (err, cookies) ->
+
+
+
+      #_.each sockets, (socket) -> socket.disconnect()
+      done()
+
+  it "login #{clients} users", (done) ->
     tasks = []
 
-    for i in [minclient..minclient+clients] by 1
-      tasks.push makef i
+    #create connect clients tasks
+    for i in [minclient..minclient+clients-1] by 1
+      tasks.push makeLogin i
 
-    async.parallel tasks, (err, sockets) ->
-      _.each sockets, (socket) -> socket.disconnect()
+    #execute the tasks which creates the cookie jars
+    async.parallel tasks, (err, httpcookies) ->
+      cookies = httpcookies
       done()
 
 
-  after (done) -> cleanup done
 
+  it "connect #{clients} chats", (done) ->
+    connects = []
+    for cookie in cookies
+      connects.push makeConnect(cookie)
+    async.parallel connects, (err, clients) ->
+      sockets = clients
+      done()
+
+
+
+  after (done) -> cleanup done
 

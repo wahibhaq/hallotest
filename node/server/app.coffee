@@ -10,7 +10,7 @@ paths:
 
 requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   http = require 'http'
- # http.globalAgent.maxSockets = 100
+  http.globalAgent.maxSockets = 5000
   cookie = require("cookie")
   express = require("express")
   passport = require("passport")
@@ -25,7 +25,8 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   expressWinston = require "express-winston"
   logger = require("winston")
   logger.remove winston.transports.Console
-  #logger.add winston.transports.Console, {colorize:true, timestamp: true}
+  logger.add winston.transports.Console, {colorize:true, timestamp: true, level: 'info' }
+  logger.setLevels winston.config.syslog.levels
   #logger.add winston.transports.File, { filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'error' }
 
   nodePort = 443
@@ -33,6 +34,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   sio = undefined
   sessionStore = undefined
   rc = undefined
+  rcs = undefined
   pub = undefined
   sub = undefined
   client = undefined
@@ -87,6 +89,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     sessionStore = new RedisStore()
     dal = new DAL()
     rc = createRedisClient()
+    rcs = createRedisClient()
     pub = createRedisClient()
     sub = createRedisClient()
     client = createRedisClient()
@@ -143,10 +146,12 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     sio = require("socket.io").listen socketPort
 
   #sio.configure "amazon-stage", ->
-  #sio.set "log level", 0
+
 
   #winston up some socket.io
   sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warn, error: logger.error }
+
+  sio.set "log level", 'info'
 
   sioRedisStore = require("socket.io/lib/stores/redis")
   sio.set "store", new sioRedisStore(
@@ -173,12 +178,15 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       accept "No cookie transmitted.", false
 
   ensureAuthenticated = (req, res, next) ->
+    logger.profile 'ensureAuthenticated'
     logger.debug "ensureAuth"
     if req.isAuthenticated()
       logger.debug "authorized"
+      logger.profile 'ensureAuthenticated'
       next()
     else
       logger.debug "401"
+      logger.profile 'ensureAuthenticated'
       res.send 401
 
   setNoCache = (req,res,next) ->
@@ -251,6 +259,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
   createNewUserAccount = (req, res, next) ->
     logger.debug "createNewUserAccount"
+    logger.profile 'createNewUserAccount'
 
     #var newUser = {name:name, email:email };
     userExists req.body.username, (err, exists) ->
@@ -274,16 +283,25 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
               logger.debug "set " + userKey + " in db"
               return next new Error("[createNewUserAccount] SET failed for user: " + username) if err?
 
+
+              user = {}
+              user.username = username
+              user.password = password
+              user.publickey = publickey
+              user.gcmId = gcmId
               #return the password in the user object so we can auth
               #todo build manually instead of reading back from redis
-              rc.hgetall userKey, (err, user) ->
-                return next err if err?
+           #   rc.hgetall userKey, (err, user) ->
+            #    return next err if err?
                 # req.body.password = password;
                 #  req.logout();
                 #auth login
-                req.login user, null, ->
-                  req.user = user
-                  next()
+
+
+              req.login user, null, ->
+                req.user = user
+                logger.profile 'createNewUserAccount'
+                next()
 
   checkForDuplicateMessage = (resendId, room, message, callback) ->
     if (resendId?)
@@ -687,12 +705,13 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     userKey = "users:" + username
     logger.debug "looking for: " + userKey
     logger.debug "password: " + password
-    rc.hgetall userKey, (err, user) ->
+    rcs.hgetall userKey, (err, user) ->
       return done(err)  if err?
       unless user
         return done(null, false,
           message: "Unknown user"
         )
+      return done null, user
       logger.debug "user.password: " + user.password
       bcrypt.compare password, user.password, (err, res) ->
         return fn(new Error("[bcrypt.compare] failed with error: " + err))  if err?
@@ -710,5 +729,5 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
   passport.deserializeUser (username, done) ->
     logger.debug "deserializeUser, user:" + username
-    rc.hgetall "users:" + username, (err, user) ->
+    rcs.hgetall "users:" + username, (err, user) ->
       done err, user

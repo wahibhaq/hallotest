@@ -1,5 +1,5 @@
 {
-  "name": "blurr",
+  "name": "surespot",
   "version": "0.0.1",
   "node": "0.8.1",
   "private": true,
@@ -26,7 +26,6 @@
     "express-winston": "~0.1.3",
     "should": "~1.2.1",
     "request": "~2.12.0",
-    "socket.io-client": "~0.9.11",
     "async": "~0.2.4"
   },
   "subdomain": "2fours.com",
