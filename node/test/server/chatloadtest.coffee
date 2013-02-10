@@ -13,10 +13,10 @@ rc = redis.createClient()
 
 baseUri = "https://localhost"
 minclient = 0
-clients = 1000
+clients = 1500
 jars = []
 
-http.globalAgent.maxSockets = 1000
+http.globalAgent.maxSockets = 1500
 
 cleanup = (done) ->
   for i in [minclient..minclient+clients-1] by 1
@@ -66,11 +66,11 @@ signup = (username, password, jar, done, callback) ->
       callback res, body, cookie
 
 
-createUsers = (i, callback) =>
+createUsers = (i, callback) ->
   j = request.jar()
   jars[i] = j
   #console.log 'i: ' + i
-  signup 'test' + i, 'test' + i, j, callback, (res, body, cookie) =>
+  signup 'test' + i, 'test' + i, j, callback, (res, body, cookie) ->
     callback null, cookie
 
 makeCreate = (i) ->
@@ -152,8 +152,11 @@ describe "surespot chat test", () ->
 
     #execute the tasks which creates the cookie jars
     async.parallel tasks, (err, httpcookies) ->
-      cookies = httpcookies
-      done()
+      if err?
+        done err
+      else
+        cookies = httpcookies
+        done()
 
   #  it "login #{clients} users", (done) ->
   #    tasks = []
@@ -179,8 +182,11 @@ describe "surespot chat test", () ->
     for cookie in cookies
       connects.push makeConnect(cookie)
     async.parallel connects, (err, clients) ->
-      sockets = clients
-      done()
+      if err?
+        done err
+      else
+        sockets = clients
+        done()
 
 
   it "send and receive a message", (done) ->
@@ -190,9 +196,12 @@ describe "surespot chat test", () ->
       sends.push makeSend(socket, i++)
 
     async.parallel sends, (err, results) ->
-      _.every results, (result) -> result.should.be.true
-      done()
+      if err?
+        done err
+      else
+        _.every results, (result) -> result.should.be.true
+        done()
 
 
-  after (done) -> cleanup done
+  #after (done) -> cleanup done
 

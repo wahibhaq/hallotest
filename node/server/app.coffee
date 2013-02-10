@@ -10,7 +10,7 @@ paths:
 
 requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   http = require 'http'
-  http.globalAgent.maxSockets = 5000
+  #http.globalAgent.maxSockets = 5000
   cookie = require("cookie")
   express = require("express")
   passport = require("passport")
@@ -27,7 +27,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   logger.remove winston.transports.Console
   logger.add winston.transports.Console, {colorize:true, timestamp: true, level: 'debug' }
   logger.setLevels winston.config.syslog.levels
-  #logger.add winston.transports.File, { filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'error' }
+  logger.add winston.transports.File, { filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'debug' }
 
   nodePort = 443
   socketPort = 443
@@ -269,36 +269,28 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         logger.debug "user already exists"
         res.send 409
       else
-        username = req.body.username
         password = req.body.password
-        publickey = req.body.publickey
-        gcmId = req.body.gcmId
-        logger.debug "gcmID: " + gcmId
 
-        userKey = "users:" + username
+        user = {}
+        user.username = req.body.username
+
+
+        if req.body.publickey?
+          user.publickey = req.body.publickey
+
+        if req.body.gcmId?
+          user.gcmId = req.body.gcmId
+
+        logger.debug "gcmID: " + user.gcmId
+        userKey = "users:" + user.username
         bcrypt.genSalt 10, (err, salt) ->
           return next err if err?
           bcrypt.hash password, salt, (err, password) ->
             return next err if err?
-            rc.hmset userKey, "username", username, "password", password, "publickey", publickey, "gcmId", gcmId, (err, data) ->
+            user.password = password
+            rc.hmset userKey, user, (err, data) ->
               logger.debug "set " + userKey + " in db"
               return next new Error("[createNewUserAccount] SET failed for user: " + username) if err?
-
-
-              user = {}
-              user.username = username
-              user.password = password
-              user.publickey = publickey
-              user.gcmId = gcmId
-              #return the password in the user object so we can auth
-              #todo build manually instead of reading back from redis
-           #   rc.hgetall userKey, (err, user) ->
-            #    return next err if err?
-                # req.body.password = password;
-                #  req.logout();
-                #auth login
-
-
               req.login user, null, ->
                 req.user = user
                 logger.profile 'createNewUserAccount'
@@ -406,7 +398,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
             gcmmessage.addData("mimeType", message.mimeType)
             gcmmessage.delayWhileIdle = true
             gcmmessage.timeToLive = 3
-            gcmmessage.collapseKey = "message"
+            gcmmessage.collapseKey = "message:#{to}"
             regIds = [gcm_id]
 
             sender.send gcmmessage, regIds, 4, (result) ->
@@ -595,7 +587,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
                   logger.error ("ERROR: " + err)
                   return next new Error err
 
-                if gcmId and gcmId.length > 0
+                if gcmId?.length > 0
                   logger.debug "sending gcm notification"
                   gcmmessage = new gcm.Message()
                   sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
@@ -603,11 +595,11 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
                   gcmmessage.addData("user", username)
                   gcmmessage.delayWhileIdle = true
                   gcmmessage.timeToLive = 3
-                  gcmmessage.collapseKey = "invite"
+                  gcmmessage.collapseKey = "invite:#{friendname}"
                   regIds = [gcmId]
 
                   sender.send gcmmessage, regIds, 4, (result) ->
-                    logger.debug(result)
+                    #logger.debug(result)
                     res.send 204
                 else
                   logger.debug "gcmId not set for #{friendname}"
@@ -646,7 +638,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
                       logger.error ("ERROR: " + err)
                       return next new Error err
 
-                    if gcmId and gcmId.length > 0
+                    if gcmId?.length > 0
                       logger.debug "sending gcm notification"
 
                       gcmmessage = new gcm.Message()
@@ -660,7 +652,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
                       regIds = [gcmId]
 
                       sender.send gcmmessage, regIds, 4, (result) ->
-                        logger.debug(result)
+                        #logger.debug(result)
                         res.send 204
                     else
                       logger.debug "gcmId not set for #{friendname}"
