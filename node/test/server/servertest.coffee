@@ -99,9 +99,16 @@ describe "surespot server", () ->
 
   describe "login with invalid credentials", ->
     it "should return 401", (done) ->
+      login "test", "bollocks", done, (res, body) ->
+        res.statusCode.should.equal 401
+        done()
+
+  describe "login with non existant user", ->
+    it "should return 401", (done) ->
       login "your", "mama", done, (res, body) ->
         res.statusCode.should.equal 401
         done()
+
 
   describe "login with valid credentials", ->
     it "should return 204", (done) ->

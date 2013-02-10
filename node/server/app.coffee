@@ -704,7 +704,6 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         return done(null, false,
           message: "Unknown user"
         )
-      return done null, user
       logger.debug "user.password: " + user.password
       bcrypt.compare password, user.password, (err, res) ->
         return fn(new Error("[bcrypt.compare] failed with error: " + err))  if err?
