@@ -13,7 +13,7 @@ rc = redis.createClient()
 
 baseUri = "https://localhost"
 minclient = 0
-clients = 10
+clients = 1000
 jars = []
 
 http.globalAgent.maxSockets = 1000
@@ -194,5 +194,5 @@ describe "surespot chat test", () ->
       done()
 
 
-  #after (done) -> cleanup done
+  after (done) -> cleanup done
 
