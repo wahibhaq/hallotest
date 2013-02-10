@@ -14,6 +14,6 @@ for i in [minclient..minclient+clients-1] by 1
     "messages:test:test#{num}",
     "conversations:test#{num}"]
   rc.del keys, (err, blah) ->
-    
+
 
 

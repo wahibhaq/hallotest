@@ -25,7 +25,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   expressWinston = require "express-winston"
   logger = require("winston")
   logger.remove winston.transports.Console
-  logger.add winston.transports.Console, {colorize:true, timestamp: true, level: 'info' }
+  logger.add winston.transports.Console, {colorize:true, timestamp: true, level: 'debug' }
   logger.setLevels winston.config.syslog.levels
   #logger.add winston.transports.File, { filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'error' }
 

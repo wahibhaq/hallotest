@@ -1,4 +1,4 @@
-http = require("request")
+request = require("request")
 assert = require("assert")
 should = require("should")
 redis = require("redis")
@@ -8,6 +8,10 @@ io = require 'socket.io-client'
 rc = redis.createClient()
 port = 443
 baseUri = "https://localhost:" + port
+jar1 = undefined
+jar2 = undefined
+cookie1 = undefined
+cookie2 = undefined
 
 cleanup = (done) ->
   keys = [
@@ -32,7 +36,7 @@ cleanup = (done) ->
 
 
 login = (username, password, jar, done, callback) ->
-  http.post
+  request.post
     url: baseUri + "/login"
     jar: jar
     json:
@@ -42,10 +46,11 @@ login = (username, password, jar, done, callback) ->
     if err
       done err
     else
-      callback res, body
+      cookie = jar.get({ url: baseUri }).map((c) -> c.name + "=" + c.value ).join("; ")
+      callback res, body, cookie
 
 signup = (username, password, jar, done, callback) ->
-  http.post
+  request.post
     url: baseUri + "/users"
     jar: jar
     json:
@@ -55,36 +60,8 @@ signup = (username, password, jar, done, callback) ->
     if err
       done err
     else
-      callback res, body
-
-#patch things to send auth cookie in socket.io handshake...thanks to https://gist.github.com/jfromaniello/4087861
-#for this to work socket.io-client package.json needs to be changed to use xmlhttprequest version 1.5.0
-# then npm update
-jar1 = http.jar()
-jar2 = http.jar()
-j = jar1
-
-originalRequest = require('socket.io-client/node_modules/xmlhttprequest').XMLHttpRequest
-
-` require('socket.io-client/node_modules/xmlhttprequest').XMLHttpRequest = function(){
-    originalRequest.apply(this, arguments);
-    this.setDisableHeaderCheck(true);
-    var stdOpen = this.open;
-
-    /*
-    * don't know how to do this in coffeescript, it always returns a value
-    */
-    this.open = function() {
-      stdOpen.apply(this, arguments);
-      var header = j.get({ url: baseUri })
-      .map(function (c) {
-        return c.name + "=" + c.value;
-      }).join("; ");
-       this.setRequestHeader('cookie', header);
-    };
-  };`
-
-
+      cookie = jar.get({ url: baseUri }).map((c) -> c.name + "=" + c.value ).join("; ")
+      callback res, body, cookie
 
 describe "surespot chat test", () ->
   before (done) -> cleanup done
@@ -94,16 +71,18 @@ describe "surespot chat test", () ->
   jsonMessage = {to:"test",from:"test1",iv:1,data:"message data",mimeType:"text/plain"}
 
   it 'client 1 connect', (done) ->
-    signup 'test', 'test',jar1, done, (res, body) ->
-      j = jar1
-      client = io.connect baseUri, { 'force new connection': true}
+    jar1 = request.jar()
+    signup 'test', 'test', jar1 , done, (res, body, cookie) ->
+      client = io.connect baseUri, { 'force new connection': true}, cookie
+      cookie1 = cookie
       client.once 'connect', ->
         done()
 
   it 'client 2 connect', (done) ->
-    signup 'test1', 'test1', jar2, done, (res, body) ->
-      j = jar2
-      client1 = io.connect baseUri, { 'force new connection': true}
+    jar2 = request.jar()
+    signup 'test1', 'test1', jar2, done, (res, body, cookie) ->
+      client1 = io.connect baseUri, { 'force new connection': true}, cookie
+      cookie2 = cookie
       client1.once 'connect', ->
         done()
 
@@ -125,20 +104,19 @@ describe "surespot chat test", () ->
       receivedMessage.mimeType.should.equal jsonMessage.mimeType
       done()
 
-    http.post
+    request.post
       jar: jar2
       url: baseUri + "/invite/test", (err, res, body) ->
         if err
           done err
         else
-          http.post
+          request.post
             jar: jar1
             url: baseUri + "/invites/test1/accept", (err, res, body) ->
               if err
                 done err
               else
-                j = jar1
-                client = io.connect baseUri, { 'force new connection': true}
+                client = io.connect baseUri, { 'force new connection': true}, cookie1
                 client.once 'connect', ->
                   jsonMessage.from = "test"
                   jsonMessage.to = "test1"
