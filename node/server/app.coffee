@@ -535,19 +535,40 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
   app.get "/publickey/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setCache(30*oneYear), getPublicKey
 
-  app.get "/users/:username/exists", setNoCache, (req, res) ->
+  app.get "/users/:username/exists", setNoCache, (req, res, next) ->
     userExists req.params.username, (err, exists) ->
       return next err if err?
       res.send exists
 
-  app.post "/login", passport.authenticate("local"), (req, res) ->
+  app.post "/login", passport.authenticate("local"), (req, res, next) ->
     logger.debug "/login post"
     res.send 204
 
-  app.post "/users", createNewUserAccount, passport.authenticate("local"), (req, res) ->
+  app.post "/users", createNewUserAccount, passport.authenticate("local"), (req, res, next) ->
     res.send 201
 
-  app.post "/registergcm", ensureAuthenticated, (req, res) ->
+  app.post "/validate", (req, res, next) ->
+    username = req.body.username
+    password = req.body.password
+    publickey = req.body.publickey
+    userKey = "users:" + username
+    rcs.hgetall userKey, (err, user) ->
+      return next err if err?
+      return res.send 404 if user is null
+
+      comparePassword password, user.password, (err, match) ->
+        return next new Error("[bcrypt.compare] failed with error: " + err) if err?
+        return res.send 403 if not match
+        if publickey
+          res.send publickey == user.publickey
+        else
+          res.send true
+
+
+
+
+
+  app.post "/registergcm", ensureAuthenticated, (req, res, next) ->
     gcmId = req.body.gcmId
     userKey = "users:" + req.user.username
     rc.hset userKey, "gcmId", gcmId, (err) ->
@@ -694,24 +715,21 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   process.on "uncaughtException", uncaught = (err) ->
     logger.error "Uncaught Exception: " + err
 
+  comparePassword = (password, dbpassword, callback) ->
+    bcrypt.compare password, dbpassword, callback
+
+
   passport.use new LocalStrategy (username, password, done) ->
     userKey = "users:" + username
     logger.debug "looking for: " + userKey
-    logger.debug "password: " + password
+    #logger.debug "password: " + password
     rcs.hgetall userKey, (err, user) ->
-      return done(err)  if err?
-      unless user
-        return done(null, false,
-          message: "Unknown user"
-        )
-      logger.debug "user.password: " + user.password
-      bcrypt.compare password, user.password, (err, res) ->
-        return fn(new Error("[bcrypt.compare] failed with error: " + err))  if err?
-        logger.debug res
+      return done(err) if err?
+      return done null, false, message: "Unknown user" if user is null
+      comparePassword password, user.password, (err, res) ->
+        return done(new Error("[bcrypt.compare] failed with error: " + err))  if err?
         return done(null, user)  if res is true
-        done null, false,
-          message: "Invalid password"
-
+        done null, false, message: "Invalid password"
 
 
 
