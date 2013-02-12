@@ -617,7 +617,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
                   gcmmessage.addData "to", friendname
                   gcmmessage.delayWhileIdle = true
                   gcmmessage.timeToLive = 3
-                  gcmmessage.collapseKey = "invite:#{getRoomName(username,friendname)}"
+                  gcmmessage.collapseKey = "invite:#{friendname}"
                   regIds = [gcmId]
 
                   sender.send gcmmessage, regIds, 4, (result) ->
@@ -671,7 +671,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
                       gcmmessage.addData("response", req.params.action)
                       gcmmessage.delayWhileIdle = true
                       gcmmessage.timeToLive = 3
-                      gcmmessage.collapseKey = "inviteResponse:#{getRoomName(username,friendname)}"
+                      gcmmessage.collapseKey = "inviteResponse:#{friendname}"
                       regIds = [gcmId]
 
                       sender.send gcmmessage, regIds, 4, (result) ->
