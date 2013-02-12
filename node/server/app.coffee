@@ -398,7 +398,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
             gcmmessage.addData("mimeType", message.mimeType)
             gcmmessage.delayWhileIdle = true
             gcmmessage.timeToLive = 3
-            gcmmessage.collapseKey = "message:#{to}"
+            gcmmessage.collapseKey = "message:#{getRoomName(message.from,message.to)}"
             regIds = [gcm_id]
 
             sender.send gcmmessage, regIds, 4, (result) ->
@@ -612,11 +612,12 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
                   logger.debug "sending gcm notification"
                   gcmmessage = new gcm.Message()
                   sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
-                  gcmmessage.addData("type", "invite")
-                  gcmmessage.addData("user", username)
+                  gcmmessage.addData "type", "invite"
+                  gcmmessage.addData "sentfrom", username
+                  gcmmessage.addData "to", friendname
                   gcmmessage.delayWhileIdle = true
                   gcmmessage.timeToLive = 3
-                  gcmmessage.collapseKey = "invite:#{friendname}"
+                  gcmmessage.collapseKey = "invite:#{getRoomName(username,friendname)}"
                   regIds = [gcmId]
 
                   sender.send gcmmessage, regIds, 4, (result) ->
@@ -665,11 +666,12 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
                       gcmmessage = new gcm.Message()
                       sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
                       gcmmessage.addData("type", "inviteResponse")
-                      gcmmessage.addData("user", username)
+                      gcmmessage.addData "sentfrom", username
+                      gcmmessage.addData "to", friendname
                       gcmmessage.addData("response", req.params.action)
                       gcmmessage.delayWhileIdle = true
                       gcmmessage.timeToLive = 3
-                      gcmmessage.collapseKey = "inviteResponse"
+                      gcmmessage.collapseKey = "inviteResponse:#{getRoomName(username,friendname)}"
                       regIds = [gcmId]
 
                       sender.send gcmmessage, regIds, 4, (result) ->
