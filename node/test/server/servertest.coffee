@@ -60,9 +60,8 @@ describe "surespot server", () ->
   before (done) -> cleanup done
 
   describe "create user", () ->
-    it "should respond with 204", (done) ->
+    it "should respond with 201", (done) ->
       signup "test","test", done, (res, body) ->
-        #should get a no content
         res.statusCode.should.equal 201
         done()
 
