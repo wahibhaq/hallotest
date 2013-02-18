@@ -114,7 +114,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     client = createRedisClient(redisPort, redisHost, redisAuth)
 
   app.configure "linode", ->
-    logger.debug "running on amazon-stage"
+    logger.debug "running on linode"
     nodePort = 443
     redisPort = 6379
     socketPort = 443
