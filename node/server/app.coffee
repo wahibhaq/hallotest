@@ -1,11 +1,11 @@
 requirejs = require 'requirejs'
 requirejs.config {
-#appDir: '.'
-nodeRequire: require
-paths:
-  {
-  'cs': '../assets/js/lib/server/cs'
-  }
+##appDir: '.'
+  nodeRequire: require
+#  paths:
+#    {
+#      'cs': 'cs'
+#    }
 }
 
 requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
@@ -474,7 +474,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   oneYear = 31557600000
   staticMiddleware = express["static"](__dirname + "/static", { maxAge: oneYear})
 
-  app.get "/images/:room/:id",  ensureAuthenticated, (req,res,next) ->
+  app.get "/images/:room/:id", ensureAuthenticated, (req,res,next) ->
     username = req.user.username
     room = req.params.room
     users = room.split ":"
