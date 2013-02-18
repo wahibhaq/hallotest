@@ -246,7 +246,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   getPublicKey = (req, res, next) ->
     if req.params.username
       username = req.params.username
-      rc.hget "users:" + username, "publickey", (err, data) ->
+      rc.hget "users:" + username, "pkdh", (err, data) ->
         return next err if err
         if data?
           res.setHeader "Cache-Control", "public, max-age=#{oneYear}"
@@ -289,8 +289,12 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         user.username = req.body.username
 
 
-        if req.body.publickey?
-          user.publickey = req.body.publickey
+        if req.body.pkdh?
+          user.pkdh = req.body.pkdh
+
+        if req.body.pkecdsa?
+          user.pkecdsa = req.body.pkecdsa
+
 
         if req.body.gcmId?
           user.gcmId = req.body.gcmId
@@ -302,6 +306,10 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
           bcrypt.hash password, salt, (err, password) ->
             return next err if err?
             user.password = password
+
+            #sign the key
+
+
             rc.hmset userKey, user, (err, data) ->
               logger.debug "set " + userKey + " in db"
               return next new Error("[createNewUserAccount] SET failed for user: " + username) if err?
