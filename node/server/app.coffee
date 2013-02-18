@@ -113,6 +113,20 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     sub = createRedisClient(redisPort, redisHost, redisAuth)
     client = createRedisClient(redisPort, redisHost, redisAuth)
 
+  app.configure "linode", ->
+    logger.debug "running on amazon-stage"
+    nodePort = 443
+    redisPort = 6379
+    socketPort = 443
+    redisHost = "127.0.0.1"
+    redisAuth = "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040"
+    sessionStore = new RedisStore()
+    dal = new DAL()
+    rc = createRedisClient()
+    rcs = createRedisClient()
+    pub = createRedisClient()
+    sub = createRedisClient()
+    client = createRedisClient()
 
 
   app.configure ->
