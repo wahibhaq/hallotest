@@ -1,6 +1,5 @@
 .DS_Store
 .idea
 surespot-*
-node/assets/
 android/assets/
 node_modules/
