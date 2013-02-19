@@ -31,7 +31,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   logger.setLevels winston.config.syslog.levels
 
   transports = [
-    new (winston.transports.Console)( {colorize: true, timestamp: true, level: 'debug' }),
+    new (winston.transports.Console)({colorize: true, timestamp: true, level: 'debug' }),
     new (winston.transports.File)({ filename: 'logs/server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'debug' })]
 
   logger.add transports[0], null, true
@@ -77,6 +77,19 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     key: fs.readFileSync('ssllocal/local.key'),
     cert: fs.readFileSync('ssllocal/local.crt')
     }
+
+  # create EC keys like so
+  # priv key
+  # openssl ecparam -name secp521r1 -outform PEM -out priv.pem -genkey
+  # pub key
+  # openssl ec -inform PEM  -outform PEM -in priv.pem -out pub.pem -pubout
+  #
+  # verify signature like so
+  # openssl dgst -sha256 -verify key -signature sig.bin data
+
+
+  serverPrivateKey = fs.readFileSync('ec/priv.pem')
+  serverPublicKey = fs.readFileSync('ec/pub.pem')
 
 
   if ssl
@@ -314,16 +327,19 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         #        fs.writeFileSync "#{user.username}.sig", user.signature
         #        fs.writeFileSync "#{user.username}.key", key
         #        fs.writeFileSync "#{user.username}.data", user.username
-
         logger.debug "gcmID: #{user.gcmId}"
-        userKey = "users:" + user.username
+
         bcrypt.genSalt 10, (err, salt) ->
           return next err if err?
           bcrypt.hash password, salt, (err, password) ->
             return next err if err?
             user.password = password
 
-            #sign the key
+            #sign the keys
+            user.dhSig = crypto.createSign('sha256').update(new Buffer(user.pkdh, 'base64')).sign(serverPrivateKey, 'base64')
+            user.dsaSig = dhSign = crypto.createSign('sha256').update(new Buffer(user.pkecdsa, 'base64')).sign(serverPrivateKey, 'base64')
+
+            userKey = "users:" + user.username
             rc.hmset userKey, user, (err, data) ->
               logger.debug "set " + userKey + " in db"
               return next new Error("[createNewUserAccount] SET failed for user: " + username) if err?
