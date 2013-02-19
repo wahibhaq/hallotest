@@ -1,7 +1,7 @@
 requirejs = require 'requirejs'
 requirejs.config {
 ##appDir: '.'
-  nodeRequire: require
+nodeRequire: require
 #  paths:
 #    {
 #      'cs': 'cs'
@@ -15,19 +15,21 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   express = require("express")
   passport = require("passport")
   LocalStrategy = require("passport-local").Strategy
-  bcrypt = require "bcrypt"
+  crypto = require 'crypto'
   RedisStore = require("connect-redis")(express)
   path = require 'path'
   util = require("util")
   gcm = require("node-gcm")
   fs = require("fs")
+  bcrypt = require 'bcrypt'
+  dcrypt = require 'dcrypt'
   mkdirp = require("mkdirp")
   expressWinston = require "express-winston"
   logger = require("winston")
   logger.remove winston.transports.Console
-  logger.add winston.transports.Console, {colorize:true, timestamp: true, level: 'debug' }
+  logger.add winston.transports.Console, {colorize: true, timestamp: true, level: 'debug' }
   logger.setLevels winston.config.syslog.levels
-  logger.add winston.transports.File, { filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'debug' }
+  logger.add winston.transports.File, { filename: 'logs/server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'debug' }
 
   nodePort = 443
   socketPort = 443
@@ -59,17 +61,16 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   ssl = process.env.NODE_SSL is "true"
 
 
-
   if not dev
     ssloptions = {
-      key: fs.readFileSync('ssl/surespot.key'),
-      cert: fs.readFileSync('ssl/www_surespot_me.crt'),
-      ca: fs.readFileSync('ssl/PositiveSSLCA2.crt')
+    key: fs.readFileSync('ssl/surespot.key'),
+    cert: fs.readFileSync('ssl/www_surespot_me.crt'),
+    ca: fs.readFileSync('ssl/PositiveSSLCA2.crt')
     }
   else
     ssloptions = {
-      key: fs.readFileSync('ssllocal/local.key'),
-      cert: fs.readFileSync('ssllocal/local.crt')
+    key: fs.readFileSync('ssllocal/local.key'),
+    cert: fs.readFileSync('ssllocal/local.crt')
     }
 
 
@@ -140,18 +141,18 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     app.use passport.initialize()
     app.use passport.session()
     app.use expressWinston.logger({
-      transports: [logger]
+    transports: [logger]
     })
     app.use app.router
     app.use expressWinston.errorLogger({
-      transports: [logger]
+    transports: [logger]
     })
 
 
     app.use express.errorHandler({
-      showMessage: true,
-      showStack: false,
-      dumpExceptions: false
+    showMessage: true,
+    showStack: false,
+    dumpExceptions: false
     })
 
   app.listen nodePort
@@ -204,11 +205,11 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       logger.profile 'ensureAuthenticated'
       res.send 401
 
-  setNoCache = (req,res,next) ->
+  setNoCache = (req, res, next) ->
     res.setHeader "Cache-Control", "no-cache"
     next()
 
-  setCache = (seconds) -> (req,res,next) ->
+  setCache = (seconds) -> (req, res, next) ->
     res.setHeader "Cache-Control", "public, max-age=#{seconds}"
     next()
 
@@ -263,12 +264,12 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       fn null, data
 
   getMessagesAfterId = (room, id, fn) ->
-    rc.zrangebyscore "messages:" + room, "("+id, "+inf", (err, data) ->
+    rc.zrangebyscore "messages:" + room, "(" + id, "+inf", (err, data) ->
       return fn err if err?
       fn null, data
 
   getMessagesBeforeId = (room, id, fn) ->
-    rc.zrangebyscore "messages:" + room,  id-30, "("+id , (err, data) ->
+    rc.zrangebyscore "messages:" + room, id - 30, "(" + id, (err, data) ->
       return fn err if err?
       fn null, data
 
@@ -288,18 +289,32 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         user = {}
         user.username = req.body.username
 
-
         if req.body.pkdh?
           user.pkdh = req.body.pkdh
+        else
+          return next new Error('ecdh public key required')
 
         if req.body.pkecdsa?
           user.pkecdsa = req.body.pkecdsa
+        else
+          return next new Error('ecdsa public key required')
 
+        if req.body.signature?
+          user.signature = req.body.signature
+        else
+          return next new Error('signature required')
 
         if req.body.gcmId?
           user.gcmId = req.body.gcmId
 
-        logger.debug "gcmID: " + user.gcmId
+        #todo server sign
+        #dump the key stuff to a file
+#        key = '-----BEGIN PUBLIC KEY-----\n' + req.body.pkdh + '-----END PUBLIC KEY-----\n'
+#        fs.writeFileSync "#{user.username}.sig", user.signature
+#        fs.writeFileSync "#{user.username}.key", key
+#        fs.writeFileSync "#{user.username}.data", user.username
+
+        logger.debug "gcmID: #{user.gcmId}"
         userKey = "users:" + user.username
         bcrypt.genSalt 10, (err, salt) ->
           return next err if err?
@@ -323,7 +338,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       if (resendId > 0)
         logger.debug "searching room: #{room} from id: #{resendId} for duplicate messages"
         #check messages client doesn't have for dupes
-        getMessagesAfterId room, resendId, (err,data) ->
+        getMessagesAfterId room, resendId, (err, data) ->
           return callback err if err
           found = _.find data, (checkMessageJSON) ->
             checkMessage = JSON.parse(checkMessageJSON)
@@ -333,11 +348,11 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
             else
               logger.debug "comparing ivs"
               checkMessage.iv == message.iv
-          callback null,found
+          callback null, found
       else
         logger.debug "searching 30 messages from room: #{room} for duplicates"
         #check last 30 for dupes
-        getMessages room, 30, (err,data) ->
+        getMessages room, 30, (err, data) ->
           return callback err if err
           found = _.find data, (checkMessageJSON) ->
             checkMessage = JSON.parse(checkMessageJSON)
@@ -361,7 +376,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       else
         callback newId
 
-  createAndSendMessage = (from,to,iv,data,mimeType, id) ->
+  createAndSendMessage = (from, to, iv, data, mimeType, id) ->
     logger.debug "new message"
     message = {}
     message.to = to
@@ -387,12 +402,12 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
         #if this is the first message, add the "room" to the user's list of rooms
         if (id == 1)
-          rc.sadd "conversations:"+from, room, (err,data) ->
+          rc.sadd "conversations:" + from, room, (err, data) ->
             if err?
               logger.error ("ERROR: Socket.io onmessage, " + err)
               return
 
-            rc.sadd "conversations:"+to, room, (err,data) ->
+            rc.sadd "conversations:" + to, room, (err, data) ->
               if err
                 logger.error ("ERROR: Socket.io onmessage, " + err)
                 return
@@ -420,7 +435,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
             gcmmessage.addData("mimeType", message.mimeType)
             gcmmessage.delayWhileIdle = true
             gcmmessage.timeToLive = 3
-            gcmmessage.collapseKey = "message:#{getRoomName(message.from,message.to)}"
+            gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
             regIds = [gcm_id]
 
             sender.send gcmmessage, regIds, 4, (result) ->
@@ -473,7 +488,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
                 createAndSendMessage from, to, iv, cipherdata, mimeType
 
 
-  app.post "/images/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req,res,next) ->
+  app.post "/images/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
     #create a message and send it to chat recipients
     room = getRoomName req.user.username, req.params.username
     getNextMessageId room, null, (id) ->
@@ -496,7 +511,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   oneYear = 31557600000
   staticMiddleware = express["static"](__dirname + "/static", { maxAge: oneYear})
 
-  app.get "/images/:room/:id", ensureAuthenticated, (req,res,next) ->
+  app.get "/images/:room/:id", ensureAuthenticated, (req, res, next) ->
     username = req.user.username
     room = req.params.room
     users = room.split ":"
@@ -509,13 +524,13 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
       #req.url = "/images/" + req.params.room + "/" + req.params.id
       #authenticate but use static so we can use http caching
-      staticMiddleware req,res,next
+      staticMiddleware req, res, next
 
   #get last x messages
   app.get "/messages/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
     #return last x messages
     getMessages getRoomName(req.user.username, req.params.username), 30, (err, data) ->
-#    rc.zrange "messages:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
+      #    rc.zrange "messages:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
       return next err if err?
       res.send data
 
@@ -543,19 +558,19 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         rc.mget conversationsWithId, (err, ids) ->
           return next err if err?
           some = {}
-          _.each conversations, (conversation,i) -> some[getOtherUser conversation,req.user.username] = ids[i]
+          _.each conversations, (conversation, i) -> some[getOtherUser conversation, req.user.username] = ids[i]
           res.send some
       else
-          res.send 204
+        res.send 204
 
 
   #app.get "/test", (req, res) ->
-   # res.sendfile path.normalize __dirname + "/../assets/html/test.html"
+  # res.sendfile path.normalize __dirname + "/../assets/html/test.html"
 
   #app.get "/", (req, res) ->
-   # res.sendfile path.normalize __dirname + "/../assets/html/layout.html"
+  # res.sendfile path.normalize __dirname + "/../assets/html/layout.html"
 
-  app.get "/publickey/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setCache(30*oneYear), getPublicKey
+  app.get "/publickey/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setCache(30 * oneYear), getPublicKey
 
   app.get "/users/:username/exists", setNoCache, (req, res, next) ->
     userExists req.params.username, (err, exists) ->
@@ -563,6 +578,16 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       res.send exists
 
   app.post "/login", passport.authenticate("local"), (req, res, next) ->
+    username = req.body.username
+    password = req.body.password
+
+    signThis = username + password + req.body.pkdh
+
+    #ssl wants the key in PEM format not DER
+    key = '-----BEGIN PUBLIC KEY-----\n' + req.body.pkdh + '-----END PUBLIC KEY-----\n'
+    verified = crypto.createVerify('sha256').update(username).verify(key, new Buffer(req.body.signature, 'base64'))
+
+    logger.debug "verified: #{verified}"
     logger.debug "/login post"
     res.send 204
 
@@ -585,9 +610,6 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
           res.send publickey == user.publickey
         else
           res.send true
-
-
-
 
 
   app.post "/registergcm", ensureAuthenticated, (req, res, next) ->
@@ -673,7 +695,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
               return next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
               rc.sadd "friends:#{friendname}", username, (err, data) ->
                 return next new Error("[friend] sadd failed for username: " + friendname + ", friendname" + username) if err?
-                sio.sockets.to(friendname).emit "inviteResponse",JSON.stringify { user: username, response: req.params.action }
+                sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: req.params.action }
 
                 if (req.params.action == "accept")
                   userKey = "users:" + friendname
@@ -707,7 +729,6 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
               return next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
               sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: req.params.action }
               res.send 204
-
 
 
   getFriends = (req, res, next) ->
@@ -754,7 +775,6 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         return done(new Error("[bcrypt.compare] failed with error: " + err))  if err?
         return done(null, user)  if res is true
         done null, false, message: "Invalid password"
-
 
 
   passport.serializeUser (user, done) ->
