@@ -259,13 +259,20 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     users = room.split ":"
     if user == users[0] then return users[1] else return users[0]
 
-  getPublicKey = (req, res, next) ->
+  getPublicIdentity = (req, res, next) ->
     if req.params.username
       username = req.params.username
-      rc.hget "users:" + username, "pkdh", (err, data) ->
+      rc.hgetall "users:" + username, (err, data) ->
         return next err if err
         if data?
+          #todo use properly
           res.setHeader "Cache-Control", "public, max-age=#{oneYear}"
+          user = {}
+          user.username = data.username
+          user.dhPub = data.dhPub
+          user.dsaPub = data.dsaPub
+          user.dsaPubSig = data.dsaPubSig
+          user.dhPubSig = data.dhPubSig
           res.send data
         else
           res.send 404
@@ -303,28 +310,26 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         user = {}
         user.username = req.body.username
 
-        if req.body.pkdh?
-          user.pkdh = req.body.pkdh
+        if req.body.dhPub?
+          user.dhPub = req.body.dhPub
         else
-          return next new Error('ecdh public key required')
+          return next new Error('dh public key required')
 
-        if req.body.pkecdsa?
-          user.pkecdsa = req.body.pkecdsa
+        if req.body.dsaPub?
+          user.dsaPub = req.body.dsaPub
         else
-          return next new Error('ecdsa public key required')
+          return next new Error('dsa public key required')
 
-        if req.body.signature?
-          user.signature = req.body.signature
-        else
-          return next new Error('signature required')
+        if req.body.authSig is null
+          return next new Error('auth signature required')
 
         if req.body.gcmId?
           user.gcmId = req.body.gcmId
 
         #todo server sign
         #dump the key stuff to a file
-        #        key = '-----BEGIN PUBLIC KEY-----\n' + req.body.pkdh + '-----END PUBLIC KEY-----\n'
-        #        fs.writeFileSync "#{user.username}.sig", user.signature
+        #        key = '-----BEGIN PUBLIC KEY-----\n' + req.body.dhPub + '-----END PUBLIC KEY-----\n'
+        #        fs.writeFileSync "#{user.username}.sig", user.authSig
         #        fs.writeFileSync "#{user.username}.key", key
         #        fs.writeFileSync "#{user.username}.data", user.username
         logger.debug "gcmID: #{user.gcmId}"
@@ -336,8 +341,9 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
             user.password = password
 
             #sign the keys
-            user.dhSig = crypto.createSign('sha256').update(new Buffer(user.pkdh, 'base64')).sign(serverPrivateKey, 'base64')
-            user.dsaSig = dhSign = crypto.createSign('sha256').update(new Buffer(user.pkecdsa, 'base64')).sign(serverPrivateKey, 'base64')
+            user.dhPubSig = crypto.createSign('sha256').update(new Buffer(user.dhPub, 'base64')).sign(serverPrivateKey, 'base64')
+            user.dsaPubSig = crypto.createSign('sha256').update(new Buffer(user.dsaPub, 'base64')).sign(serverPrivateKey, 'base64')
+            logger.debug "#{user.username}, dhPubSig: #{user.dhPubSig}, dsaPubSig: #{user.dsaPubSig}"
 
             userKey = "users:" + user.username
             rc.hmset userKey, user, (err, data) ->
@@ -584,7 +590,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   #app.get "/", (req, res) ->
   # res.sendfile path.normalize __dirname + "/../assets/html/layout.html"
 
-  app.get "/publickey/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setCache(30 * oneYear), getPublicKey
+  app.get "/publicidentity/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setCache(30 * oneYear), getPublicIdentity
 
   app.get "/users/:username/exists", setNoCache, (req, res, next) ->
     userExists req.params.username, (err, exists) ->
@@ -769,7 +775,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
 
   passport.use new LocalStrategy ({passReqToCallback: true}), (req, username, password, done) ->
-    signature = req.body.signature
+    signature = req.body.authSig
 
     userKey = "users:" + username
     logger.debug "looking for: " + userKey
@@ -789,7 +795,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         signature = buffer.slice 16
 
         #ssl wants the key in PEM format not DER
-        key = '-----BEGIN PUBLIC KEY-----\n' + user.pkecdsa + '-----END PUBLIC KEY-----\n'
+        key = '-----BEGIN PUBLIC KEY-----\n' + user.dsaPub + '-----END PUBLIC KEY-----\n'
 
         verified = crypto.createVerify('sha256').update(new Buffer(username)).update(new Buffer(password)).update(random).verify(key, signature)
         logger.debug "verified: #{verified}"
