@@ -26,11 +26,16 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   mkdirp = require("mkdirp")
   expressWinston = require "express-winston"
   logger = require("winston")
-  logger.remove winston.transports.Console
-  logger.add winston.transports.Console, {colorize: true, timestamp: true, level: 'debug' }
-  logger.setLevels winston.config.syslog.levels
-  logger.add winston.transports.File, { filename: 'logs/server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'debug' }
 
+  logger.remove winston.transports.Console
+  logger.setLevels winston.config.syslog.levels
+
+  transports = [
+    new (winston.transports.Console)( {colorize: true, timestamp: true, level: 'debug' }),
+    new (winston.transports.File)({ filename: 'logs/server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'debug' })]
+
+  logger.add transports[0], null, true
+  logger.add transports[1], null, true
   nodePort = 443
   socketPort = 443
   sio = undefined
@@ -141,11 +146,11 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     app.use passport.initialize()
     app.use passport.session()
     app.use expressWinston.logger({
-    transports: [logger]
+    transports: transports
     })
     app.use app.router
     app.use expressWinston.errorLogger({
-    transports: [logger]
+    transports: transports
     })
 
 
@@ -194,15 +199,12 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       accept "No cookie transmitted.", false
 
   ensureAuthenticated = (req, res, next) ->
-    logger.profile 'ensureAuthenticated'
     logger.debug "ensureAuth"
     if req.isAuthenticated()
       logger.debug "authorized"
-      logger.profile 'ensureAuthenticated'
       next()
     else
       logger.debug "401"
-      logger.profile 'ensureAuthenticated'
       res.send 401
 
   setNoCache = (req, res, next) ->
@@ -275,7 +277,6 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
   createNewUserAccount = (req, res, next) ->
     logger.debug "createNewUserAccount"
-    logger.profile 'createNewUserAccount'
 
     #var newUser = {name:name, email:email };
     userExists req.body.username, (err, exists) ->
@@ -309,10 +310,10 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
         #todo server sign
         #dump the key stuff to a file
-#        key = '-----BEGIN PUBLIC KEY-----\n' + req.body.pkdh + '-----END PUBLIC KEY-----\n'
-#        fs.writeFileSync "#{user.username}.sig", user.signature
-#        fs.writeFileSync "#{user.username}.key", key
-#        fs.writeFileSync "#{user.username}.data", user.username
+        #        key = '-----BEGIN PUBLIC KEY-----\n' + req.body.pkdh + '-----END PUBLIC KEY-----\n'
+        #        fs.writeFileSync "#{user.username}.sig", user.signature
+        #        fs.writeFileSync "#{user.username}.key", key
+        #        fs.writeFileSync "#{user.username}.data", user.username
 
         logger.debug "gcmID: #{user.gcmId}"
         userKey = "users:" + user.username
@@ -323,14 +324,11 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
             user.password = password
 
             #sign the key
-
-
             rc.hmset userKey, user, (err, data) ->
               logger.debug "set " + userKey + " in db"
               return next new Error("[createNewUserAccount] SET failed for user: " + username) if err?
-              req.login user, null, ->
+              req.login user, ->
                 req.user = user
-                logger.profile 'createNewUserAccount'
                 next()
 
   checkForDuplicateMessage = (resendId, room, message, callback) ->
@@ -578,16 +576,6 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       res.send exists
 
   app.post "/login", passport.authenticate("local"), (req, res, next) ->
-    username = req.body.username
-    password = req.body.password
-
-    signThis = username + password + req.body.pkdh
-
-    #ssl wants the key in PEM format not DER
-    key = '-----BEGIN PUBLIC KEY-----\n' + req.body.pkdh + '-----END PUBLIC KEY-----\n'
-    verified = crypto.createVerify('sha256').update(username).verify(key, new Buffer(req.body.signature, 'base64'))
-
-    logger.debug "verified: #{verified}"
     logger.debug "/login post"
     res.send 204
 
@@ -764,18 +752,35 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     bcrypt.compare password, dbpassword, callback
 
 
-  passport.use new LocalStrategy (username, password, done) ->
+  passport.use new LocalStrategy ({passReqToCallback: true}), (req, username, password, done) ->
+    signature = req.body.signature
+
     userKey = "users:" + username
     logger.debug "looking for: " + userKey
     #logger.debug "password: " + password
     rcs.hgetall userKey, (err, user) ->
       return done(err) if err?
-      return done null, false, message: "Unknown user" if user is null
+      return done null, false, message: "unknown user" if user is null
       comparePassword password, user.password, (err, res) ->
-        return done(new Error("[bcrypt.compare] failed with error: " + err))  if err?
-        return done(null, user)  if res is true
-        done null, false, message: "Invalid password"
+        return done new Error("[bcrypt.compare] failed with error: " + err) if err?
+        return done null, false, message: "invalid password" if res is false
 
+        #get the signature
+        buffer = new Buffer(signature, 'base64')
+
+        #random is stored in first 16 bytes
+        random = buffer.slice 0, 16
+        signature = buffer.slice 16
+
+        #ssl wants the key in PEM format not DER
+        key = '-----BEGIN PUBLIC KEY-----\n' + user.pkecdsa + '-----END PUBLIC KEY-----\n'
+
+        verified = crypto.createVerify('sha256').update(new Buffer(username)).update(new Buffer(password)).update(random).verify(key, signature)
+        logger.debug "verified: #{verified}"
+        if verified
+          done null, user
+        else
+          done null, false, message: 'invalid signature'
 
   passport.serializeUser (user, done) ->
     logger.debug "serializeUser, username: " + user.username
