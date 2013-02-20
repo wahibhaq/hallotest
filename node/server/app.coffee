@@ -611,9 +611,9 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   app.post "/validate", (req, res, next) ->
     username = req.body.username
     password = req.body.password
-    signature = req.body.signature
+    authSig = req.body.authSig
 
-    validateUser username, password, signature, (err, status, user) ->
+    validateUser username, password, authSig, (err, status, user) ->
       return next err if err?
       res.send status
 
@@ -767,7 +767,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
 
   validateUser = (username, password, signature, done) ->
-    done(null, 403) if signature.length < 32
+    return done(null, 403) if signature.length < 16
     userKey = "users:" + username
     logger.debug "validating: " + username
     rcs.hgetall userKey, (err, user) ->
@@ -785,9 +785,9 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         signature = buffer.slice 16
 
         verified = crypto.createVerify('sha256').update(new Buffer(username)).update(new Buffer(password)).update(random).verify(user.dsaPub, signature)
-        logger.debug "#{username} verified: #{verified}"
+        logger.debug "validated, #{username}: #{verified}"
 
-        status = if verified then 200 else 403
+        status = if verified then 204 else 403
         done null, status, if verified then user else null
 
 
@@ -799,7 +799,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       switch status
         when 404 then return done null, false, message: "unknown user"
         when 403 then return done null, false, message: "invalid password or key"
-        when 200 then return done null, user
+        when 204 then return done null, user
         else
           return new Error 'unknown validation status: #{status}'
 
