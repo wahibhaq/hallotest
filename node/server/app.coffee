@@ -1,4 +1,3 @@
-
 requirejs = require 'requirejs'
 requirejs.config {
 ##appDir: '.'
@@ -763,12 +762,12 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     res.send 204
 
 
-
   comparePassword = (password, dbpassword, callback) ->
     bcrypt.compare password, dbpassword, callback
 
 
   validateUser = (username, password, signature, done) ->
+    done(null, 403) if signature.length < 32
     userKey = "users:" + username
     logger.debug "validating: " + username
     rcs.hgetall userKey, (err, user) ->
@@ -801,7 +800,8 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         when 404 then return done null, false, message: "unknown user"
         when 403 then return done null, false, message: "invalid password or key"
         when 200 then return done null, user
-        else return new Error 'unknown validation status: #{status}'
+        else
+          return new Error 'unknown validation status: #{status}'
 
   passport.serializeUser (user, done) ->
     logger.debug "serializeUser, username: " + user.username

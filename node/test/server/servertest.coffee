@@ -5,6 +5,7 @@ redis = require("redis")
 util = require("util")
 crypto = require 'crypto'
 dcrypt = require 'dcrypt'
+async = require 'async'
 fs = require("fs")
 rc = redis.createClient()
 port = 443
@@ -12,39 +13,40 @@ baseUri = "https://localhost:" + port
 
 cleanup = (done) ->
   keys = [
-    "users:test",
+    "users:test0",
     "users:test1",
-    "users:notafriend",
-    "friends:test",
+    "users:test2",
+    "friends:test0",
     "friends:test1",
-    "invites:test",
-    "invited:test",
+    "invites:test0",
+    "invited:test0",
     "invites:test1",
     "invited:test1",
-    "test:test1:id",
-    "messages:test:test1",
+    "test0:test1:id",
+    "messages:test0:test1",
     "conversations:test1",
-    "conversations:test",
-    "conversations:notafriend"]
-  rc.del keys,(err, data) ->
+    "conversations:test0",
+    "conversations:test2"]
+  rc.del keys, (err, data) ->
     if err
       done err
     else
       done()
 
-login = (username, password, done,  callback) ->
+login = (username, password, authSig, done, callback) ->
   http.post
     url: baseUri + "/login"
     json:
       username: username
       password: password
+      authSig: authSig
   , (err, res, body) ->
     if err
       done err
     else
       callback res, body
 
-signup = (username, password, dhPub, dsaPub, authSig, done,  callback) ->
+signup = (username, password, dhPub, dsaPub, authSig, done, callback) ->
   http.post
     url: baseUri + "/users"
     json:
@@ -60,90 +62,122 @@ signup = (username, password, dhPub, dsaPub, authSig, done,  callback) ->
       callback res, body
 
 
-describe "surespot server", () ->
+generateKey = (i, callback) ->
+  ecdsa = new dcrypt.keypair.newECDSA 'secp521r1'
+  ecdh = new dcrypt.keypair.newECDSA 'secp521r1'
 
-  before (done) -> cleanup done
+  random = crypto.randomBytes 16
+
+  dsaPubSig =
+    crypto
+      .createSign('sha256')
+      .update(new Buffer("test#{i}"))
+      .update(new Buffer("test#{i}"))
+      .update(random)
+      .sign(ecdsa.pem_priv, 'base64')
+
+  sig = Buffer.concat([random, new Buffer(dsaPubSig, 'base64')]).toString('base64')
+
+  callback null, {
+  ecdsa: ecdsa
+  ecdh: ecdh
+  sig: sig
+  }
+
+
+makeKeys = (i) ->
+  return (callback) ->
+    generateKey i, callback
+
+createKeys = (number, done) ->
+  keys = []
+  for i in [0..number]
+    keys.push makeKeys(i)
+
+  async.parallel keys, (err, results) ->
+    if err?
+      done err
+    else
+      done null, results
+
+
+describe "surespot server", () ->
+  keys = undefined
+  before (done) ->
+    createKeys 3, (err, keyss) ->
+      keys = keyss
+      cleanup done
 
   describe "create user", () ->
     it "should respond with 201", (done) ->
-      ecdsa = new dcrypt.keypair.newECDSA 'secp521r1'
-      #ecdsa = new dcrypt.keypair.newECDH 'secp521r1'
-
-      random = crypto.randomBytes 16
-
-      dsaPubSig =
-        crypto
-          .createSign('sha256')
-          .update(new Buffer("test"))
-          .update(new Buffer("test"))
-          .update(random)
-          .sign(ecdsa.pem_priv, 'base64')
-
-      sig = Buffer.concat [random, dsaPubSig]
-
-      signup "test","test", ecdsa. sig.toString('base64'), done, (res, body) ->
+      signup "test0", "test0", keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body) ->
         res.statusCode.should.equal 201
         done()
 
     it "and subsequently exist", (done) ->
       http.get
-        url: baseUri + "/users/test/exists",
-        (err,res,body) ->
+        url: baseUri + "/users/test0/exists",
+        (err, res, body) ->
           if err
             done err
           else
             body.should.equal "true"
             done()
 
-#    it "even if the request case is different", (done) ->
-#      http.get
-#        url: baseUri + "/users/TEST/exists",
-#        (err,res,body) ->
-#          if err
-#            done err
-#          else
-#            body.should.equal "true"
-#            done()
+    #    it "even if the request case is different", (done) ->
+    #      http.get
+    #        url: baseUri + "/users/TEST/exists",
+    #        (err,res,body) ->
+    #          if err
+    #            done err
+    #          else
+    #            body.should.equal "true"
+    #            done()
 
     it "shouldn't be allowed to be created again", (done) ->
-      signup "test","test", done, (res, body) ->
+      signup "test0", "test0", keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body) ->
         res.statusCode.should.equal 409
         done()
 
-    it "even if the request case is different", (done) ->
-      signup "tEsT","test", done, (res, body) ->
+#    it "even if the request case is different", (done) ->
+#      signup "tEsT", "test", keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body) ->
+#        res.statusCode.should.equal 409
+#        done()
 
-        res.statusCode.should.equal 409
-        done()
-
-  describe "login with invalid credentials", ->
+  describe "login with invalid password", ->
     it "should return 401", (done) ->
-      login "test", "bollocks", done, (res, body) ->
+      login "test0", "bollocks", keys[0].sig, done, (res, body) ->
+        res.statusCode.should.equal 401
+        done()
+
+  describe "login with invalid signature", ->
+    it "should return 401", (done) ->
+      login "test0", "test0", "your mama", done, (res, body) ->
         res.statusCode.should.equal 401
         done()
 
   describe "login with non existant user", ->
     it "should return 401", (done) ->
-      login "your", "mama", done, (res, body) ->
+      login "your", "mama", "what kind of sig is this?", done, (res, body) ->
         res.statusCode.should.equal 401
         done()
 
 
   describe "login with valid credentials", ->
     it "should return 204", (done) ->
-      login "test","test",done,(res,body) ->
+      login "test0", "test0", keys[0].sig, done, (res, body) ->
         res.statusCode.should.equal 204
         done()
 
   describe "invite exchange", ->
     it "created user", (done) ->
-      signup "test1","test1", done, (res, body) ->
+      signup "test1", "test1", keys[1].ecdh.pem_pub, keys[1].ecdsa.pem_pub, keys[1].sig, done, (res, body) ->
         res.statusCode.should.equal 201
         done()
 
     it "should not be allowed to invite himself", (done) ->
       http.post
-        url: baseUri + "/invite/test1", (err, res, body) =>
+        url: baseUri + "/invite/test1", (err, res, body) ->
           if err
             done err
           else
@@ -153,7 +187,7 @@ describe "surespot server", () ->
 
     it "who invites a user successfully should receive 204", (done) ->
       http.post
-        url: baseUri + "/invite/test", (err, res, body) =>
+        url: baseUri + "/invite/test0", (err, res, body) ->
           if err
             done err
           else
@@ -162,7 +196,7 @@ describe "surespot server", () ->
 
     it "who invites them again should receive 403", (done) ->
       http.post
-        url: baseUri + "/invite/test", (err, res, body) =>
+        url: baseUri + "/invite/test0", (err, res, body) ->
           if err
             done err
           else
@@ -170,7 +204,7 @@ describe "surespot server", () ->
             done()
 
     it "who accepts their invite should receive 204", (done) ->
-      login "test","test",done,(res, body) ->
+      login "test0", "test0", keys[0].sig, done, (res, body) ->
         http.post
           url: baseUri + "/invites/test1/accept", (err, res, body) ->
             if err
@@ -191,7 +225,7 @@ describe "surespot server", () ->
 
     it "who invites them again should receive a 409", (done) ->
       http.post
-        url: baseUri + "/invite/test1", (err, res, body) =>
+        url: baseUri + "/invite/test1", (err, res, body) ->
           if err
             done err
           else
@@ -210,21 +244,22 @@ describe "surespot server", () ->
             done()
 
 
-  describe "getting the public key of a non existant user", ->
+  describe "getting the public identity of a non existant user", ->
     it "should return not found", (done) ->
       http.get
-        url: baseUri + "/publickey/nosuchuser", (err, res, body) ->
+        url: baseUri + "/publicidentity/nosuchuser", (err, res, body) ->
           if err
             done err
           else
             res.statusCode.should.equal 404
             done()
 
-  describe "getting the public key of a non friend user", ->
+  describe "getting the public identity of a non friend user", ->
     it "should not be allowed", (done) ->
-      signup "notafriend", "notafriend", done, (res, body) ->
+      signup "test2", "test2", keys[2].ecdh.pem_pub, keys[2].ecdsa.pem_pub, keys[2].sig, done, (res, body) ->
+        res.statusCode.should.equal 201
         http.get
-          url: baseUri + "/publickey/test", (err, res, body) ->
+          url: baseUri + "/publicidentity/test0", (err, res, body) ->
             if err
               done err
             else
@@ -234,16 +269,17 @@ describe "surespot server", () ->
   describe "getting other user's last 30 messages", ->
     it "should not be allowed", (done) ->
       http.get
-        url: baseUri + "/messages/test", (err, res, body) ->
+        url: baseUri + "/messages/test0", (err, res, body) ->
           if err
             done err
           else
             res.statusCode.should.equal 403
             done()
+
   describe "getting other user's messages after x", ->
     it "should not be allowed", (done) ->
       http.get
-        url: baseUri + "/messages/test/after/0", (err, res, body) ->
+        url: baseUri + "/messages/test0/after/0", (err, res, body) ->
           if err
             done err
           else
@@ -252,7 +288,7 @@ describe "surespot server", () ->
   describe "getting other user's messages before x", ->
     it "should not be allowed", (done) ->
       http.get
-        url: baseUri + "/messages/test/before/100", (err, res, body) ->
+        url: baseUri + "/messages/test0/before/100", (err, res, body) ->
           if err
             done err
           else
@@ -262,7 +298,8 @@ describe "surespot server", () ->
   describe "uploading an image to a valid spot", ->
     location = undefined
     it "should return the location header and 202", (done) ->
-      login "test", "test", done, (res, body) ->
+      login "test0", "test0", keys[0].sig, done, (res, body) ->
+        res.statusCode.should.equal 204
         r = http.post baseUri + "/images/test1", (err, res, body) ->
           if err
             done err
@@ -274,7 +311,7 @@ describe "surespot server", () ->
 
         form = r.form()
         form.append "image", fs.createReadStream "test"
-        #todo set filename explicitly
+    #todo set filename explicitly
 
     it "should return the same image when location url requested", (done) ->
       http.get
@@ -289,7 +326,7 @@ describe "surespot server", () ->
   describe "getting images from non existent spots", ->
     it "should return 404", (done) ->
       http.get
-        url: baseUri + "/images/test:test1/6000", (err, res, body) ->
+        url: baseUri + "/images/test0:test1/6000", (err, res, body) ->
           if err
             done err
           else
@@ -308,7 +345,8 @@ describe "surespot server", () ->
 
   describe "uploading an image to a spot we don't belong to", ->
     it "should not be allowed", (done) ->
-      login "notafriend", "notafriend", done, (res, body) ->
+      login "test2", "test2", keys[2].sig, done, (res, body) ->
+        res.statusCode.should.equal 204
         r = http.post baseUri + "/images/test1", (err, res, body) ->
           if err
             done err
