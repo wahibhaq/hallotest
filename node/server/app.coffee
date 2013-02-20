@@ -88,7 +88,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
   # create EC keys like so
   # priv key
-  # openssl ecparam -name secp521r1 -outform PEM -out priv.pem -genkey
+  # openssl ecparam -name secp521r1 -outform PEM -out key -genkey
   # pub key
   # openssl ec -inform PEM  -outform PEM -in priv.pem -out pub.pem -pubout
   #
@@ -181,7 +181,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     dumpExceptions: false
     })
 
-  app.listen nodePort, null, 1024
+  app.listen nodePort, null, 4096
   app.maxHeadersCount = 4096
   if nodePort == socketPort
     sio = require("socket.io").listen app

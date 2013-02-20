@@ -218,7 +218,7 @@ describe "surespot chat test", () ->
   sockets = undefined
 
   it "create #{clients} users", (done) ->
-    createKeys minclient, minclient + clients - 1 , (err, keyss) ->
+    createKeys minclient, minclient + clients - 1, (err, keyss) ->
       if err?
         done err
       else
@@ -228,13 +228,15 @@ describe "surespot chat test", () ->
         for i in [minclient..minclient + clients - 1] by 1
           tasks.push makeCreate i, keys[i - minclient]
 
-        #execute the tasks which creates the cookie jars
-        async.series tasks, (err, httpcookies) ->
-          if err?
-            done err
-          else
-            cookies = httpcookies
-            done()
+
+        for e in [0..clients] by 100
+          #execute the tasks which creates the cookie jars
+          async.parallel tasks.slice(e, e + 100), (err, httpcookies) ->
+            if err?
+              done err
+            else
+              cookies = httpcookies
+              done()
 
   #  it "login #{clients} users", (done) ->
   #    tasks = []

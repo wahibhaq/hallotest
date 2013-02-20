@@ -15,10 +15,11 @@ rc = redis.createClient()
 
 baseUri = "https://localhost"
 minclient = 0
-clients = 00
+clients = 6000
 jars = []
 
-http.globalAgent.maxSockets = 1000
+http.globalAgent.maxSockets = 10000
+
 
 cleanup = (done) ->
   keys1 = []
@@ -28,74 +29,33 @@ cleanup = (done) ->
   keys5 = []
   keys6 = []
   keys7 = []
-  for i in [minclient..minclient + clients-1] by 1
-    keys1.push "users:test#{i}"
+  for i in [0..clients - 1] by 1
     keys2.push "friends:test#{i}"
     keys3.push "invites:test#{i}"
     keys4.push "invited:test#{i}"
-    keys5.push "test#{i}:test#{i+1}:id"
-    keys6.push "messages:test#{i}:test#{i+1}"
+    keys5.push "test#{i}:test#{i + 1}:id"
+    keys6.push "messages:test#{i}:test#{i + 1}"
     keys7.push "conversations:test#{i}"
-  rc.del keys1, (err, blah) ->
+  #rc.del keys1, (err, blah) ->
+  # return done err if err?
+  rc.del keys2, (err, blah) ->
     return done err if err?
-    rc.del keys2, (err, blah) ->
+    rc.del keys3, (err, blah) ->
       return done err if err?
-      rc.del keys3, (err, blah) ->
+      rc.del keys4, (err, blah) ->
         return done err if err?
-        rc.del keys4, (err, blah) ->
+        rc.del keys5, (err, blah) ->
           return done err if err?
-          rc.del keys5, (err, blah) ->
+          rc.del keys6, (err, blah) ->
             return done err if err?
-            rc.del keys6, (err, blah) ->
-              return done err if err?
-              rc.del keys7, (err, blah) ->
-                done()
-
-
-
-generateKey = (i, callback) ->
-  ecdsa = new dcrypt.keypair.newECDSA 'secp521r1'
-  ecdh = new dcrypt.keypair.newECDSA 'secp521r1'
-
-  random = crypto.randomBytes 16
-
-  dsaPubSig =
-    crypto
-      .createSign('sha256')
-      .update(new Buffer("test#{i}"))
-      .update(new Buffer("test#{i}"))
-      .update(random)
-      .sign(ecdsa.pem_priv, 'base64')
-
-  sig = Buffer.concat([random, new Buffer(dsaPubSig, 'base64')]).toString('base64')
-
-  callback null, {
-  ecdsa: ecdsa
-  ecdh: ecdh
-  sig: sig
-  }
-
-
-makeKeys = (i) ->
-  return (callback) ->
-    generateKey i, callback
-
-createKeys = (minclient, maxclient, done) ->
-  keys = []
-  for i in [minclient..maxclient] by 1
-    keys.push makeKeys(i)
-
-  async.parallel keys, (err, results) ->
-    if err?
-      done err
-    else
-      done null, results
+            rc.del keys7, (err, blah) ->
+              done()
 
 
 login = (username, password, jar, authSig, done, callback) ->
   request.post
     agent: false
-    maxSockets: 10000
+    #maxSockets: 10000
     url: baseUri + "/login"
     jar: jar
     json:
@@ -110,44 +70,12 @@ login = (username, password, jar, authSig, done, callback) ->
         cookie = jar.get({ url: baseUri }).map((c) -> c.name + "=" + c.value).join("; ")
         callback res, body, cookie
 
-signup = (username, password, jar, dhPub, dsaPub, authSig, done, callback) ->
-  request.post
-    agent: false
-    maxSockets: 10000
-    url: baseUri + "/users"
-    jar: jar
-    json:
-      username: username
-      password: password
-      dhPub: dhPub
-      dsaPub: dsaPub
-      authSig: authSig
-    (err, res, body) ->
-      if err
-        done err
-      else
-        res.statusCode.should.equal 201
-        cookie = jar.get({ url: baseUri }).map((c) -> c.name + "=" + c.value).join("; ")
-        callback res, body, cookie
-
-
-createUsers = (i, key, callback) ->
-  j = request.jar()
-  jars[i] = j
-  #console.log 'i: ' + i
-  signup 'test' + i, 'test' + i, j, key.ecdh.pem_pub, key.ecdsa.pem_pub, key.sig, callback, (res, body, cookie) ->
-    callback null, cookie
-
-makeCreate = (i, key) ->
-  return (callback) ->
-    createUsers i, key, callback
-
 
 loginUsers = (i, key, callback) ->
   j = request.jar()
+  jars[i] = j
   #console.log 'i: ' + i
-  login 'test' + i, 'test' + i, j, key.sig, callback, (res, body, cookie) ->
-    #cookie = j.get({ url: baseUri }).map((c) -> c.name + "=" + c.value ).join("; ")
+  login 'test' + i, 'test' + i, j, key, callback, (res, body, cookie) ->
     callback null, cookie
 
 makeLogin = (i, key) ->
@@ -183,7 +111,7 @@ makeSend = (socket, i) ->
 friendUser = (i, callback) ->
   request.post
     agent: false
-    maxSockets: 6000
+    #maxSockets: 6000
     jar: jars[i]
     url: baseUri + "/invite/test#{i + 1}"
     (err, res, body) ->
@@ -193,7 +121,7 @@ friendUser = (i, callback) ->
         res.statusCode.should.equal 204
         request.post
           agent: false
-          maxSockets: 6000
+          #maxSockets: 6000
           jar: jars[i + 1]
           url: baseUri + "/invites/test#{i}/accept"
           (err, res, body) ->
@@ -212,54 +140,50 @@ makeFriendUser = (i) ->
 describe "surespot chat test", () ->
   before (done) -> cleanup done
 
-  keys = undefined
+  sigs = []
   tasks = []
   cookies = undefined
   sockets = undefined
 
-  it "create #{clients} users", (done) ->
-    createKeys minclient, clients, (err, keyss) ->
+  it "load sigs", (done) ->
+    for i in [0..clients - 1]
+      #priv = fs.readFileSync "testkeys/test#{i}_priv.pem", 'utf-8'
+      #pub = fs.readFileSync "testkeys/test#{i}_pub.pem", 'utf-8'
+      sig = fs.readFileSync "testkeys/test#{i}.sig", 'utf-8'
+      sigs[i] = sig
+    done()
+
+  it "login #{clients} users", (done) ->
+    tasks = []
+
+    #create connect clients tasks
+    for i in [0..clients - 1] by 1
+      tasks.push makeLogin i, sigs[i]
+
+    #execute the tasks which creates the cookie jars
+    async.parallelLimit tasks, 5, (err, httpcookies) ->
       if err?
         done err
       else
-        keys = keyss
-
-        #create connect clients tasks
-        for i in [minclient..minclient + clients-1] by 1
-          tasks.push makeCreate i, keys[i]
-
-        #execute the tasks which creates the cookie jars
-        async.parallel tasks, (err, httpcookies) ->
-          if err?
-            done err
-          else
-            cookies = httpcookies
-            done()
-
-  #  it "login #{clients} users", (done) ->
-  #    tasks = []
-  #
-  #    #create connect clients tasks
-  #    for i in [minclient..minclient+clients-1] by 1
-  #      tasks.push makeLogin i
-  #
-  #    #execute the tasks which creates the cookie jars
-  #    async.parallel tasks, (err, httpcookies) ->
-  #      cookies = httpcookies
-  #      done()
+        cookies = httpcookies
+        done()
 
 
   it 'friend users', (done) ->
     tasks = []
-    for i in [minclient..minclient + clients-1] by 2
+    for i in [0..clients - 1] by 2
       tasks.push makeFriendUser i
-    async.parallel tasks, (err, callback) -> done()
+    async.series tasks, (err, callback) ->
+      if err
+        done err
+      else
+        done()
 
   it "connect #{clients} chats", (done) ->
     connects = []
     for cookie in cookies
       connects.push makeConnect(cookie)
-    async.parallel connects, (err, clients) ->
+    async.parallelLimit connects, 50, (err, clients) ->
       if err?
         done err
       else
@@ -273,7 +197,7 @@ describe "surespot chat test", () ->
     for socket in sockets
       sends.push makeSend(socket, i++)
 
-    async.parallel sends, (err, results) ->
+    async.parallelLimit sends, 50, (err, results) ->
       if err?
         done err
       else
@@ -281,4 +205,3 @@ describe "surespot chat test", () ->
         done()
 
   after (done) -> cleanup done
-
