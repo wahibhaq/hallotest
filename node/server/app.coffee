@@ -8,8 +8,11 @@ nodeRequire: require
 #    }
 }
 
+
+
 requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   http = require 'http'
+  http.globalAgent.maxSockets = 20000
   #http.globalAgent.maxSockets = 5000
   cookie = require("cookie")
   express = require("express")
@@ -301,10 +304,12 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
       fn null, data
 
   createNewUserAccount = (req, res, next) ->
-    logger.debug "createNewUserAccount"
+
+    username = req.body.username
+    logger.debug "createNewUserAccount: #{username}"
 
     #var newUser = {name:name, email:email };
-    userExists req.body.username, (err, exists) ->
+    userExists username, (err, exists) ->
       return next err if err?
       if exists
         logger.debug "user already exists"

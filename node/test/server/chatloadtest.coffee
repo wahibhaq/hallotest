@@ -15,24 +15,44 @@ rc = redis.createClient()
 
 baseUri = "https://localhost"
 minclient = 0
-clients = 500
+clients = 1000
 jars = []
 
-http.globalAgent.maxSockets = 1500
+http.globalAgent.maxSockets = 20000
 
 cleanup = (done) ->
-  for i in [minclient..minclient+clients-1] by 1
-    num = i
-    keys = [
-      "users:test#{num}",
-      "friends:test#{num}",
-      "invites:test#{num}",
-      "invited:test#{num}",
-      "test:test#{num}:id",
-      "messages:test:test#{num}",
-      "conversations:test#{num}"]
-    rc.del keys, (err, blah) ->
-  done()
+  keys1 = []
+  keys2 = []
+  keys3 = []
+  keys4 = []
+  keys5 = []
+  keys6 = []
+  keys7 = []
+  for i in [minclient..minclient + clients-1] by 1
+    keys1.push "users:test#{i}"
+    keys2.push "friends:test#{i}"
+    keys3.push "invites:test#{i}"
+    keys4.push "invited:test#{i}"
+    keys5.push "test#{i}:test#{i+1}:id"
+    keys6.push "messages:test#{i}:test#{i+1}"
+    keys7.push "conversations:test#{i}"
+  rc.del keys1, (err, blah) ->
+    return done err if err?
+    rc.del keys2, (err, blah) ->
+      return done err if err?
+      rc.del keys3, (err, blah) ->
+        return done err if err?
+        rc.del keys4, (err, blah) ->
+          return done err if err?
+          rc.del keys5, (err, blah) ->
+            return done err if err?
+            rc.del keys6, (err, blah) ->
+              return done err if err?
+              rc.del keys7, (err, blah) ->
+                done()
+
+
+
 generateKey = (i, callback) ->
   ecdsa = new dcrypt.keypair.newECDSA 'secp521r1'
   ecdh = new dcrypt.keypair.newECDSA 'secp521r1'
@@ -60,9 +80,9 @@ makeKeys = (i) ->
   return (callback) ->
     generateKey i, callback
 
-createKeys = (number, done) ->
+createKeys = (minclient, maxclient, done) ->
   keys = []
-  for i in [0..number]
+  for i in [minclient..maxclient] by 1
     keys.push makeKeys(i)
 
   async.parallel keys, (err, results) ->
@@ -75,7 +95,7 @@ createKeys = (number, done) ->
 login = (username, password, jar, authSig, done, callback) ->
   request.post
     agent: false
-    maxSockets: 1000
+    maxSockets: 6000
     url: baseUri + "/login"
     jar: jar
     json:
@@ -86,13 +106,14 @@ login = (username, password, jar, authSig, done, callback) ->
       if err
         done err
       else
+        res.statusCode.should.equal 204
         cookie = jar.get({ url: baseUri }).map((c) -> c.name + "=" + c.value).join("; ")
         callback res, body, cookie
 
-signup = (username, password, jar, dhPub, dsaPub, authSig,  done, callback) ->
+signup = (username, password, jar, dhPub, dsaPub, authSig, done, callback) ->
   request.post
     agent: false
-    maxSockets: 1000
+    maxSockets: 6000
     url: baseUri + "/users"
     jar: jar
     json:
@@ -105,6 +126,7 @@ signup = (username, password, jar, dhPub, dsaPub, authSig,  done, callback) ->
       if err
         done err
       else
+        res.statusCode.should.equal 201
         cookie = jar.get({ url: baseUri }).map((c) -> c.name + "=" + c.value).join("; ")
         callback res, body, cookie
 
@@ -161,17 +183,21 @@ makeSend = (socket, i) ->
 friendUser = (i, callback) ->
   request.post
     jar: jars[i]
-    url: baseUri + "/invite/test#{i+1}", (err, res, body) ->
+    url: baseUri + "/invite/test#{i + 1}"
+    (err, res, body) ->
       if err
         callback err
       else
+        res.statusCode.should.equal 204
         request.post
           jar: jars[i + 1]
-          url: baseUri + "/invites/test#{i}/accept", (err, res, body) ->
-          if err
-            callback err
-          else
-            callback null
+          url: baseUri + "/invites/test#{i}/accept"
+          (err, res, body) ->
+            if err
+              callback err
+            else
+              res.statusCode.should.equal 204
+              callback null
 
 
 makeFriendUser = (i) ->
@@ -188,14 +214,14 @@ describe "surespot chat test", () ->
   sockets = undefined
 
   it "create #{clients} users", (done) ->
-    createKeys clients, (err, keyss) ->
+    createKeys minclient, clients, (err, keyss) ->
       if err?
         done err
       else
         keys = keyss
 
         #create connect clients tasks
-        for i in [minclient..minclient + clients - 1] by 1
+        for i in [minclient..minclient + clients-1] by 1
           tasks.push makeCreate i, keys[i]
 
         #execute the tasks which creates the cookie jars
@@ -221,7 +247,7 @@ describe "surespot chat test", () ->
 
   it 'friend users', (done) ->
     tasks = []
-    for i in [minclient..minclient + clients - 1] by 2
+    for i in [minclient..minclient + clients-1] by 2
       tasks.push makeFriendUser i
     async.parallel tasks, (err, callback) -> done()
 
@@ -250,6 +276,5 @@ describe "surespot chat test", () ->
         _.every results, (result) -> result.should.be.true
         done()
 
-
-  #after (done) -> cleanup done
+  after (done) -> cleanup done
 
