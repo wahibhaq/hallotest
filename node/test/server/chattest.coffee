@@ -5,6 +5,9 @@ redis = require("redis")
 util = require("util")
 fs = require("fs")
 io = require 'socket.io-client'
+crypto = require 'crypto'
+dcrypt = require 'dcrypt'
+async = require 'async'
 rc = redis.createClient()
 port = 443
 baseUri = "https://localhost:" + port
@@ -15,18 +18,18 @@ cookie2 = undefined
 
 cleanup = (done) ->
   keys = [
-    "users:test",
+    "users:test0",
     "users:test1",
     "friends:test",
     "friends:test1",
-    "invites:test",
-    "invited:test",
+    "invites:test0",
+    "invited:test0",
     "invites:test1",
     "invited:test1",
     "test:test1:id",
     "messages:test:test1",
     "conversations:test1",
-    "conversations:test"]
+    "conversations:test0"]
   rc.del keys, (err, data) ->
     if err
       done err
@@ -34,45 +37,91 @@ cleanup = (done) ->
       done()
 
 
-
-login = (username, password, jar, done, callback) ->
+login = (username, password, jar, authSig, done, callback) ->
   request.post
     url: baseUri + "/login"
     jar: jar
     json:
       username: username
       password: password
-  , (err, res, body) ->
-    if err
-      done err
-    else
-      cookie = jar.get({ url: baseUri }).map((c) -> c.name + "=" + c.value ).join("; ")
-      callback res, body, cookie
+      authSig: authSig
+    (err, res, body) ->
+      if err
+        done err
+      else
+        cookie = jar.get({ url: baseUri }).map((c) -> c.name + "=" + c.value).join("; ")
+        callback res, body, cookie
 
-signup = (username, password, jar, done, callback) ->
+signup = (username, password, jar, dhPub, dsaPub, authSig, done, callback) ->
   request.post
     url: baseUri + "/users"
     jar: jar
     json:
       username: username
       password: password
-  , (err, res, body) ->
-    if err
+      dhPub: dhPub
+      dsaPub: dsaPub
+      authSig: authSig
+    (err, res, body) ->
+      if err
+        done err
+      else
+        cookie = jar.get({ url: baseUri }).map((c) -> c.name + "=" + c.value).join("; ")
+        callback res, body, cookie
+
+generateKey = (i, callback) ->
+  ecdsa = new dcrypt.keypair.newECDSA 'secp521r1'
+  ecdh = new dcrypt.keypair.newECDSA 'secp521r1'
+
+  random = crypto.randomBytes 16
+
+  dsaPubSig =
+    crypto
+      .createSign('sha256')
+      .update(new Buffer("test#{i}"))
+      .update(new Buffer("test#{i}"))
+      .update(random)
+      .sign(ecdsa.pem_priv, 'base64')
+
+  sig = Buffer.concat([random, new Buffer(dsaPubSig, 'base64')]).toString('base64')
+
+  callback null, {
+  ecdsa: ecdsa
+  ecdh: ecdh
+  sig: sig
+  }
+
+
+makeKeys = (i) ->
+  return (callback) ->
+    generateKey i, callback
+
+createKeys = (number, done) ->
+  keys = []
+  for i in [0..number]
+    keys.push makeKeys(i)
+
+  async.parallel keys, (err, results) ->
+    if err?
       done err
     else
-      cookie = jar.get({ url: baseUri }).map((c) -> c.name + "=" + c.value ).join("; ")
-      callback res, body, cookie
+      done null, results
+
 
 describe "surespot chat test", () ->
-  before (done) -> cleanup done
+  keys = undefined
+  before (done) ->
+    createKeys 2, (err, keyss) ->
+      keys = keyss
+      cleanup done
 
   client = undefined
   client1 = undefined
-  jsonMessage = {to:"test",from:"test1",iv:1,data:"message data",mimeType:"text/plain"}
+  jsonMessage = {to: "test0", from: "test1", iv: 1, data: "message data", mimeType: "text/plain"}
 
   it 'client 1 connect', (done) ->
     jar1 = request.jar()
-    signup 'test', 'test', jar1 , done, (res, body, cookie) ->
+    signup 'test0', 'test0', jar1, keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body, cookie) ->
       client = io.connect baseUri, { 'force new connection': true}, cookie
       cookie1 = cookie
       client.once 'connect', ->
@@ -80,7 +129,7 @@ describe "surespot chat test", () ->
 
   it 'client 2 connect', (done) ->
     jar2 = request.jar()
-    signup 'test1', 'test1', jar2, done, (res, body, cookie) ->
+    signup 'test1', 'test1', jar2, keys[1].ecdh.pem_pub, keys[1].ecdsa.pem_pub, keys[1].sig, done, (res, body, cookie) ->
       client1 = io.connect baseUri, { 'force new connection': true}, cookie
       cookie2 = cookie
       client1.once 'connect', ->
@@ -106,19 +155,21 @@ describe "surespot chat test", () ->
 
     request.post
       jar: jar2
-      url: baseUri + "/invite/test", (err, res, body) ->
+      url: baseUri + "/invite/test0"
+      (err, res, body) ->
         if err
           done err
         else
           request.post
             jar: jar1
-            url: baseUri + "/invites/test1/accept", (err, res, body) ->
+            url: baseUri + "/invites/test1/accept"
+            (err, res, body) ->
               if err
                 done err
               else
                 client = io.connect baseUri, { 'force new connection': true}, cookie1
                 client.once 'connect', ->
-                  jsonMessage.from = "test"
+                  jsonMessage.from = "test0"
                   jsonMessage.to = "test1"
                   client.send JSON.stringify jsonMessage
 
