@@ -1,3 +1,4 @@
+
 requirejs = require 'requirejs'
 requirejs.config {
 ##appDir: '.'
@@ -36,6 +37,11 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
 
   logger.add transports[0], null, true
   logger.add transports[1], null, true
+
+  process.on "uncaughtException", uncaught = (err) ->
+    logger.error "Uncaught Exception: " + err
+
+
   nodePort = 443
   socketPort = 443
   sio = undefined
@@ -607,20 +613,11 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   app.post "/validate", (req, res, next) ->
     username = req.body.username
     password = req.body.password
-    publickey = req.body.publickey
-    userKey = "users:" + username
-    rcs.hgetall userKey, (err, user) ->
+    signature = req.body.signature
+
+    validateUser username, password, signature, (err, status, user) ->
       return next err if err?
-      return res.send 404 if user is null
-
-      comparePassword password, user.password, (err, match) ->
-        return next new Error("[bcrypt.compare] failed with error: " + err) if err?
-        return res.send 403 if not match
-        if publickey
-          res.send publickey == user.publickey
-        else
-          res.send true
-
+      res.send status
 
   app.post "/registergcm", ensureAuthenticated, (req, res, next) ->
     gcmId = req.body.gcmId
@@ -767,25 +764,20 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     res.send 204
 
 
-  process.on "uncaughtException", uncaught = (err) ->
-    logger.error "Uncaught Exception: " + err
 
   comparePassword = (password, dbpassword, callback) ->
     bcrypt.compare password, dbpassword, callback
 
 
-  passport.use new LocalStrategy ({passReqToCallback: true}), (req, username, password, done) ->
-    signature = req.body.authSig
-
+  validateUser = (username, password, signature, done) ->
     userKey = "users:" + username
-    logger.debug "looking for: " + userKey
-    #logger.debug "password: " + password
+    logger.debug "validating: " + username
     rcs.hgetall userKey, (err, user) ->
       return done(err) if err?
-      return done null, false, message: "unknown user" if user is null
+      return done null, 404 if not user
       comparePassword password, user.password, (err, res) ->
-        return done new Error("[bcrypt.compare] failed with error: " + err) if err?
-        return done null, false, message: "invalid password" if res is false
+        return done err if err?
+        return done null, 403 if not res
 
         #get the signature
         buffer = new Buffer(signature, 'base64')
@@ -798,11 +790,22 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         key = '-----BEGIN PUBLIC KEY-----\n' + user.dsaPub + '-----END PUBLIC KEY-----\n'
 
         verified = crypto.createVerify('sha256').update(new Buffer(username)).update(new Buffer(password)).update(random).verify(key, signature)
-        logger.debug "verified: #{verified}"
-        if verified
-          done null, user
-        else
-          done null, false, message: 'invalid signature'
+        logger.debug "#{username} verified: #{verified}"
+
+        status = if verified then 200 else 403
+        done null, status, if verified then user else null
+
+
+  passport.use new LocalStrategy ({passReqToCallback: true}), (req, username, password, done) ->
+    signature = req.body.authSig
+    validateUser username, password, signature, (err, status, user) ->
+      return done(err) if err?
+
+      switch status
+        when 404 then return done null, false, message: "unknown user"
+        when 403 then return done null, false, message: "invalid password or key"
+        when 200 then return done null, user
+        else return new Error 'unknown validation status: #{status}'
 
   passport.serializeUser (user, done) ->
     logger.debug "serializeUser, username: " + user.username
@@ -812,3 +815,4 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     logger.debug "deserializeUser, user:" + username
     rcs.hgetall "users:" + username, (err, user) ->
       done err, user
+
