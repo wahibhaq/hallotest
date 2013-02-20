@@ -332,7 +332,6 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         if req.body.gcmId?
           user.gcmId = req.body.gcmId
 
-        #todo server sign
         #dump the key stuff to a file
         #        key = '-----BEGIN PUBLIC KEY-----\n' + req.body.dhPub + '-----END PUBLIC KEY-----\n'
         #        fs.writeFileSync "#{user.username}.sig", user.authSig
@@ -786,10 +785,7 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
         random = buffer.slice 0, 16
         signature = buffer.slice 16
 
-        #ssl wants the key in PEM format not DER
-        key = '-----BEGIN PUBLIC KEY-----\n' + user.dsaPub + '-----END PUBLIC KEY-----\n'
-
-        verified = crypto.createVerify('sha256').update(new Buffer(username)).update(new Buffer(password)).update(random).verify(key, signature)
+        verified = crypto.createVerify('sha256').update(new Buffer(username)).update(new Buffer(password)).update(random).verify(user.dsaPub, signature)
         logger.debug "#{username} verified: #{verified}"
 
         status = if verified then 200 else 403

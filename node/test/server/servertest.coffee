@@ -3,6 +3,8 @@ should = require("should")
 http = require("request")
 redis = require("redis")
 util = require("util")
+crypto = require 'crypto'
+dcrypt = require 'dcrypt'
 fs = require("fs")
 rc = redis.createClient()
 port = 443
@@ -42,12 +44,15 @@ login = (username, password, done,  callback) ->
     else
       callback res, body
 
-signup = (username, password, done,  callback) ->
+signup = (username, password, dhPub, dsaPub, authSig, done,  callback) ->
   http.post
     url: baseUri + "/users"
     json:
       username: username
       password: password
+      dhPub: dhPub
+      dsaPub: dsaPub
+      authSig: authSig
   , (err, res, body) ->
     if err
       done err
@@ -61,7 +66,22 @@ describe "surespot server", () ->
 
   describe "create user", () ->
     it "should respond with 201", (done) ->
-      signup "test","test", done, (res, body) ->
+      ecdsa = new dcrypt.keypair.newECDSA 'secp521r1'
+      #ecdsa = new dcrypt.keypair.newECDH 'secp521r1'
+
+      random = crypto.randomBytes 16
+
+      dsaPubSig =
+        crypto
+          .createSign('sha256')
+          .update(new Buffer("test"))
+          .update(new Buffer("test"))
+          .update(random)
+          .sign(ecdsa.pem_priv, 'base64')
+
+      sig = Buffer.concat [random, dsaPubSig]
+
+      signup "test","test", ecdsa. sig.toString('base64'), done, (res, body) ->
         res.statusCode.should.equal 201
         done()
 
