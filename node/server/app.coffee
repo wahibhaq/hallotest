@@ -12,7 +12,7 @@ nodeRequire: require
 
 requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
   http = require 'http'
-  http.globalAgent.maxSockets = 20000
+  http.globalAgent.maxSockets = 10000
   #http.globalAgent.maxSockets = 5000
   cookie = require("cookie")
   express = require("express")
@@ -181,7 +181,8 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     dumpExceptions: false
     })
 
-  app.listen nodePort
+  app.listen nodePort, null, 1024
+  app.maxHeadersCount = 4096
   if nodePort == socketPort
     sio = require("socket.io").listen app
   else
