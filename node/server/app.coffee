@@ -346,8 +346,8 @@ requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
             user.password = password
 
             #sign the keys
-            user.dhPubSig = crypto.createSign('sha256').update(new Buffer(user.dhPub, 'base64')).sign(serverPrivateKey, 'base64')
-            user.dsaPubSig = crypto.createSign('sha256').update(new Buffer(user.dsaPub, 'base64')).sign(serverPrivateKey, 'base64')
+            user.dhPubSig = crypto.createSign('sha256').update(new Buffer(user.dhPub)).sign(serverPrivateKey, 'base64')
+            user.dsaPubSig = crypto.createSign('sha256').update(new Buffer(user.dsaPub)).sign(serverPrivateKey, 'base64')
             logger.debug "#{user.username}, dhPubSig: #{user.dhPubSig}, dsaPubSig: #{user.dsaPubSig}"
 
             userKey = "users:" + user.username
