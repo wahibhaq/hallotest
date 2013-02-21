@@ -73,13 +73,24 @@ else
     ssloptions = undefined
     connectionCount = 0
 
-    createRedisClient = (port, hostname, password) ->
+    createRedisClient = (port, hostname, password, database) ->
       if port? and hostname? and password?
         client = require("redis").createClient(port, hostname)
         client.auth password
-        client
+        if database?
+          client.select database, (err, res) ->
+            return client
+        else
+          return client
+
+
       else
-        require("redis").createClient()
+        client = require("redis").createClient()
+        if database?
+          client.select database, (err, res) ->
+            return client
+        else
+          return client
 
 
     logger.debug "process.env.NODE_ENV: " + process.env.NODE_ENV
@@ -87,6 +98,12 @@ else
     logger.debug "__dirname: #{__dirname}"
     dev = process.env.NODE_ENV != "linode"
     nossl = process.env.NODE_NOSSL is "true"
+    database = process.env.NODE_DB
+    if database is null
+      database = 0
+
+
+    logger.debug "database: #{database}"
 
 
     if not dev
@@ -112,7 +129,7 @@ else
 
 
     serverPrivateKey = fs.readFileSync('ec/priv.pem')
-    serverPublicKey = fs.readFileSync('ec/pub.pem')
+    #serverPublicKey = fs.readFileSync('ec/pub.pem')
 
 
     if nossl
@@ -128,11 +145,11 @@ else
         socketPort = 3000
       sessionStore = new RedisStore()
       dal = new DAL()
-      rc = createRedisClient()
-      rcs = createRedisClient()
-      pub = createRedisClient()
-      sub = createRedisClient()
-      client = createRedisClient()
+      rc = createRedisClient database
+      rcs = createRedisClient database
+      pub = createRedisClient database
+      sub = createRedisClient database
+      client = createRedisClient database
 
     app.configure "amazon-stage", ->
       logger.debug "running on amazon-stage"
