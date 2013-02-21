@@ -68,24 +68,27 @@ else
     ssloptions = undefined
     connectionCount = 0
 
-    createRedisClient = (port, hostname, password, database) ->
+    createRedisClient = (port, hostname, password, database, callback) ->
       if port? and hostname? and password?
         client = require("redis").createClient(port, hostname)
         client.auth password
         if database?
           client.select database, (err, res) ->
-            return client
+            return callback err if err?
+            callback null, client
+
         else
-          return client
+          callback null, client
 
 
       else
         client = require("redis").createClient()
         if database?
           client.select database, (err, res) ->
-            return client
+            return callback err if err?
+            callback null, client
         else
-          return client
+          callback null, client
 
 
     logger.debug "process.env.NODE_ENV: " + process.env.NODE_ENV
@@ -96,10 +99,10 @@ else
     database = process.env.NODE_DB
     socketPort = process.env.SOCKET
 
-    if database is null
+    if !database?
       database = 0
 
-    if socketPort is null
+    if !socketPort?
       socketPort = 443
 
 
@@ -146,29 +149,29 @@ else
         socketPort = 3000
       sessionStore = new RedisStore()
       dal = new DAL()
-      rc = createRedisClient database
-      rcs = createRedisClient database
-      pub = createRedisClient database
-      sub = createRedisClient database
-      client = createRedisClient database
+      createRedisClient database, (err, c) -> rc = c
+      createRedisClient database, (err, c) -> rcs = c
+      createRedisClient database, (err, c) -> pub = c
+      createRedisClient database, (err, c) -> sub = c
+      createRedisClient database, (err, c) -> client = c
 
-    app.configure "amazon-stage", ->
-      logger.debug "running on amazon-stage"
-      redisPort = 6379
-      socketPort = 443
-      redisHost = "127.0.0.1"
-      redisAuth = "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040"
-      dal = new DAL(redisPort, redisHost, redisAuth)
-      sessionStore = new RedisStore(
-        host: redisHost
-        port: redisPort
-        pass: redisAuth
-      )
-      rc = createRedisClient(redisPort, redisHost, redisAuth)
-      rcs = createRedisClient(redisPort, redisHost, redisAuth)
-      pub = createRedisClient(redisPort, redisHost, redisAuth)
-      sub = createRedisClient(redisPort, redisHost, redisAuth)
-      client = createRedisClient(redisPort, redisHost, redisAuth)
+#    app.configure "amazon-stage", ->
+#      logger.debug "running on amazon-stage"
+#      redisPort = 6379
+#      socketPort = 443
+#      redisHost = "127.0.0.1"
+#      redisAuth = "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040"
+#      dal = new DAL(redisPort, redisHost, redisAuth)
+#      sessionStore = new RedisStore(
+#        host: redisHost
+#        port: redisPort
+#        pass: redisAuth
+#      )
+#      rc = createRedisClient(redisPort, redisHost, redisAuth)
+#      rcs = createRedisClient(redisPort, redisHost, redisAuth)
+#      pub = createRedisClient(redisPort, redisHost, redisAuth)
+#      sub = createRedisClient(redisPort, redisHost, redisAuth)
+#      client = createRedisClient(redisPort, redisHost, redisAuth)
 
 
     app.configure ->
