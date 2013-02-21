@@ -123,10 +123,7 @@ else
 
 
     app.configure ->
-      if ssl
-        nodePort = 443
-        socketPort = 443
-      else
+      if nossl
         nodePort = 3000
         socketPort = 3000
       sessionStore = new RedisStore()
@@ -193,7 +190,7 @@ else
 
 
     #winston up some socket.io
-    sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warning, error: logger.error }
+    sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warning, error: logger.error }gi
     sio.configure 'load testing', 'linode', ->
       sio.set 'close timeout', 180
       sio.set 'heartbeat timeout', 180
