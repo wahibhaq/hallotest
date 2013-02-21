@@ -14,7 +14,7 @@ crypto = require 'crypto'
 rc = redis.createClient()
 
 baseUri = "https://www.surespot.me"
-minclient = 400
+minclient = 0
 maxclient = 999
 clients = maxclient - minclient + 1
 jars = []
@@ -182,7 +182,7 @@ describe "surespot chat test", () ->
     connects = []
     for cookie in cookies
       connects.push makeConnect(cookie)
-    async.parallel connects, (err, clients) ->
+    async.parallelLimit connects, 100, (err, clients) ->
       if err?
         done err
       else
