@@ -68,7 +68,7 @@ else
     ssloptions = undefined
     connectionCount = 0
 
-    createRedisClient = (port, hostname, password, database, callback) ->
+    createRedisClient = (callback, database, port, hostname, password) ->
       if port? and hostname? and password?
         client = require("redis").createClient(port, hostname)
         client.auth password
@@ -149,11 +149,11 @@ else
         socketPort = 3000
       sessionStore = new RedisStore()
       dal = new DAL()
-      createRedisClient database, (err, c) -> rc = c
-      createRedisClient database, (err, c) -> rcs = c
-      createRedisClient database, (err, c) -> pub = c
-      createRedisClient database, (err, c) -> sub = c
-      createRedisClient database, (err, c) -> client = c
+      createRedisClient (err, c) -> rc = c, database
+      createRedisClient (err, c) -> rcs = c, database
+      createRedisClient (err, c) -> pub = c, database
+      createRedisClient (err, c) -> sub = c, database
+      createRedisClient (err, c) -> client = c, database
 
 #    app.configure "amazon-stage", ->
 #      logger.debug "running on amazon-stage"
