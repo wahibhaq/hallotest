@@ -172,13 +172,8 @@ describe "surespot chat test", () ->
   it 'friend users', (done) ->
     tasks = []
     for i in [minclient..maxclient] by 2
-<<<<<<< Updated upstream
-      tasks.push makeFriendUser minclient - i
+      tasks.push makeFriendUser i - minclient
     async.parallel tasks, (err, callback) ->
-=======
-      tasks.push makeFriendUser i
-    async.series tasks, (err, callback) ->
->>>>>>> Stashed changes
       if err
         done err
       else
