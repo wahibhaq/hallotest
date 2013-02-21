@@ -108,7 +108,7 @@ friendUser = (i, callback) ->
   request.post
     agent: false
     #maxSockets: 6000
-    jar: jars[i - minclient]
+    jar: jars[i]
     url: baseUri + "/invite/test#{i + 1}"
     (err, res, body) ->
       if err
@@ -120,7 +120,7 @@ friendUser = (i, callback) ->
         request.post
           agent: false
           #maxSockets: 6000
-          jar: jars[i - minclient + 1]
+          jar: jars[i + 1]
           url: baseUri + "/invites/test#{i}/accept"
           (err, res, body) ->
             if err
