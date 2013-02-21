@@ -103,7 +103,9 @@ else
       socketPort = 443
 
 
-    logger.debug "database: #{database}"
+    logger.info "dev: #{dev}"
+    logger.info "database: #{database}"
+    logger.info "socket: #{socketPort}"
 
 
     if not dev
