@@ -25,8 +25,6 @@ else
   #    }
   }
 
-
-
   requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
     http = require 'http'
     cookie = require("cookie")
@@ -58,9 +56,6 @@ else
     process.on "uncaughtException", uncaught = (err) ->
       logger.error "Uncaught Exception: " + err
 
-
-    nodePort = 443
-    socketPort = 443
     sio = undefined
     sessionStore = undefined
     rc = undefined
@@ -99,8 +94,13 @@ else
     dev = process.env.NODE_ENV != "linode"
     nossl = process.env.NODE_NOSSL is "true"
     database = process.env.NODE_DB
+    socketPort = process.env.SOCKET
+
     if database is null
       database = 0
+
+    if socketPort is null
+      socketPort = 443
 
 
     logger.debug "database: #{database}"
@@ -141,7 +141,6 @@ else
 
     app.configure ->
       if nossl
-        nodePort = 3000
         socketPort = 3000
       sessionStore = new RedisStore()
       dal = new DAL()
