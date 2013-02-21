@@ -16,7 +16,7 @@ rc.select 1
 
 baseUri = "https://localhost:8080"
 minclient = 0
-maxclient = 10
+maxclient = 9
 clients = maxclient - minclient + 1
 jars = []
 http.globalAgent.maxSockets = 20000
