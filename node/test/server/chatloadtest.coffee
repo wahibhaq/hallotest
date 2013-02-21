@@ -12,6 +12,7 @@ dcrypt = require 'dcrypt'
 crypto = require 'crypto'
 
 rc = redis.createClient()
+rc.select 1
 
 baseUri = "https://www.surespot.me"
 minclient = 0
@@ -171,7 +172,7 @@ describe "surespot chat test", () ->
   it 'friend users', (done) ->
     tasks = []
     for i in [minclient..maxclient] by 2
-      tasks.push makeFriendUser i
+      tasks.push makeFriendUser minclient - i
     async.parallel tasks, (err, callback) ->
       if err
         done err
