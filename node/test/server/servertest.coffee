@@ -41,10 +41,10 @@ login = (username, password, authSig, done, callback) ->
       password: password
       authSig: authSig
     (err, res, body) ->
-    if err
-      done err
-    else
-      callback res, body
+      if err
+        done err
+      else
+        callback res, body
 
 signup = (username, password, dhPub, dsaPub, authSig, done, callback) ->
   http.post
@@ -56,10 +56,10 @@ signup = (username, password, dhPub, dsaPub, authSig, done, callback) ->
       dsaPub: dsaPub
       authSig: authSig
     (err, res, body) ->
-    if err
-      done err
-    else
-      callback res, body
+      if err
+        done err
+      else
+        callback res, body
 
 
 generateKey = (i, callback) ->

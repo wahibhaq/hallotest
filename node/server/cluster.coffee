@@ -4,7 +4,7 @@ numCPUs = require('os').cpus().length
 
 if (cluster.isMaster)
   # Fork workers.
-  for i in [0..numCPUs - 1]
+  for i in [0..1 - 1]
     cluster.fork();
 
   cluster.on 'online', (worker, code, signal) ->
@@ -202,11 +202,11 @@ else
 
     #winston up some socket.io
     sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warning, error: logger.error }
-    sio.configure 'load testing', 'linode', ->
-      sio.set 'close timeout', 180
-      sio.set 'heartbeat timeout', 180
-      sio.set 'heartbeat interval', 160
-      sio.set 'polling duration', 150
+#    sio.configure 'load testing', 'linode', ->
+#      sio.set 'close timeout', 180
+#      sio.set 'heartbeat timeout', 180
+#      sio.set 'heartbeat interval', 160
+#      sio.set 'polling duration', 150
 
     sioRedisStore = require("socket.io/lib/stores/redis")
     sio.set "store", new sioRedisStore(
