@@ -1,5 +1,6 @@
 redis = require("redis")
 rc = redis.createClient()
+rc.select 1
 #rc.auth "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040"
 minclient = 0
 clients = 10000

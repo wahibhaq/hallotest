@@ -46,7 +46,7 @@ else
     logger.setLevels winston.config.syslog.levels
 
     transports = [
-      new (winston.transports.Console)({colorize: true, timestamp: true, level: 'info' }),
+      new (winston.transports.Console)({colorize: true, timestamp: true, level: 'debug' }),
       new (winston.transports.File)({ filename: 'logs/server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'info' })]
 
     logger.add transports[0], null, true
