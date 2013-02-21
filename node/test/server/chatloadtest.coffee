@@ -15,7 +15,7 @@ rc = redis.createClient()
 
 baseUri = "https://www.surespot.me"
 minclient = 0
-maxclient = 1499
+maxclient = 499
 clients = maxclient - minclient + 1
 jars = []
 http.globalAgent.maxSockets = 20000
@@ -113,6 +113,8 @@ friendUser = (i, callback) ->
       if err
         callback err
       else
+        if res.statusCode != 204
+          console.log i
         res.statusCode.should.equal 204
         request.post
           agent: false
@@ -123,6 +125,8 @@ friendUser = (i, callback) ->
             if err
               callback err
             else
+              if res.statusCode != 204
+                console.log i
               res.statusCode.should.equal 204
               callback null
 

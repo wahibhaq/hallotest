@@ -179,6 +179,8 @@ else
       dumpExceptions: false
       })
 
+    http.globalAgent.maxSockets = Infinity;
+
     app.listen nodePort, null
     #app.maxHeadersCount = 4096
     if nodePort == socketPort

@@ -13,12 +13,15 @@ crypto = require 'crypto'
 
 rc = redis.createClient()
 
-baseUri = "https://localhost"
-minclient = 5000
-maxclient = 9999
+baseUri = "https://www.surespot.me"
+minclient = 400
+maxclient = 999
 clients = maxclient - minclient + 1
 jars = []
 http.globalAgent.maxSockets = 20000
+
+
+
 
 clean = 0
 
@@ -56,6 +59,8 @@ login = (username, password, jar, authSig, done, callback) ->
       if err
         done err
       else
+        if res.statusCode != 204
+          console.log username
         res.statusCode.should.equal 204
         cookie = jar.get({ url: baseUri }).map((c) -> c.name + "=" + c.value).join("; ")
         callback res, body, cookie
@@ -108,6 +113,8 @@ friendUser = (i, callback) ->
       if err
         callback err
       else
+        if res.statusCode != 204
+          console.log i
         res.statusCode.should.equal 204
         request.post
           agent: false
@@ -118,6 +125,8 @@ friendUser = (i, callback) ->
             if err
               callback err
             else
+              if res.statusCode != 204
+                console.log i
               res.statusCode.should.equal 204
               callback null
 
@@ -173,7 +182,7 @@ describe "surespot chat test", () ->
     connects = []
     for cookie in cookies
       connects.push makeConnect(cookie)
-    async.parallelLimit connects, 200, (err, clients) ->
+    async.parallel connects, (err, clients) ->
       if err?
         done err
       else
