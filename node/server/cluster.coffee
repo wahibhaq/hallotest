@@ -154,7 +154,6 @@ else
 
     app.configure "amazon-stage", ->
       logger.debug "running on amazon-stage"
-      nodePort = 443
       redisPort = 6379
       socketPort = 443
       redisHost = "127.0.0.1"
@@ -199,14 +198,9 @@ else
 
     http.globalAgent.maxSockets = Infinity;
 
-    app.listen nodePort, null
+    app.listen socketPort, null
     #app.maxHeadersCount = 4096
-    if nodePort == socketPort
-      sio = require("socket.io").listen app
-    else
-      sio = require("socket.io").listen socketPort
-
-    #sio.configure "amazon-stage", ->
+    sio = require("socket.io").listen app
 
 
     #winston up some socket.io
