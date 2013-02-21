@@ -86,7 +86,7 @@ else
     logger.debug "process.env.NODE_SSL: " + process.env.NODE_SSL
     logger.debug "__dirname: #{__dirname}"
     dev = process.env.NODE_ENV != "linode"
-    ssl = process.env.NODE_SSL is "true"
+    nossl = process.env.NODE_NOSSL is "true"
 
 
     if not dev
@@ -103,7 +103,7 @@ else
 
     # create EC keys like so
     # priv key
-    # openssl ecparam -name secp521r1 -outform PEM -out key -genkey
+    # openssl ecparam -name secp521r1 -outform PEM -out priv.pem -genkey
     # pub key
     # openssl ec -inform PEM  -outform PEM -in priv.pem -out pub.pem -pubout
     #
@@ -115,13 +115,14 @@ else
     serverPublicKey = fs.readFileSync('ec/pub.pem')
 
 
-    if ssl
-      app = module.exports = express.createServer ssloptions
-    else
+    if nossl
       app = module.exports = express.createServer()
+    else
+      app = module.exports = express.createServer ssloptions
 
 
-    app.configure "development", 'load testing',  ->
+
+    app.configure ->
       if ssl
         nodePort = 443
         socketPort = 443
@@ -154,21 +155,6 @@ else
       pub = createRedisClient(redisPort, redisHost, redisAuth)
       sub = createRedisClient(redisPort, redisHost, redisAuth)
       client = createRedisClient(redisPort, redisHost, redisAuth)
-
-    app.configure "linode", ->
-      logger.debug "running on linode"
-      nodePort = 443
-      redisPort = 6379
-      socketPort = 443
-      redisHost = "127.0.0.1"
-      redisAuth = "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040"
-      sessionStore = new RedisStore()
-      dal = new DAL()
-      rc = createRedisClient()
-      rcs = createRedisClient()
-      pub = createRedisClient()
-      sub = createRedisClient()
-      client = createRedisClient()
 
 
     app.configure ->
@@ -209,11 +195,11 @@ else
     #winston up some socket.io
     sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warning, error: logger.error }
 
-    sio.configure 'load testing', ->
+    sio.configure 'load testing', 'linode' ->
       sio.set 'close timeout', 180
-      sio.set 'heartbeat timeout', 160
-      sio.set 'heartbeat interval', 140
-      sio.set 'polling duration', 120
+      sio.set 'heartbeat timeout', 180
+      sio.set 'heartbeat interval', 160
+      sio.set 'polling duration', 150
 
     sioRedisStore = require("socket.io/lib/stores/redis")
     sio.set "store", new sioRedisStore(
