@@ -14,9 +14,9 @@ crypto = require 'crypto'
 rc = redis.createClient()
 rc.select 1
 
-baseUri = "https://localhost:8080"
-minclient = 0
-maxclient = 9
+baseUri = "https://www.surespot.me:8080"
+minclient = 600
+maxclient = 1199
 clients = maxclient - minclient + 1
 jars = []
 http.globalAgent.maxSockets = 20000
@@ -108,7 +108,7 @@ friendUser = (i, callback) ->
   request.post
     agent: false
     #maxSockets: 6000
-    jar: jars[i]
+    jar: jars[i - minclient]
     url: baseUri + "/invite/test#{(i + 1)}"
     (err, res, body) ->
       if err
@@ -120,7 +120,7 @@ friendUser = (i, callback) ->
         request.post
           agent: false
           #maxSockets: 6000
-          jar: jars[(i + 1)]
+          jar: jars[(i - minclient + 1)]
           url: baseUri + "/invites/test#{i}/accept"
           (err, res, body) ->
             if err
@@ -172,7 +172,7 @@ describe "surespot chat test", () ->
   it 'friend users', (done) ->
     tasks = []
     for i in [minclient..maxclient] by 2
-      tasks.push makeFriendUser i - minclient
+      tasks.push makeFriendUser i
     async.parallel tasks, (err, callback) ->
       if err
         done err
