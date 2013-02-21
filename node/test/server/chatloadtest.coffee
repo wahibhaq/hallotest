@@ -15,8 +15,8 @@ rc = redis.createClient()
 rc.select 1
 
 baseUri = "https://www.surespot.me:8080"
-minclient = 600
-maxclient = 1199
+minclient = 1200
+maxclient = 1999
 clients = maxclient - minclient + 1
 jars = []
 http.globalAgent.maxSockets = 20000
