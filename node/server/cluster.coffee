@@ -4,7 +4,7 @@ numCPUs = require('os').cpus().length
 
 if (cluster.isMaster)
   # Fork workers.
-  for i in [0..numCPUs-1]
+  for i in [0..numCPUs - 1]
     cluster.fork();
 
   cluster.on 'online', (worker, code, signal) ->
@@ -14,7 +14,6 @@ if (cluster.isMaster)
     console.log 'worker ' + worker.process.pid + ' died'
 
 else
-
   requirejs = require 'requirejs'
   requirejs.config {
   ##appDir: '.'
@@ -141,45 +140,34 @@ else
       app = module.exports = express.createServer ssloptions
 
 
-
     app.configure ->
       if nossl
         socketPort = 3000
       sessionStore = new RedisStore()
       dal = new DAL()
-      createRedisClient (err, c) ->
-        rc = c
-        database
-      createRedisClient (err, c) ->
-        rcs = c
-        database
-      createRedisClient (err, c) ->
-        pub = c
-        database
-      createRedisClient (err, c) ->
-        sub = c
-        database
-      createRedisClient (err, c) ->
-        client = c
-        database
+      createRedisClient ((err, c) -> rc = c), database
+      createRedisClient ((err, c) -> rcs = c), database
+      createRedisClient ((err, c) -> pub = c), database
+      createRedisClient ((err, c) -> sub = c), database
+      createRedisClient ((err, c) -> client = c), database
 
-#    app.configure "amazon-stage", ->
-#      logger.debug "running on amazon-stage"
-#      redisPort = 6379
-#      socketPort = 443
-#      redisHost = "127.0.0.1"
-#      redisAuth = "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040"
-#      dal = new DAL(redisPort, redisHost, redisAuth)
-#      sessionStore = new RedisStore(
-#        host: redisHost
-#        port: redisPort
-#        pass: redisAuth
-#      )
-#      rc = createRedisClient(redisPort, redisHost, redisAuth)
-#      rcs = createRedisClient(redisPort, redisHost, redisAuth)
-#      pub = createRedisClient(redisPort, redisHost, redisAuth)
-#      sub = createRedisClient(redisPort, redisHost, redisAuth)
-#      client = createRedisClient(redisPort, redisHost, redisAuth)
+    #    app.configure "amazon-stage", ->
+    #      logger.debug "running on amazon-stage"
+    #      redisPort = 6379
+    #      socketPort = 443
+    #      redisHost = "127.0.0.1"
+    #      redisAuth = "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040"
+    #      dal = new DAL(redisPort, redisHost, redisAuth)
+    #      sessionStore = new RedisStore(
+    #        host: redisHost
+    #        port: redisPort
+    #        pass: redisAuth
+    #      )
+    #      rc = createRedisClient(redisPort, redisHost, redisAuth)
+    #      rcs = createRedisClient(redisPort, redisHost, redisAuth)
+    #      pub = createRedisClient(redisPort, redisHost, redisAuth)
+    #      sub = createRedisClient(redisPort, redisHost, redisAuth)
+    #      client = createRedisClient(redisPort, redisHost, redisAuth)
 
 
     app.configure ->
@@ -333,7 +321,6 @@ else
         fn null, data
 
     createNewUserAccount = (req, res, next) ->
-
       username = req.body.username
       logger.debug "createNewUserAccount: #{username}"
 
