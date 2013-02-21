@@ -20,9 +20,9 @@ rc = redis.createClient()
 #    for i in {0..4999}; do openssl ec -inform PEM -outform PEM -in test${i}_priv.pem -out test${i}_pub.pem -pubout; done
 
 
-baseUri = "https://localhost"
-minclient = 5000
-maxclient = 10000
+baseUri = "https://www.surespot.me"
+minclient = 364
+maxclient = 500
 #maxsockets = 100
 
 #http.globalAgent.maxSockets = maxsockets

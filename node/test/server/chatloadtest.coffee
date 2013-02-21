@@ -13,9 +13,9 @@ crypto = require 'crypto'
 
 rc = redis.createClient()
 
-baseUri = "https://localhost"
+baseUri = "https://www.surespot.me"
 minclient = 0
-maxclient = 9999
+maxclient = 1499
 clients = maxclient - minclient + 1
 jars = []
 http.globalAgent.maxSockets = 20000
@@ -59,6 +59,8 @@ login = (username, password, jar, authSig, done, callback) ->
       if err
         done err
       else
+        if res.statusCode != 204
+          console.log username
         res.statusCode.should.equal 204
         cookie = jar.get({ url: baseUri }).map((c) -> c.name + "=" + c.value).join("; ")
         callback res, body, cookie
