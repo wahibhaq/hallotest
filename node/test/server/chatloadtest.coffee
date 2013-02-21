@@ -114,7 +114,7 @@ friendUser = (i, callback) ->
         callback err
       else
         if res.statusCode != 204
-          console.log i
+          console.log "invite failed statusCode#{res.statusCode}, i: " + i
         res.statusCode.should.equal 204
         request.post
           agent: false
@@ -126,7 +126,7 @@ friendUser = (i, callback) ->
               callback err
             else
               if res.statusCode != 204
-                console.log i
+                console.log "invite accept failed statusCode#{res.statusCode}, i: " + i
               res.statusCode.should.equal 204
               callback null
 
