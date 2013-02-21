@@ -24,7 +24,7 @@ else
   #    }
   }
 
-  requirejs ['cs!dal', 'underscore', 'winston'], (DAL, _, winston) ->
+  requirejs ['underscore', 'winston'], (_, winston) ->
     http = require 'http'
     cookie = require("cookie")
     express = require("express")
@@ -62,7 +62,6 @@ else
     pub = undefined
     sub = undefined
     client = undefined
-    dal = undefined
     app = undefined
     ssloptions = undefined
     connectionCount = 0
@@ -144,7 +143,6 @@ else
       if nossl
         socketPort = 3000
       sessionStore = new RedisStore()
-      dal = new DAL()
       createRedisClient ((err, c) -> rc = c), database
       createRedisClient ((err, c) -> rcs = c), database
       createRedisClient ((err, c) -> pub = c), database
@@ -157,7 +155,7 @@ else
     #      socketPort = 443
     #      redisHost = "127.0.0.1"
     #      redisAuth = "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040"
-    #      dal = new DAL(redisPort, redisHost, redisAuth)
+    #
     #      sessionStore = new RedisStore(
     #        host: redisHost
     #        port: redisPort
@@ -270,12 +268,26 @@ else
     validateAreFriends = (req, res, next) ->
       username = req.user.username
       friendname = req.params.username
-      dal.isFriend username, friendname, (err, result) ->
+      isFriend username, friendname, (err, result) ->
         return next err if err?
         if result
           next()
         else
           res.send 403
+
+    getFriends = (username, callback) ->
+      rc.smembers "friends:#{username}", callback
+
+    #is friendname a friend of username
+    isFriend = (username, friendname, callback) ->
+      rc.sismember "friends:#{username}", friendname, callback
+
+
+    inviteExists = (username, friendname, callback) ->
+      rc.sismember "invited:#{username}", friendname, (err, result) =>
+        return callback err if err?
+        return callback null, false if not result
+        rc.sismember "invites:#{friendname}", username, callback
 
     getRoomName = (from, to) ->
       if from < to then from + ":" + to else to + ":" + from
@@ -514,7 +526,7 @@ else
           return if err?
           if exists
             #if they're not friends disconnect them, wtf are they trying to do here?
-            dal.isFriend user, to, (err, isFriend) ->
+            isFriend user, to, (err, isFriend) ->
               return if err?
               return socket.disconnect() if not isFriend
               cipherdata = message.data
@@ -564,7 +576,7 @@ else
         return next new Error "Invalid room name."
 
       otherUser = getOtherUser room, username
-      dal.isFriend username, otherUser, (err, result) ->
+      isFriend username, otherUser, (err, result) ->
         return res.send 403 if not result
 
         #req.url = "/images/" + req.params.room + "/" + req.params.id
@@ -655,7 +667,7 @@ else
       logger.debug "#{username} inviting #{friendname} to be friends"
       #todo check if friendname has ignored username
       #see if they are already friends
-      dal.isFriend username, friendname, (err, result) ->
+      isFriend username, friendname, (err, result) ->
         #if they are, do nothing
         if result then res.send 409
         else
@@ -706,7 +718,7 @@ else
       friendname = req.params.username
 
       #make sure invite exists
-      dal.inviteExists friendname, username, (err, result) ->
+      inviteExists friendname, username, (err, result) ->
         return next err if err?
         return res.send 404 if not result
         accept = req.params.action is 'accept'
@@ -760,7 +772,7 @@ else
     getFriends = (req, res, next) ->
       username = req.user.username
 
-      dal.getFriends username, (err, rfriends) ->
+      getFriends username, (err, rfriends) ->
         return next err if err?
         friends = []
         _.each rfriends, (name) -> friends.push {status: "friend", name: name}
