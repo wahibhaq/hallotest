@@ -109,7 +109,7 @@ friendUser = (i, callback) ->
     agent: false
     #maxSockets: 6000
     jar: jars[i]
-    url: baseUri + "/invite/test#{i + 1}"
+    url: baseUri + "/invite/test#{(i + 1)}"
     (err, res, body) ->
       if err
         callback err
@@ -120,14 +120,14 @@ friendUser = (i, callback) ->
         request.post
           agent: false
           #maxSockets: 6000
-          jar: jars[i + 1]
+          jar: jars[(i + 1)]
           url: baseUri + "/invites/test#{i}/accept"
           (err, res, body) ->
             if err
               callback err
             else
               if res.statusCode != 204
-                console.log "invite accept failed statusCode#{res.statusCode}, i: " + i + 1
+                console.log "invite accept failed statusCode#{res.statusCode}, i: " + (i + 1)
               res.statusCode.should.equal 204
               callback null
 
