@@ -79,8 +79,6 @@ else
 
         else
           callback null, client
-
-
       else
         client = require("redis").createClient()
         if database?
@@ -149,11 +147,21 @@ else
         socketPort = 3000
       sessionStore = new RedisStore()
       dal = new DAL()
-      createRedisClient (err, c) -> rc = c, database
-      createRedisClient (err, c) -> rcs = c, database
-      createRedisClient (err, c) -> pub = c, database
-      createRedisClient (err, c) -> sub = c, database
-      createRedisClient (err, c) -> client = c, database
+      createRedisClient (err, c) ->
+        rc = c
+        database
+      createRedisClient (err, c) ->
+        rcs = c
+        database
+      createRedisClient (err, c) ->
+        pub = c
+        database
+      createRedisClient (err, c) ->
+        sub = c
+        database
+      createRedisClient (err, c) ->
+        client = c
+        database
 
 #    app.configure "amazon-stage", ->
 #      logger.debug "running on amazon-stage"
