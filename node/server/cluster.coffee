@@ -190,7 +190,7 @@ else
 
 
     #winston up some socket.io
-    sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warning, error: logger.error }gi
+    sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warning, error: logger.error }
     sio.configure 'load testing', 'linode', ->
       sio.set 'close timeout', 180
       sio.set 'heartbeat timeout', 180
