@@ -182,16 +182,16 @@ requirejs ['underscore', 'winston'], (_, winston) ->
     transports: transports
     })
     app.use app.router
-    app.use expressWinston.errorLogger({
+
+    app.use(expressWinston.errorLogger({
     transports: transports
-    })
-
-
-    app.use express.errorHandler({
+    }))
+    app.use(express.errorHandler({
     showMessage: true,
-    showStack: false,
-    dumpExceptions: false
-    })
+    showStack: true,
+    dumpExceptions: true
+    }))
+
 
   http.globalAgent.maxSockets = Infinity;
 
@@ -652,12 +652,19 @@ requirejs ['underscore', 'winston'], (_, winston) ->
     res.send 204
 
   app.get "/keytoken", ensureAuthenticated, setNoCache, (req, res, next) ->
+    username = req.user.username
     #the user wants to update their key so we will generate a token that the user signs to make sure they're not using a replay attack of some kind
-    rc.incr "keyversion:#{username}", (err, kv) ->
-      crypto.randomBytes 256, (err, buf) ->
+
+    #get the current version
+    rc.get "keyversion:#{username}", (err, currkv) ->
+      return next err if err?
+
+      #inc key version
+      kv = parseInt(currkv) + 1
+      crypto.randomBytes 32, (err, buf) ->
         return next err if err?
         token = buf.toString('base64')
-        rc.set "keytoken:#{res.user.username}", token, (err, result) ->
+        rc.set "keytoken:#{username}", token, (err, result) ->
           return next err if err?
           res.send {keyversion: kv, token: token}
 
@@ -673,44 +680,60 @@ requirejs ['underscore', 'winston'], (_, winston) ->
 
     #make sure the key versions match
     kv = req.body.keyVersion
-    rc.get "keyversion:#{username}", -> (err, storedkv) ->
+    rc.get "keyversion:#{username}", (err, storedkv) ->
       return next err if err?
-      return next new Error 'key versions do not match' unless storedkv == req.body.kv
 
-      #make sure the takons match
-      rc.get "keytoken:#{username}", (err, result) ->
-        keys = {}
-        keys.dhPub = req.body.dhPub
-        keys.dsaPub = req.body.dsaPub
-        tokenSig = new Buffer req.body.tokenSig, 'base64'
-        token = new Buffer res, 'base64'
+      storedkv++
+      return next new Error 'key versions do not match' unless storedkv is parseInt(kv)
+
+      #make sure the tokens match
+      rc.get "keytoken:#{username}", (err, rtoken) ->
+        newKeys = {}
+        newKeys.dhPub = req.body.dhPub
+        newKeys.dsaPub = req.body.dsaPub
+        token = new Buffer(rtoken, 'base64')
+        console.log "received token signature: " + req.body.tokenSig
+        console.log "received auth signature: " + req.body.authSig
+        console.log "token: " + rtoken
+
+        password = req.body.password
 
         #validate the signature against the token
-        verified = crypto.createVerify('sha256').update(token).verify(keys.dsaPub, tokenSig)
-        return res.send 403 unless verified
 
-        authSig = req.body.authSig
-        password = req.body.password
-        validateUser username, password, authSig, (err, status, user) ->
-          return done(err) if err?
-          return res.send 403 unless user?
+        getLatestKeys username, (err, keys) ->
+          return done err if err?
+          return done new Error "no keys exist for user #{username}" unless keys?
 
-          #delete the token of which there should only be one
-          rc.del "keytoken:#{username}", (err, result) ->
-            return next err if err?
-            return res.send 404 unless res is 1
+          verified = crypto.createVerify('sha256').update(token).verify(keys.dsaPub, new Buffer(req.body.tokenSig, 'base64'))
 
-            #sign the keys
-            keys.dhPubSig = crypto.createSign('sha256').update(new Buffer(keys.dhPub)).sign(serverPrivateKey, 'base64')
-            keys.dsaPubSig = crypto.createSign('sha256').update(new Buffer(keys.dsaPub)).sign(serverPrivateKey, 'base64')
-            logger.debug "saving keys #{username}, dhPubSig: #{keys.dhPubSig}, dsaPubSig: #{keys.dsaPubSig}"
+          #verified = verifySignature token, new Buffer(password), req.body.tokenSig, keys.dsaPub
+          return res.send 403 unless verified
 
-            keysKey = "keys:#{username}:#{storedkv}"
-            keys.version = storedkv + ""
-            #add the keys to the key set
-            rc.hmset keysKey, keys, (err, result) ->
+          authSig = req.body.authSig
+          validateUser username, password, authSig, (err, status, user) ->
+            return done(err) if err?
+            return res.send 403 unless user?
+
+            #delete the token of which there should only be one
+            rc.del "keytoken:#{username}", (err, rdel) ->
               return next err if err?
-              res.send 201
+              return res.send 404 unless rdel is 1
+
+              #sign the keys
+              newKeys.dhPubSig = crypto.createSign('sha256').update(new Buffer(newKeys.dhPub)).sign(serverPrivateKey, 'base64')
+              newKeys.dsaPubSig = crypto.createSign('sha256').update(new Buffer(newKeys.dsaPub)).sign(serverPrivateKey, 'base64')
+              logger.debug "saving keys #{username}, dhPubSig: #{newKeys.dhPubSig}, dsaPubSig: #{newKeys.dsaPubSig}"
+
+              keysKey = "keys:#{username}:#{storedkv}"
+              newKeys.version = storedkv + ""
+              #add the keys to the key set
+              rc.hmset keysKey, newKeys, (err, rkeyset) ->
+                return next err if err?
+
+                #update the version
+                rc.set "keyversion:#{username}", storedkv, (err, rkeyversion) ->
+                  return next err if err?
+                  res.send 201
 
 
   app.post "/validate", (req, res, next) ->
@@ -880,6 +903,17 @@ requirejs ['underscore', 'winston'], (_, winston) ->
         return callback err if err?
         callback null, keys
 
+  verifySignature = (b1, b2, sigString, pubKey) ->
+    #get the signature
+    buffer = new Buffer(sigString, 'base64')
+
+    #random is stored in first 16 bytes
+    random = buffer.slice 0, 16
+    signature = buffer.slice 16
+
+    return crypto.createVerify('sha256').update(b1).update(b2).update(random).verify(pubKey, signature)
+
+
   validateUser = (username, password, signature, done) ->
     return done(null, 403) if signature.length < 16
     userKey = "users:" + username
@@ -891,19 +925,14 @@ requirejs ['underscore', 'winston'], (_, winston) ->
         return done err if err?
         return done null, 403 if not res
 
-        #get the signature
-        buffer = new Buffer(signature, 'base64')
-
-        #random is stored in first 16 bytes
-        random = buffer.slice 0, 16
-        signature = buffer.slice 16
-
         #not really worried about replay attacks here as we're using ssl but as extra security the server could send a challenge that the client would sign as we do with key roll
         getLatestKeys username, (err, keys) ->
           return done err if err?
           return done new Error "no keys exist for user #{username}" unless keys?
 
-          verified = crypto.createVerify('sha256').update(new Buffer(username)).update(new Buffer(password)).update(random).verify(keys.dsaPub, signature)
+          verified = verifySignature new Buffer(username), new Buffer(password), signature, keys.dsaPub
+
+          #crypto.createVerify('sha256').update(new Buffer(username)).update(new Buffer(password)).update(random).verify(keys.dsaPub, signature)
           logger.debug "validated, #{username}: #{verified}"
 
           status = if verified then 204 else 403
