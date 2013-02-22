@@ -144,6 +144,33 @@ describe "surespot server", () ->
   #        res.statusCode.should.equal 409
   #        done()
 
+
+    it "should be able to roll the key pair", (done) ->
+      kp0 = undefined
+      #generate new key pairs
+      generateKey 0, (err, nkp) ->
+        kp0 = nkp
+        http.post
+          url: baseUri + "/users/identity"
+          json:
+            username: "test0"
+            password: "test0"
+            dhPub: kp0.ecdh.pem_pub
+            dsaPub: kp0.ecdsa.pem_pub
+            authSig: kp0.authSig
+          (err, res, body) ->
+            if err
+              done err
+            else
+              res.statusCode.should.equal 201
+              done()
+
+    it "should not be able to login with the old signature", (done) ->
+      login "test0", "test0", keys[0].sig, done, (res, body) ->
+        res.statusCode.should.equal 401
+        done()
+
+
   describe "login with invalid password", ->
     it "should return 401", (done) ->
       login "test0", "bollocks", keys[0].sig, done, (res, body) ->
@@ -396,5 +423,7 @@ describe "surespot server", () ->
 
         form = r.form()
         form.append "image", fs.createReadStream "test"
+
+
   #todo set filename explicitly
   after (done) -> cleanup done

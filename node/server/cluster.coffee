@@ -332,64 +332,6 @@ else
         return fn err if err?
         fn null, data
 
-    createNewUserAccount = (req, res, next) ->
-      username = req.body.username
-      logger.debug "createNewUserAccount: #{username}"
-
-      #var newUser = {name:name, email:email };
-      userExists username, (err, exists) ->
-        return next err if err?
-        if exists
-          logger.debug "user already exists"
-          res.send 409
-        else
-          password = req.body.password
-
-          user = {}
-          user.username = req.body.username
-
-          if req.body.dhPub?
-            user.dhPub = req.body.dhPub
-          else
-            return next new Error('dh public key required')
-
-          if req.body.dsaPub?
-            user.dsaPub = req.body.dsaPub
-          else
-            return next new Error('dsa public key required')
-
-          if req.body.authSig is null
-            return next new Error('auth signature required')
-
-          if req.body.gcmId?
-            user.gcmId = req.body.gcmId
-
-          #dump the key stuff to a file
-          #        key = '-----BEGIN PUBLIC KEY-----\n' + req.body.dhPub + '-----END PUBLIC KEY-----\n'
-          #        fs.writeFileSync "#{user.username}.sig", user.authSig
-          #        fs.writeFileSync "#{user.username}.key", key
-          #        fs.writeFileSync "#{user.username}.data", user.username
-          logger.debug "gcmID: #{user.gcmId}"
-
-          bcrypt.genSalt 10, (err, salt) ->
-            return next err if err?
-            bcrypt.hash password, salt, (err, password) ->
-              return next err if err?
-              user.password = password
-
-              #sign the keys
-              user.dhPubSig = crypto.createSign('sha256').update(new Buffer(user.dhPub)).sign(serverPrivateKey, 'base64')
-              user.dsaPubSig = crypto.createSign('sha256').update(new Buffer(user.dsaPub)).sign(serverPrivateKey, 'base64')
-              logger.debug "#{user.username}, dhPubSig: #{user.dhPubSig}, dsaPubSig: #{user.dsaPubSig}"
-
-              userKey = "users:" + user.username
-              rc.hmset userKey, user, (err, data) ->
-                logger.debug "set " + userKey + " in db"
-                return next new Error("[createNewUserAccount] SET failed for user: " + username) if err?
-                req.login user, ->
-                  req.user = user
-                  next()
-
     checkForDuplicateMessage = (resendId, room, message, callback) ->
       if (resendId?)
         if (resendId > 0)
@@ -634,12 +576,135 @@ else
         return next err if err?
         res.send exists
 
+    app.post "/users", passport.authenticate("local"), (req, res, next) ->
+      username = req.body.username
+      logger.debug "/users, username: #{username}"
+      userExists username, (err, exists) ->
+        return next err if err?
+        if exists
+          logger.debug "user already exists"
+          res.send 409
+        else
+          password = req.body.password
+
+          user = {}
+          user.username = username
+
+          keys = {}
+          if req.body.dhPub?
+            keys.dhPub = req.body.dhPub
+          else
+            return next new Error('dh public key required')
+
+          if req.body.dsaPub?
+            keys.dsaPub = req.body.dsaPub
+          else
+            return next new Error('dsa public key required')
+
+          return next new Error('auth signature required') unless req.body?.authSig?
+
+          if req.body.gcmId?
+            user.gcmId = req.body.gcmId
+
+          #dump the key stuff to a file
+          #        key = '-----BEGIN PUBLIC KEY-----\n' + req.body.dhPub + '-----END PUBLIC KEY-----\n'
+          #        fs.writeFileSync "#{user.username}.sig", user.authSig
+          #        fs.writeFileSync "#{user.username}.key", key
+          #        fs.writeFileSync "#{user.username}.data", user.username
+          logger.debug "gcmID: #{user.gcmId}"
+
+          bcrypt.genSalt 10, (err, salt) ->
+            return next err if err?
+            bcrypt.hash password, salt, (err, password) ->
+              return next err if err?
+              user.password = password
+
+              #sign the keys
+              keys.dhPubSig = crypto.createSign('sha256').update(new Buffer(user.dhPub)).sign(serverPrivateKey, 'base64')
+              keys.dsaPubSig = crypto.createSign('sha256').update(new Buffer(user.dsaPub)).sign(serverPrivateKey, 'base64')
+              logger.debug "#{user.username}, dhPubSig: #{user.dhPubSig}, dsaPubSig: #{user.dsaPubSig}"
+
+              userKey = "users:#{username}"
+              rc.hmset userKey, user, (err, data) ->
+                return next new Error("[createNewUserAccount] SET failed for user: " + username) if err?
+                logger.debug "set " + userKey + " in db"
+
+                #get key version
+                rc.incr "keyversion:#{username}", (err, kv) ->
+                  return next err if err?
+                  keysKey = "keys:#{username}"
+
+                  #add the keys to the key set
+                  rc.zadd keysKey, kv, keys, -> (err, res) ->
+                    return next err if err?
+                    req.login user, ->
+                      req.user = user
+                      res.send 201
+
     app.post "/login", passport.authenticate("local"), (req, res, next) ->
       logger.debug "/login post"
       res.send 204
 
-    app.post "/users", createNewUserAccount, passport.authenticate("local"), (req, res, next) ->
-      res.send 201
+    app.post "/keytoken", ensureAuthenticated, (req, res, next) ->
+      #the user wants to update their key so we will generate a token that the user signs to make sure they're not using a replay attack of some kind
+      rc.incr "keyversion:#{username}", (err, kv) ->
+        crypto.randomBytes 256, (err, buf) ->
+            return next err if err?
+            token = buf.toString('base64')
+            rc.set "keytoken:#{res.user.username}", token, (err, result) ->
+              return next err if err?
+              res.send {keyversion: kv, token: token}
+
+    app.post "/keys", ensureAuthenticated, (req, res, next) ->
+      username = req.user.username
+      logger.debug "roll keys: #{username}"
+      return res.send 403 unless req.body?.authSig?
+      return res.send 403 unless req.body?.password?
+      return next new Error('dh public key required') unless req.body?.dhPub?
+      return next new Error 'key version required' unless req.body?.kv?
+      return next new Error 'token signature required' unless req.body?.tokenSig?
+
+      #make sure the key versions match
+      kv = req.body.kv
+      rc.get "keyversion:#{username}", -> (err, kv) ->
+        return next err if err?
+        return next new Error 'key versions do not match' unless kv == req.body.kv
+
+        #make sure the takons match
+        rc.get "keytoken:#{username}", (err, result) ->
+          keys = {}
+          keys.dhPub = req.body.dhPub
+          keys.dsaPub = req.body.dsaPub
+          tokenSig = new Buffer req.body.tokenSig, 'base64'
+          token = new Buffer res, 'base64'
+
+          #validate the signature against the token
+          verified = crypto.createVerify('sha256').update(token).verify(keys.dsaPub, tokenSig)
+          return res.send 403 unless verified
+
+          authSig = req.body.authSig
+          password = req.body.password
+          validateUser username, password, authSig, (err, status, user) ->
+            return done(err) if err?
+            return res.send 403 unless user?
+
+            #delete the token of which there should only be one
+            rc.del "keytoken:#{username}", (err, result) ->
+              return next err if err?
+              return res.send 404 unless res is 1
+
+              #sign the keys
+              keys.dhPubSig = crypto.createSign('sha256').update(new Buffer(keys.dhPub)).sign(serverPrivateKey, 'base64')
+              keys.dsaPubSig = crypto.createSign('sha256').update(new Buffer(keys.dsaPub)).sign(serverPrivateKey, 'base64')
+              logger.debug "saving keys #{username}, dhPubSig: #{keys.dhPubSig}, dsaPubSig: #{keys.dsaPubSig}"
+
+              keysKey = "keys:#{username}"
+
+              #add the keys to the key set
+              rc.zadd keysKey, kv, keys, -> (err, res) ->
+                return next err if err?
+                res.send 201
+
 
     app.post "/validate", (req, res, next) ->
       username = req.body.username
@@ -799,6 +864,7 @@ else
       bcrypt.compare password, dbpassword, callback
 
 
+
     validateUser = (username, password, signature, done) ->
       return done(null, 403) if signature.length < 16
       userKey = "users:" + username
@@ -816,6 +882,8 @@ else
           #random is stored in first 16 bytes
           random = buffer.slice 0, 16
           signature = buffer.slice 16
+
+          #not really worried about replay attacks here as we're using ssl but as extra security the server could send a challenge that the client would sign
 
           verified = crypto.createVerify('sha256').update(new Buffer(username)).update(new Buffer(password)).update(random).verify(user.dsaPub, signature)
           logger.debug "validated, #{username}: #{verified}"
