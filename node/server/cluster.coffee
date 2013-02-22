@@ -691,7 +691,6 @@ requirejs ['underscore', 'winston'], (_, winston) ->
         newKeys = {}
         newKeys.dhPub = req.body.dhPub
         newKeys.dsaPub = req.body.dsaPub
-        token = new Buffer(rtoken, 'base64')
         console.log "received token signature: " + req.body.tokenSig
         console.log "received auth signature: " + req.body.authSig
         console.log "token: " + rtoken
@@ -704,9 +703,9 @@ requirejs ['underscore', 'winston'], (_, winston) ->
           return done err if err?
           return done new Error "no keys exist for user #{username}" unless keys?
 
-          verified = crypto.createVerify('sha256').update(token).update(new Buffer(password)).verify(keys.dsaPub, new Buffer(req.body.tokenSig, 'base64'))
+          #verified = crypto.createVerify('sha256').update(token).update(new Buffer(password)).verify(keys.dsaPub, new Buffer(req.body.tokenSig, 'base64'))
 
-          #verified = verifySignature token, new Buffer(password), req.body.tokenSig, keys.dsaPub
+          verified = verifySignature new Buffer(rtoken, 'base64'), new Buffer(password), req.body.tokenSig, keys.dsaPub
           return res.send 403 unless verified
 
           authSig = req.body.authSig
