@@ -704,7 +704,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
           return done err if err?
           return done new Error "no keys exist for user #{username}" unless keys?
 
-          verified = crypto.createVerify('sha256').update(token).verify(keys.dsaPub, new Buffer(req.body.tokenSig, 'base64'))
+          verified = crypto.createVerify('sha256').update(token).update(new Buffer(password)).verify(keys.dsaPub, new Buffer(req.body.tokenSig, 'base64'))
 
           #verified = verifySignature token, new Buffer(password), req.body.tokenSig, keys.dsaPub
           return res.send 403 unless verified
