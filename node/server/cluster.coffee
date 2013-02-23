@@ -41,6 +41,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
   mkdirp = require("mkdirp")
   expressWinston = require "express-winston"
   logger = require("winston")
+  async = require 'async'
 
   logger.remove winston.transports.Console
   logger.setLevels winston.config.syslog.levels
@@ -358,6 +359,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
       callback null, false
 
   getNextMessageId = (room, id, callback) ->
+    #we will alread have an id if we uploaded a file
     return callback id if id?
     #INCR message id
     rc.incr room + ":id", (err, newId) ->
@@ -370,6 +372,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
   createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id) ->
     logger.debug "new message"
     message = {}
+    message.type = "user"
     message.to = to
     message.toVersion = toVersion
     message.from = from
@@ -435,6 +438,43 @@ requirejs ['underscore', 'winston'], (_, winston) ->
               logger.debug "sendGcm result: #{result}"
           else
             logger.debug "no gcm id for #{to}"
+
+
+  # broadcast a key revocation message to who's conversations
+  sendRevokeMessages = (who, newVersion, callback) ->
+    logger.debug "new message"
+
+    #Get all the dude's conversations
+    #todo what
+    rc.smembers "conversations:#{who}", (err, convos) ->
+      return callback err if err?
+      async.each convos, (room, callback) ->
+        to = getOtherUser(room, who)
+        message = {}
+        message.type = "system"
+        message.subtype = "revoke"
+        message.to = to
+        message.datetime = Date.now()
+        message.from = who
+
+
+        #INCR message id
+        getNextMessageId room, null, (id) ->
+          return callback new Error 'could not get next message id' unless id?
+          message.id = id
+
+          logger.debug "sending system message, #{who} has completed a key roll"
+          newMessage = JSON.stringify(message)
+
+          #store messages in sorted sets
+          rc.zadd "messages:" + room, id, newMessage, (err, addcount) ->
+            #end transaction here
+            logger.error ("ERROR: adding system message, " + err) if err?
+            return callback new error 'could not send system message' if err?
+            sio.sockets.to(to).emit "message", newMessage
+            callback()
+      , callback
+
 
   room = sio.on "connection", (socket) ->
     user = socket.handshake.session.passport.user
@@ -686,6 +726,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
       storedkv++
       return next new Error 'key versions do not match' unless storedkv is parseInt(kv)
 
+      #todo transaction
       #make sure the tokens match
       rc.get "keytoken:#{username}", (err, rtoken) ->
         newKeys = {}
@@ -725,14 +766,17 @@ requirejs ['underscore', 'winston'], (_, winston) ->
 
               keysKey = "keys:#{username}:#{storedkv}"
               newKeys.version = storedkv + ""
-              #add the keys to the key set
-              rc.hmset keysKey, newKeys, (err, rkeyset) ->
-                return next err if err?
+              #add the keys to the key set and add revoke message in transaction
+              multi = rc.multi()
+              multi.hmset keysKey, newKeys
+              #update the version
+              multi.set "keyversion:#{username}", storedkv
 
-                #update the version
-                rc.set "keyversion:#{username}", storedkv, (err, rkeyversion) ->
-                  return next err if err?
-                  res.send 201
+              #send revoke message
+              multi.exec (err, replies) ->
+                return next err if err?
+                sendRevokeMessages username, storedkv
+                res.send 201
 
 
   app.post "/validate", (req, res, next) ->
