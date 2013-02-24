@@ -455,6 +455,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
         message.subtype = "revoke"
         message.to = to
         message.datetime = Date.now()
+        message.fromVersion = newVersion
         message.from = who
 
 
@@ -472,6 +473,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
             logger.error ("ERROR: adding system message, " + err) if err?
             return callback new error 'could not send system message' if err?
             sio.sockets.to(to).emit "message", newMessage
+            sio.sockets.to(who).emit "message", newMessage
             callback()
       , callback
 
