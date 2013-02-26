@@ -26,7 +26,14 @@ cleanup = (done) ->
     "messages:test0:test1",
     "conversations:test1",
     "conversations:test0",
-    "conversations:test2"]
+    "conversations:test2",
+    "keytoken:test0"
+    "keyversion:test0",
+    "keys:test0:1",
+    "keyversion:test1",
+    "keys:test1:1",
+    "keyversion:test2",
+    "keys:test0:2"]
   rc.del keys, (err, data) ->
     if err
       done err
@@ -145,25 +152,26 @@ describe "surespot server", () ->
   #        done()
 
 
-#    it "should be able to roll the key pair", (done) ->
-#      kp0 = undefined
-#      #generate new key pairs
-#      generateKey 0, (err, nkp) ->
-#        kp0 = nkp
-#        http.post
-#          url: baseUri + "/users/identity"
-#          json:
-#            username: "test0"
-#            password: "test0"
-#            dhPub: kp0.ecdh.pem_pub
-#            dsaPub: kp0.ecdsa.pem_pub
-#            authSig: kp0.authSig
-#          (err, res, body) ->
-#            if err
-#              done err
-#            else
-#              res.statusCode.should.equal 201
-#              done()
+    it "should be able to roll the key pair", (done) ->
+      kp0 = undefined
+      #generate new key pairs
+      generateKey 0, (err, nkp) ->
+        kp0 = nkp
+        http.post
+          url: baseUri + "/keytoken"
+          json:
+            username: "test0"
+            password: "test0"
+            authSig: keys[0].sig
+          (err, res, body) ->
+            if err
+              done err
+            else
+              console.log body
+              res.statusCode.should.equal 200
+              body.keyversion.should.equal 2
+              body.token.should.exist
+              done()
 #
 #    it "should not be able to login with the old signature", (done) ->
 #      login "test0", "test0", keys[0].sig, done, (res, body) ->
