@@ -369,25 +369,41 @@ requirejs ['underscore', 'winston'], (_, winston) ->
       else
         callback newId
 
-  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id) ->
+  createAndSendMessage = (type, subtype, from, fromVersion, to, toVersion, iv, data, mimeType, id) ->
     logger.debug "new message"
     message = {}
-    message.type = "user"
+    message.type = type
     message.to = to
-    message.toVersion = toVersion
     message.from = from
-    message.fromVersion = fromVersion
-    message.iv = iv
-    message.data = data
-    message.mimeType = mimeType
     message.datetime = Date.now()
+
+    if subtype?
+      message.subtype = subtype
+
+    if toVersion?
+      message.toVersion = toVersion
+
+    if fromVersion?
+      message.fromVersion = fromVersion
+
+    if iv?
+      message.iv = iv
+
+    if data?
+      message.data = data
+
+    if mimeType?
+      message.mimeType = mimeType
+
+
+
 
     #INCR message id
     getNextMessageId room, id, (id)->
       return unless id?
       message.id = id
 
-      logger.debug "sending message, id:  " + id + ", iv: " + iv + ", data: " + data + " to user:" + to
+      logger.debug "sending message,  type: #{type}, id:  #{id}, iv: #{iv}, data: #{data}, to user: #{to}"
       newMessage = JSON.stringify(message)
 
       #store messages in sorted sets
@@ -411,33 +427,34 @@ requirejs ['underscore', 'winston'], (_, winston) ->
         sio.sockets.to(to).emit "message", newMessage
         sio.sockets.to(from).emit "message", newMessage
 
-        #send gcm message
-        userKey = "users:" + to
-        rc.hget userKey, "gcmId", (err, gcm_id) ->
-          if err?
-            logger.error ("ERROR: Socket.io onmessage, " + err)
-            return
+        if type is "message"
+          #send gcm message
+          userKey = "users:" + to
+          rc.hget userKey, "gcmId", (err, gcm_id) ->
+            if err?
+              logger.error ("ERROR: Socket.io onmessage, " + err)
+              return
 
-          if gcm_id?.length > 0
-            logger.debug "sending gcm message"
-            gcmmessage = new gcm.Message()
-            sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
-            gcmmessage.addData("type", "message")
-            gcmmessage.addData("to", message.to)
-            gcmmessage.addData("sentfrom", message.from)
-            #todo add data? (won't be large when image is a url)
-            # gcmmessage.addData("data", message.data)
+            if gcm_id?.length > 0
+              logger.debug "sending gcm message"
+              gcmmessage = new gcm.Message()
+              sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+              gcmmessage.addData("type", "message")
+              gcmmessage.addData("to", message.to)
+              gcmmessage.addData("sentfrom", message.from)
+              #todo add data? (won't be large when image is a url)
+              # gcmmessage.addData("data", message.data)
 
-            gcmmessage.addData("mimeType", message.mimeType)
-            gcmmessage.delayWhileIdle = true
-            gcmmessage.timeToLive = 3
-            gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
-            regIds = [gcm_id]
+              gcmmessage.addData("mimeType", message.mimeType)
+              gcmmessage.delayWhileIdle = true
+              gcmmessage.timeToLive = 3
+              gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
+              regIds = [gcm_id]
 
-            sender.send gcmmessage, regIds, 4, (result) ->
-              logger.debug "sendGcm result: #{result}"
-          else
-            logger.debug "no gcm id for #{to}"
+              sender.send gcmmessage, regIds, 4, (result) ->
+                logger.debug "sendGcm result: #{result}"
+            else
+              logger.debug "no gcm id for #{to}"
 
 
   # broadcast a key revocation message to who's conversations
@@ -494,16 +511,27 @@ requirejs ['underscore', 'winston'], (_, winston) ->
       message = JSON.parse(data)
 
       # message.user = user
-      logger.debug "sending message from user #{user}"
+      logger.debug "received message from user #{user}"
 
+      type = message.type
+      return unless type?
       to = message.to
       return unless to?
-      toVersion = message.toVersion
-      return unless toVersion?
       from = message.from
       return unless from?
-      fromVersion = message.fromVersion
-      return unless fromVersion?
+
+      toVersion = null
+      fromVersion = null
+      if type is "message"
+        toVersion = message.toVersion
+        return unless toVersion?
+
+        fromVersion = message.fromVersion
+        return unless fromVersion?
+
+      if type is "system"
+        return unless message.subtype?
+        return unless message.iv?
 
       #if this message isn't from the logged in user we have problems
       if user isnt from then socket.disconnect()
@@ -514,6 +542,8 @@ requirejs ['underscore', 'winston'], (_, winston) ->
           isFriend user, to, (err, isFriend) ->
             return if err?
             return socket.disconnect() if not isFriend
+
+            subtype = message.subtype
             cipherdata = message.data
             iv = message.iv
             resendId = message.resendId
@@ -527,7 +557,13 @@ requirejs ['underscore', 'winston'], (_, winston) ->
                 sio.sockets.to(to).emit "message", found
                 sio.sockets.to(from).emit "message", found
               else
-                createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType
+                if type is "system"
+                  if subtype is "delete"
+                    rc.zremrangebyscore "messages:#{getRoomName(from,to)}", iv, iv, (err, nrem) ->
+                      return if err?
+                      createAndSendMessage type, subtype, from, fromVersion, to, toVersion, iv, cipherdata, mimeType
+                else
+                  createAndSendMessage type, subtype, from, fromVersion, to, toVersion, iv, cipherdata, mimeType
 
 
   app.post "/images/:fromversion/:username/:toversion", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
@@ -546,7 +582,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
         out = fs.createWriteStream filename
         ins.pipe out
         ins.on "end", ->
-          createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, relUri, "image/", id
+          createAndSendMessage "message", null, req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, relUri, "image/", id
           fs.unlinkSync req.files.image.path
           res.send 202, { 'Location': relUri }
 
