@@ -614,7 +614,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
 
   #todo figure out caching
   app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, getPublicKeys
-  app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriends, setCache(30 * oneYear), getPublicKeys
+  app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriends, setCache(oneYear), getPublicKeys
 
   app.get "/users/:username/exists", setNoCache, (req, res, next) ->
     userExists req.params.username, (err, exists) ->
