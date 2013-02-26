@@ -185,7 +185,7 @@ describe "surespot server", () ->
               body.token.should.exist
 
 
-              tokenSig = sign keys[0].ecdsa.pem_priv, new Buffer(token, 'base64'), password
+              tokenSig = sign keys[0].ecdsa.pem_priv, new Buffer(body.token, 'base64'), "test0"
 
               http.post
                 url: baseUri + "/keys"
@@ -196,12 +196,13 @@ describe "surespot server", () ->
                   dhPub: keys[0].ecdh.pem_pub,
                   dsaPub: keys[0].ecdsa.pem_pub
                   keyVersion: body.keyversion
-                  tokenSig = tokenSig
+                  tokenSig: tokenSig
                 (err, res, body) ->
                   if err
                     done err
                   else
                     res.statusCode.should.equal 201
+                    done()
 
 #
 #    it "should not be able to login with the old signature", (done) ->
