@@ -20,16 +20,21 @@ cleanup = (done) ->
   keys = [
     "users:test0",
     "users:test1",
-    "friends:test",
+    "friends:test0",
     "friends:test1",
     "invites:test0",
     "invited:test0",
     "invites:test1",
     "invited:test1",
     "test:test1:id",
-    "messages:test:test1",
+    "messages:test0:test1",
     "conversations:test1",
-    "conversations:test0"]
+    "conversations:test0",
+    "keyversion:test0",
+    "keys:test0:1",
+    "keyversion:test1",
+    "keys:test1:1",
+    "test0:test1:id"]
   rc.del keys, (err, data) ->
     if err
       done err
@@ -117,7 +122,7 @@ describe "surespot chat test", () ->
 
   client = undefined
   client1 = undefined
-  jsonMessage = {to: "test0", from: "test1", iv: 1, data: "message data", mimeType: "text/plain"}
+  jsonMessage = {type: "user", to: "test0", toVersion: "1", from: "test1", fromVersion: "1", iv: 1, data: "message data", mimeType: "text/plain"}
 
   it 'client 1 connect', (done) ->
     jar1 = request.jar()
