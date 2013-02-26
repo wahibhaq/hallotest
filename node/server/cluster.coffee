@@ -312,7 +312,10 @@ requirejs ['underscore', 'winston'], (_, winston) ->
     #return last x messages
     rc.zrangebyscore "messages:" + room, id, id, (err, data) ->
       return fn err if err?
-      fn null, data
+      if data.length is 1
+        fn null, JSON.parse(data[0])
+      else
+        fn null, null
 
 
   getMessages = (room, count, fn) ->
@@ -511,7 +514,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
     logger.debug "user #{user} joining socket.io room"
     socket.join user
     socket.on "message", (data) ->
-      user = socket.handshake.session.passport.user
+      #user = socket.handshake.session.passport.user
 
       #todo check from and to exist and are friends
       message = JSON.parse(data)
@@ -567,9 +570,11 @@ requirejs ['underscore', 'winston'], (_, winston) ->
                   if subtype is "delete"
                     getMessage room, iv, (err, dMessage) ->
                       return if err?
+                      return unless dMessage?
                       #delete the file if it's a file
-
-
+                      if dMessage.mimeType is "image/"
+                        newPath = __dirname + "/static" + dMessage.data
+                        fs.unlink(newPath)
 
                       rc.zremrangebyscore "messages:#{getRoomName(from,to)}", iv, iv, (err, nrem) ->
                         return if err?
