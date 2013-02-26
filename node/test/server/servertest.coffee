@@ -123,6 +123,7 @@ createKeys = (number, done) ->
 
 describe "surespot server", () ->
   keys = undefined
+  oldKeys = []
   before (done) ->
     createKeys 3, (err, keyss) ->
       keys = keyss
@@ -166,33 +167,36 @@ describe "surespot server", () ->
 
 
     it "should be able to roll the key pair", (done) ->
-      kp0 = undefined
-      #generate new key pairs
-      generateKey 0, (err, nkp) ->
-        kp0 = nkp
-        http.post
-          url: baseUri + "/keytoken"
-          json:
-            username: "test0"
-            password: "test0"
-            authSig: keys[0].sig
-          (err, res, body) ->
-            if err
-              done err
-            else
-              res.statusCode.should.equal 200
-              body.keyversion.should.equal 2
-              body.token.should.exist
+
+      http.post
+        url: baseUri + "/keytoken"
+        json:
+          username: "test0"
+          password: "test0"
+          authSig: keys[0].sig
+        (err, res, body) ->
+          if err
+            done err
+          else
+            res.statusCode.should.equal 200
+            body.keyversion.should.equal 2
+            body.token.should.exist
 
 
-              tokenSig = sign keys[0].ecdsa.pem_priv, new Buffer(body.token, 'base64'), "test0"
+
+            #generate new key pairs
+            generateKey 0, (err, nkp) ->
+              oldKeys[0] = keys[0]
+              keys[0] = nkp
+
+              tokenSig = sign oldKeys[0].ecdsa.pem_priv, new Buffer(body.token, 'base64'), "test0"
 
               http.post
                 url: baseUri + "/keys"
                 json:
                   username: "test0"
                   password: "test0"
-                  authSig: keys[0].sig,
+                  authSig: oldKeys[0].sig,
                   dhPub: keys[0].ecdh.pem_pub,
                   dsaPub: keys[0].ecdsa.pem_pub
                   keyVersion: body.keyversion
@@ -205,10 +209,10 @@ describe "surespot server", () ->
                     done()
 
 #
-#    it "should not be able to login with the old signature", (done) ->
-#      login "test0", "test0", keys[0].sig, done, (res, body) ->
-#        res.statusCode.should.equal 401
-#        done()
+    it "should not be able to login with the old signature", (done) ->
+      login "test0", "test0", oldKeys[0].sig, done, (res, body) ->
+        res.statusCode.should.equal 401
+        done()
 
 
   describe "login with invalid password", ->
