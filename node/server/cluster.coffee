@@ -225,13 +225,13 @@ requirejs ['underscore', 'winston'], (_, winston) ->
       req.sessionID = parsedCookie["connect.sid"]
       sessionStore.get req.sessionID, (err, session) ->
         if err or not session
-          accept "Error", false
+          accept null, false
         else
           req.session = session
           if req.session.passport.user
             accept null, true
           else
-            accept "Error", false
+            accept null, false
     else
       accept "No cookie transmitted.", false
 
