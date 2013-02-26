@@ -26,15 +26,14 @@ cleanup = (done) ->
     "invited:test0",
     "invites:test1",
     "invited:test1",
-    "test:test1:id",
+    "test0:test1:id",
     "messages:test0:test1",
     "conversations:test1",
     "conversations:test0",
     "keyversion:test0",
     "keys:test0:1",
     "keyversion:test1",
-    "keys:test1:1",
-    "test0:test1:id"]
+    "keys:test1:1"]
   rc.del keys, (err, data) ->
     if err
       done err
