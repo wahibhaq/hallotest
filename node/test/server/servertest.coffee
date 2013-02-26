@@ -73,17 +73,18 @@ generateKey = (i, callback) ->
   ecdsa = new dcrypt.keypair.newECDSA 'secp521r1'
   ecdh = new dcrypt.keypair.newECDSA 'secp521r1'
 
-  random = crypto.randomBytes 16
+#  random = crypto.randomBytes 16
 
-  dsaPubSig =
-    crypto
-      .createSign('sha256')
-      .update(new Buffer("test#{i}"))
-      .update(new Buffer("test#{i}"))
-      .update(random)
-      .sign(ecdsa.pem_priv, 'base64')
+#  dsaPubSig =
+#    crypto
+#      .createSign('sha256')
+#      .update(new Buffer("test#{i}"))
+#      .update(new Buffer("test#{i}"))
+#      .update(random)
+#      .sign(ecdsa.pem_priv, 'base64')
 
-  sig = Buffer.concat([random, new Buffer(dsaPubSig, 'base64')]).toString('base64')
+  sig = sign ecdsa.pem_priv, new Buffer("test#{i}"), new Buffer("test#{i}")
+    #Buffer.concat([random, new Buffer(dsaPubSig, 'base64')]).toString('base64')
 
   callback null, {
   ecdsa: ecdsa
@@ -91,6 +92,18 @@ generateKey = (i, callback) ->
   sig: sig
   }
 
+sign = (priv, b1, b2) ->
+  random = crypto.randomBytes 16
+
+  dsaPubSig =
+    crypto
+      .createSign('sha256')
+      .update(b1)
+      .update(b2)
+      .update(random)
+      .sign(priv, 'base64')
+
+  return Buffer.concat([random, new Buffer(dsaPubSig, 'base64')]).toString('base64')
 
 makeKeys = (i) ->
   return (callback) ->
@@ -167,11 +180,29 @@ describe "surespot server", () ->
             if err
               done err
             else
-              console.log body
               res.statusCode.should.equal 200
               body.keyversion.should.equal 2
               body.token.should.exist
-              done()
+
+
+              tokenSig = sign keys[0].ecdsa.pem_priv, new Buffer(token, 'base64'), password
+
+              http.post
+                url: baseUri + "/keys"
+                json:
+                  username: "test0"
+                  password: "test0"
+                  authSig: keys[0].sig,
+                  dhPub: keys[0].ecdh.pem_pub,
+                  dsaPub: keys[0].ecdsa.pem_pub
+                  keyVersion: body.keyversion
+                  tokenSig = tokenSig
+                (err, res, body) ->
+                  if err
+                    done err
+                  else
+                    res.statusCode.should.equal 201
+
 #
 #    it "should not be able to login with the old signature", (done) ->
 #      login "test0", "test0", keys[0].sig, done, (res, body) ->
