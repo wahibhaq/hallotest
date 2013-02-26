@@ -145,30 +145,30 @@ describe "surespot server", () ->
   #        done()
 
 
-    it "should be able to roll the key pair", (done) ->
-      kp0 = undefined
-      #generate new key pairs
-      generateKey 0, (err, nkp) ->
-        kp0 = nkp
-        http.post
-          url: baseUri + "/users/identity"
-          json:
-            username: "test0"
-            password: "test0"
-            dhPub: kp0.ecdh.pem_pub
-            dsaPub: kp0.ecdsa.pem_pub
-            authSig: kp0.authSig
-          (err, res, body) ->
-            if err
-              done err
-            else
-              res.statusCode.should.equal 201
-              done()
-
-    it "should not be able to login with the old signature", (done) ->
-      login "test0", "test0", keys[0].sig, done, (res, body) ->
-        res.statusCode.should.equal 401
-        done()
+#    it "should be able to roll the key pair", (done) ->
+#      kp0 = undefined
+#      #generate new key pairs
+#      generateKey 0, (err, nkp) ->
+#        kp0 = nkp
+#        http.post
+#          url: baseUri + "/users/identity"
+#          json:
+#            username: "test0"
+#            password: "test0"
+#            dhPub: kp0.ecdh.pem_pub
+#            dsaPub: kp0.ecdsa.pem_pub
+#            authSig: kp0.authSig
+#          (err, res, body) ->
+#            if err
+#              done err
+#            else
+#              res.statusCode.should.equal 201
+#              done()
+#
+#    it "should not be able to login with the old signature", (done) ->
+#      login "test0", "test0", keys[0].sig, done, (res, body) ->
+#        res.statusCode.should.equal 401
+#        done()
 
 
   describe "login with invalid password", ->
@@ -318,7 +318,7 @@ describe "surespot server", () ->
       signup "test2", "test2", keys[2].ecdh.pem_pub, keys[2].ecdsa.pem_pub, keys[2].sig, done, (res, body) ->
         res.statusCode.should.equal 201
         http.get
-          url: baseUri + "/publicidentity/test0"
+          url: baseUri + "/publickeys/test0"
           (err, res, body) ->
             if err
               done err
@@ -364,7 +364,7 @@ describe "surespot server", () ->
     it "should return the location header and 202", (done) ->
       login "test0", "test0", keys[0].sig, done, (res, body) ->
         res.statusCode.should.equal 204
-        r = http.post baseUri + "/images/test1", (err, res, body) ->
+        r = http.post baseUri + "/images/1/test1/1", (err, res, body) ->
           if err
             done err
           else
@@ -414,7 +414,7 @@ describe "surespot server", () ->
     it "should not be allowed", (done) ->
       login "test2", "test2", keys[2].sig, done, (res, body) ->
         res.statusCode.should.equal 204
-        r = http.post baseUri + "/images/test1", (err, res, body) ->
+        r = http.post baseUri + "/images/1/test1/1", (err, res, body) ->
           if err
             done err
           else
