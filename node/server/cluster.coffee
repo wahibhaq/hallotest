@@ -308,6 +308,12 @@ requirejs ['underscore', 'winston'], (_, winston) ->
         return next err if err
         res.send keys
 
+  getMessage = (room, id, fn) ->
+    #return last x messages
+    rc.zrangebyscore "messages:" + room, id, id, (err, data) ->
+      return fn err if err?
+      fn null, data
+
 
   getMessages = (room, count, fn) ->
     #return last x messages
@@ -559,9 +565,15 @@ requirejs ['underscore', 'winston'], (_, winston) ->
               else
                 if type is "system"
                   if subtype is "delete"
-                    rc.zremrangebyscore "messages:#{getRoomName(from,to)}", iv, iv, (err, nrem) ->
+                    getMessage room, iv, (err, dMessage) ->
                       return if err?
-                      createAndSendMessage type, subtype, from, fromVersion, to, toVersion, iv, cipherdata, mimeType
+                      #delete the file if it's a file
+
+
+
+                      rc.zremrangebyscore "messages:#{getRoomName(from,to)}", iv, iv, (err, nrem) ->
+                        return if err?
+                        createAndSendMessage type, subtype, from, fromVersion, to, toVersion, iv, cipherdata, mimeType
                 else
                   createAndSendMessage type, subtype, from, fromVersion, to, toVersion, iv, cipherdata, mimeType
 
