@@ -444,27 +444,29 @@ requirejs ['underscore', 'winston'], (_, winston) ->
   sendRevokeMessages = (who, newVersion, callback) ->
     logger.debug "new message"
 
+    #send message to user to handle other devices
+    message = {}
+    message.type = "system"
+    message.subtype = "revoke"
+    message.to = who
+    message.datetime = Date.now()
+    message.fromVersion = newVersion
+    message.from = who
+    sio.sockets.to(who).emit "message", JSON.stringify(message)
+
     #Get all the dude's conversations
-    #todo what
     rc.smembers "conversations:#{who}", (err, convos) ->
       return callback err if err?
       async.each convos, (room, callback) ->
         to = getOtherUser(room, who)
-        message = {}
-        message.type = "system"
-        message.subtype = "revoke"
         message.to = to
-        message.datetime = Date.now()
-        message.fromVersion = newVersion
-        message.from = who
-
 
         #INCR message id
         getNextMessageId room, null, (id) ->
           return callback new Error 'could not get next message id' unless id?
           message.id = id
 
-          logger.debug "sending system message, #{who} has completed a key roll"
+          logger.debug "sending system message to #{to}: #{who} has completed a key roll"
           newMessage = JSON.stringify(message)
 
           #store messages in sorted sets
@@ -473,9 +475,9 @@ requirejs ['underscore', 'winston'], (_, winston) ->
             logger.error ("ERROR: adding system message, " + err) if err?
             return callback new error 'could not send system message' if err?
             sio.sockets.to(to).emit "message", newMessage
-            sio.sockets.to(who).emit "message", newMessage
             callback()
       , callback
+
 
 
   room = sio.on "connection", (socket) ->
@@ -693,26 +695,35 @@ requirejs ['underscore', 'winston'], (_, winston) ->
     logger.debug "/login post"
     res.send 204
 
-  app.get "/keytoken", ensureAuthenticated, setNoCache, (req, res, next) ->
-    username = req.user.username
-    #the user wants to update their key so we will generate a token that the user signs to make sure they're not using a replay attack of some kind
+  app.post "/keytoken", setNoCache, (req, res, next) ->
+    return res.send 403 unless req.body?.username?
+    return res.send 403 unless req.body?.authSig?
+    return res.send 403 unless req.body?.password?
 
-    #get the current version
-    rc.get "keyversion:#{username}", (err, currkv) ->
-      return next err if err?
+    username = req.body.username
+    password = req.body.password
+    authSig = req.body.authSig
+    validateUser username, password, authSig, (err, status, user) ->
+      return done(err) if err?
+      return res.send 403 unless user?
 
-      #inc key version
-      kv = parseInt(currkv) + 1
-      crypto.randomBytes 32, (err, buf) ->
+      #the user wants to update their key so we will generate a token that the user signs to make sure they're not using a replay attack of some kind
+      #get the current version
+      rc.get "keyversion:#{username}", (err, currkv) ->
         return next err if err?
-        token = buf.toString('base64')
-        rc.set "keytoken:#{username}", token, (err, result) ->
-          return next err if err?
-          res.send {keyversion: kv, token: token}
 
-  app.post "/keys", ensureAuthenticated, (req, res, next) ->
-    username = req.user.username
-    logger.debug "roll keys: #{username}"
+        #inc key version
+        kv = parseInt(currkv) + 1
+        crypto.randomBytes 32, (err, buf) ->
+          return next err if err?
+          token = buf.toString('base64')
+          rc.set "keytoken:#{username}", token, (err, result) ->
+            return next err if err?
+            res.send {keyversion: kv, token: token}
+
+  app.post "/keys", (req, res, next) ->
+    logger.debug "/keys"
+    return res.send 403 unless req.body?.username?
     return res.send 403 unless req.body?.authSig?
     return res.send 403 unless req.body?.password?
     return next new Error('dh public key required') unless req.body?.dhPub?
@@ -720,7 +731,10 @@ requirejs ['underscore', 'winston'], (_, winston) ->
     return next new Error 'key version required' unless req.body?.keyVersion?
     return next new Error 'token signature required' unless req.body?.tokenSig?
 
+
     #make sure the key versions match
+    username = req.body.username
+
     kv = req.body.keyVersion
     rc.get "keyversion:#{username}", (err, storedkv) ->
       return next err if err?
