@@ -8,10 +8,10 @@ numCPUs = require('os').cpus().length
 #    cluster.fork();
 #
 #  cluster.on 'online', (worker, code, signal) ->
-#    console.log 'worker ' + worker.process.pid + ' online'
+#    logger.debug 'worker ' + worker.process.pid + ' online'
 #
 #  cluster.on 'exit', (worker, code, signal) ->
-#    console.log 'worker ' + worker.process.pid + ' died'
+#    logger.debug 'worker ' + worker.process.pid + ' died'
 #
 #else
 requirejs = require 'requirejs'
@@ -184,9 +184,9 @@ requirejs ['underscore', 'winston'], (_, winston) ->
     })
     app.use app.router
 
-    app.use(expressWinston.errorLogger({
-    transports: transports
-    }))
+#    app.use(expressWinston.errorLogger({
+#    transports: transports
+#    }))
     app.use(express.errorHandler({
     showMessage: true,
     showStack: true,
@@ -621,6 +621,62 @@ requirejs ['underscore', 'winston'], (_, winston) ->
       #authenticate but use static so we can use http caching
       staticMiddleware req, res, next
 
+
+  getConversationIds = (username, callback) ->
+    rc.smembers "conversations:" + username, (err, conversations) ->
+      return callback err if err?
+      if (conversations.length > 0)
+        conversationsWithId = _.map conversations, (conversation) -> conversation + ":id"
+        rc.mget conversationsWithId, (err, ids) ->
+          return next err if err?
+          conversationIds = []
+          _.each conversations, (conversation, i) -> conversationIds.push  { conversation: conversation, id: ids[i] }
+          callback null, conversationIds
+      else
+        callback null, null
+
+  #not sure what to do here...sending a GET with body is frowned upon from a REST standpoint
+  #sending a get with the client's latest message ids in the querystring doesn't feel right as it leaks data (more easily)
+  #so we are left with using a post with body even though nothing is being modified
+  app.post "/messages", ensureAuthenticated, setNoCache, (req,res,next) ->
+
+    messageIds = null
+    if req.body?.messageIds?
+      logger.debug "/messages, messageIds:#{req.body.messageIds}"
+      messageIds = JSON.parse(req.body.messageIds)
+
+    #compare latest conversation ids against that which we received and then return new messages for conversations # that have them
+    getConversationIds req.user.username, (err, conversationIds) ->
+      res.send 204 unless conversationIds?
+      allMessages = []
+      async.each(
+        conversationIds
+        (item, callback) ->
+          conversation = item.conversation
+          clientId = null
+          if messageIds?
+            clientId = messageIds[conversation]
+          if clientId?
+            delta = item.id - clientId
+            if delta is 0
+              logger.debug "/messages, conversation:#{conversation}, delta nought"
+              callback()
+            else
+              getMessagesAfterId(conversation, clientId, (err, messages) ->
+                return callback err if err?
+                allMessages.push { spot: conversation, messages: messages }
+                callback())
+          else
+            getMessages(conversation, 30, (err, messages) ->
+              return callback err if err?
+              allMessages.push {spot: conversation, messages: messages}
+              callback())
+        (err) ->
+          logger.debug "/messages sending #{JSON.stringify(allMessages)}"
+          return next err if err?
+          res.send allMessages)
+
+
   #get last x messages
   app.get "/messages/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
     #return last x messages
@@ -645,18 +701,19 @@ requirejs ['underscore', 'winston'], (_, winston) ->
       res.send data
 
   #get last message ids of conversations
-  app.get "/conversations/ids", ensureAuthenticated, setNoCache, (req, res, next) ->
-    rc.smembers "conversations:" + req.user.username, (err, conversations) ->
-      return next err if err?
-      if (conversations.length > 0)
-        conversationsWithId = _.map conversations, (conversation) -> conversation + ":id"
-        rc.mget conversationsWithId, (err, ids) ->
-          return next err if err?
-          some = {}
-          _.each conversations, (conversation, i) -> some[getOtherUser conversation, req.user.username] = ids[i]
-          res.send some
-      else
-        res.send 204
+#  app.get "/conversations/ids", ensureAuthenticated, setNoCache, (req, res, next) ->
+#    rc.smembers "conversations:" + req.user.username, (err, conversations) ->
+#      return next err if err?
+#      if (conversations.length > 0)
+#        conversationsWithId = _.map conversations, (conversation) -> conversation + ":id"
+#        rc.mget conversationsWithId, (err, ids) ->
+#          return next err if err?
+#          some = {}
+#          _.each conversations, (conversation, i) -> some[getOtherUser conversation, req.user.username] = ids[i]
+#          res.send some
+#      else
+#        res.send 204
+
 
 
   #app.get "/test", (req, res) ->
@@ -801,9 +858,9 @@ requirejs ['underscore', 'winston'], (_, winston) ->
         newKeys = {}
         newKeys.dhPub = req.body.dhPub
         newKeys.dsaPub = req.body.dsaPub
-        console.log "received token signature: " + req.body.tokenSig
-        console.log "received auth signature: " + req.body.authSig
-        console.log "token: " + rtoken
+        logger.debug "received token signature: " + req.body.tokenSig
+        logger.debug "received auth signature: " + req.body.authSig
+        logger.debug "token: " + rtoken
 
         password = req.body.password
 
@@ -992,7 +1049,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
         rc.smembers "invited:#{username}", (err, invited) ->
           return next err if err?
           _.each invited, (name) -> friends.push {status: "invited", name: name}
-          logger.debug ("friends: " + friends)
+          logger.debug ("friends: " + JSON.stringify(friends))
           res.send friends
 
   app.get "/friends", ensureAuthenticated, setNoCache, getFriends
