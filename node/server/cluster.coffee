@@ -184,9 +184,9 @@ requirejs ['underscore', 'winston'], (_, winston) ->
     })
     app.use app.router
 
-#    app.use(expressWinston.errorLogger({
-#    transports: transports
-#    }))
+    app.use(expressWinston.errorLogger({
+    transports: transports
+    }))
     app.use(express.errorHandler({
     showMessage: true,
     showStack: true,
@@ -405,8 +405,6 @@ requirejs ['underscore', 'winston'], (_, winston) ->
       message.mimeType = mimeType
 
 
-
-
     #INCR message id
     getNextMessageId room, id, (id)->
       return unless id?
@@ -505,7 +503,6 @@ requirejs ['underscore', 'winston'], (_, winston) ->
       , callback
 
 
-
   room = sio.on "connection", (socket) ->
     user = socket.handshake.session.passport.user
     logger.info 'connections: ' + connectionCount++
@@ -576,7 +573,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
                         newPath = __dirname + "/static" + dMessage.data
                         fs.unlink(newPath)
 
-                      rc.zremrangebyscore "messages:#{getRoomName(from,to)}", iv, iv, (err, nrem) ->
+                      rc.zremrangebyscore "messages:#{getRoomName(from, to)}", iv, iv, (err, nrem) ->
                         return if err?
                         createAndSendMessage type, subtype, from, fromVersion, to, toVersion, iv, cipherdata, mimeType
                 else
@@ -630,7 +627,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
         rc.mget conversationsWithId, (err, ids) ->
           return next err if err?
           conversationIds = []
-          _.each conversations, (conversation, i) -> conversationIds.push  { conversation: conversation, id: ids[i] }
+          _.each conversations, (conversation, i) -> conversationIds.push { conversation: conversation, id: ids[i] }
           callback null, conversationIds
       else
         callback null, null
@@ -638,8 +635,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
   #not sure what to do here...sending a GET with body is frowned upon from a REST standpoint
   #sending a get with the client's latest message ids in the querystring doesn't feel right as it leaks data (more easily)
   #so we are left with using a post with body even though nothing is being modified
-  app.post "/messages", ensureAuthenticated, setNoCache, (req,res,next) ->
-
+  app.post "/messages", ensureAuthenticated, setNoCache, (req, res, next) ->
     messageIds = null
     if req.body?.messageIds?
       logger.debug "/messages, messageIds:#{req.body.messageIds}"
@@ -647,7 +643,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
 
     #compare latest conversation ids against that which we received and then return new messages for conversations # that have them
     getConversationIds req.user.username, (err, conversationIds) ->
-      res.send 204 unless conversationIds?
+      return res.send 204 unless conversationIds?
       allMessages = []
       async.each(
         conversationIds
@@ -672,9 +668,14 @@ requirejs ['underscore', 'winston'], (_, winston) ->
               allMessages.push {spot: conversation, messages: messages}
               callback())
         (err) ->
-          logger.debug "/messages sending #{JSON.stringify(allMessages)}"
+
           return next err if err?
-          res.send allMessages)
+          if allMessages.length > 0
+            logger.debug "/messages sending #{JSON.stringify(allMessages)}"
+            res.send allMessages
+          else
+            logger.debug "/messages sending 204"
+            res.send 204)
 
 
   #get last x messages
@@ -701,18 +702,18 @@ requirejs ['underscore', 'winston'], (_, winston) ->
       res.send data
 
   #get last message ids of conversations
-#  app.get "/conversations/ids", ensureAuthenticated, setNoCache, (req, res, next) ->
-#    rc.smembers "conversations:" + req.user.username, (err, conversations) ->
-#      return next err if err?
-#      if (conversations.length > 0)
-#        conversationsWithId = _.map conversations, (conversation) -> conversation + ":id"
-#        rc.mget conversationsWithId, (err, ids) ->
-#          return next err if err?
-#          some = {}
-#          _.each conversations, (conversation, i) -> some[getOtherUser conversation, req.user.username] = ids[i]
-#          res.send some
-#      else
-#        res.send 204
+  #  app.get "/conversations/ids", ensureAuthenticated, setNoCache, (req, res, next) ->
+  #    rc.smembers "conversations:" + req.user.username, (err, conversations) ->
+  #      return next err if err?
+  #      if (conversations.length > 0)
+  #        conversationsWithId = _.map conversations, (conversation) -> conversation + ":id"
+  #        rc.mget conversationsWithId, (err, ids) ->
+  #          return next err if err?
+  #          some = {}
+  #          _.each conversations, (conversation, i) -> some[getOtherUser conversation, req.user.username] = ids[i]
+  #          res.send some
+  #      else
+  #        res.send 204
 
 
 
@@ -813,7 +814,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
     username = req.body.username
     password = req.body.password
     authSig = req.body.authSig
-    validateUser username, password, authSig, (err, status, user) ->
+    validateUser username, password, authSig, null, (err, status, user) ->
       return done(err) if err?
       return res.send 403 unless user?
 
@@ -876,7 +877,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
           return res.send 403 unless verified
 
           authSig = req.body.authSig
-          validateUser username, password, authSig, (err, status, user) ->
+          validateUser username, password, authSig, null, (err, status, user) ->
             return done(err) if err?
             return res.send 403 unless user?
 
@@ -910,7 +911,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
     password = req.body.password
     authSig = req.body.authSig
 
-    validateUser username, password, authSig, (err, status, user) ->
+    validateUser username, password, authSig, null, (err, status, user) ->
       return next err if err?
       res.send status
 
@@ -1083,7 +1084,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
     return crypto.createVerify('sha256').update(b1).update(b2).update(random).verify(pubKey, signature)
 
 
-  validateUser = (username, password, signature, done) ->
+  validateUser = (username, password, signature, gcmId, done) ->
     return done(null, 403) if signature.length < 16
     userKey = "users:" + username
     logger.debug "validating: " + username
@@ -1104,13 +1105,17 @@ requirejs ['underscore', 'winston'], (_, winston) ->
           #crypto.createVerify('sha256').update(new Buffer(username)).update(new Buffer(password)).update(random).verify(keys.dsaPub, signature)
           logger.debug "validated, #{username}: #{verified}"
 
+          #update the gcm if we were sent one and it's different and we're verified
+          if gcmId? and user.gcmId isnt gcmId and verified
+            rc.hset userKey, 'gcmId', gcmId
+
           status = if verified then 204 else 403
           done null, status, if verified then user else null
 
 
   passport.use new LocalStrategy ({passReqToCallback: true}), (req, username, password, done) ->
     signature = req.body.authSig
-    validateUser username, password, signature, (err, status, user) ->
+    validateUser username, password, signature, req.body.gcmId, (err, status, user) ->
       return done(err) if err?
 
       switch status
