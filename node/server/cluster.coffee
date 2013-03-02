@@ -643,7 +643,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
 
     #compare latest conversation ids against that which we received and then return new messages for conversations # that have them
     getConversationIds req.user.username, (err, conversationIds) ->
-      return res.send 204 unless conversationIds?
+      return res.send '[]' unless conversationIds?
       allMessages = []
       async.each(
         conversationIds
@@ -668,14 +668,10 @@ requirejs ['underscore', 'winston'], (_, winston) ->
               allMessages.push {spot: conversation, messages: messages}
               callback())
         (err) ->
-
           return next err if err?
-          if allMessages.length > 0
-            logger.debug "/messages sending #{JSON.stringify(allMessages)}"
-            res.send allMessages
-          else
-            logger.debug "/messages sending 204"
-            res.send 204)
+          logger.debug "/messages sending #{JSON.stringify(allMessages)}"
+          res.send allMessages)
+
 
 
   #get last x messages
