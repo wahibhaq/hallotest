@@ -545,9 +545,9 @@ requirejs ['underscore', 'winston'], (_, winston) ->
         return if err?
         if exists
           #if they're not friends disconnect them, wtf are they trying to do here?
-          isFriend user, to, (err, isFriend) ->
+          isFriend user, to, (err, aFriend) ->
             return if err?
-            return socket.disconnect() if not isFriend
+            return socket.disconnect() if not aFriend
 
             subtype = message.subtype
             cipherdata = message.data
