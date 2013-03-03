@@ -540,14 +540,16 @@ requirejs ['underscore', 'winston'], (_, winston) ->
         return unless message.iv?
 
       #if this message isn't from the logged in user we have problems
-      if user isnt from then socket.disconnect()
+      return if user isnt from #then socket.disconnect()
       userExists from, (err, exists) ->
         return if err?
         if exists
           #if they're not friends disconnect them, wtf are they trying to do here?
+          # todo tell client not to reconnect when this happens...otherwise infinite connect loop for now we'll just do nothing
           isFriend user, to, (err, aFriend) ->
             return if err?
-            return socket.disconnect() if not aFriend
+            #return socket.disconnect() if not aFriend
+            return if not aFriend
 
             subtype = message.subtype
             cipherdata = message.data
