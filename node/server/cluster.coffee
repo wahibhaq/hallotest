@@ -184,9 +184,9 @@ requirejs ['underscore', 'winston'], (_, winston) ->
     })
     app.use app.router
 
-    app.use(expressWinston.errorLogger({
-    transports: transports
-    }))
+#    app.use(expressWinston.errorLogger({
+#    transports: transports
+#    }))
     app.use(express.errorHandler({
     showMessage: true,
     showStack: true,
@@ -724,6 +724,10 @@ requirejs ['underscore', 'winston'], (_, winston) ->
   #todo figure out caching
   app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, getPublicKeys
   app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriends, setCache(oneYear), getPublicKeys
+  app.get "/keyversion/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends,(req, res, next) ->
+    rc.get "keyversion:#{req.params.username}", (err, version) ->
+      return callback err if err?
+      res.send version
 
   app.get "/users/:username/exists", setNoCache, (req, res, next) ->
     userExists req.params.username, (err, exists) ->
