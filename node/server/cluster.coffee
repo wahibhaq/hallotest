@@ -330,7 +330,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
       fn null, data
 
   getMessagesBeforeId = (room, id, fn) ->
-    rc.zrangebyscore "messages:" + room, id - 30, "(" + id, (err, data) ->
+    rc.zrangebyscore "messages:" + room, id - 60, "(" + id, (err, data) ->
       return fn err if err?
       fn null, data
 
@@ -549,6 +549,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
           isFriend user, to, (err, aFriend) ->
             return if err?
             #return socket.disconnect() if not aFriend
+            #logger.debug "notafriend"
             return if not aFriend
 
             subtype = message.subtype
@@ -569,9 +570,9 @@ requirejs ['underscore', 'winston'], (_, winston) ->
                   if subtype is "delete"
                     getMessage room, iv, (err, dMessage) ->
                       return if err?
-                      return unless dMessage?
+
                       #delete the file if it's a file
-                      if dMessage.mimeType is "image/"
+                      if dMessage?.mimeType is "image/"
                         newPath = __dirname + "/static" + dMessage.data
                         fs.unlink(newPath)
 
