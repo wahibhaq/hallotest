@@ -143,7 +143,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
   app.configure ->
     if nossl
       socketPort = 3000
-    sessionStore = new RedisStore()
+    sessionStore = new RedisStore({db: database})
     createRedisClient ((err, c) -> rc = c), database
     createRedisClient ((err, c) -> rcs = c), database
     createRedisClient ((err, c) -> pub = c), database
