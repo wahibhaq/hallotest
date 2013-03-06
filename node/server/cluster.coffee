@@ -738,14 +738,27 @@ requirejs ['underscore', 'winston'], (_, winston) ->
 
   createNewUser = (req, res, next) ->
     username = req.body.username
+    password = req.body.password
     logger.debug "/users, username: #{username}"
+
+    #return next new Error('username required') unless username?
+    #return next new Error('password required') unless password?
+
+    if (username?.length is 0 or username?.length  > 24)
+      logger.debug "username invalid"
+      return res.send 403
+
+    if (password?.length is 0 or password?.length > 2048)
+      logger.debug "password invalid"
+      return res.send 403
+
     userExists username, (err, exists) ->
       return next err if err?
       if exists
         logger.debug "user already exists"
-        res.send 409
+        return res.send 409
       else
-        password = req.body.password
+
 
         user = {}
         user.username = username

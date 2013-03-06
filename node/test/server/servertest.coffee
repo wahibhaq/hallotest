@@ -130,6 +130,25 @@ describe "surespot server", () ->
       cleanup done
 
   describe "create user", () ->
+    it "should respond with 403 if username invalid", (done) ->
+      signup "test0tnh90ou8uronteuhtnohutnohnhonthuntohunthnthtnoehntohu", "test0", keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body) ->
+        res.statusCode.should.equal 403
+        done()
+
+    it "should respond with 403 if username empty", (done) ->
+      signup '', "test0", keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body) ->
+        res.statusCode.should.equal 403
+        done()
+
+    it "should respond with 403 if password too long", (done) ->
+      random = crypto.randomBytes 1025
+      
+      pw = random.toString('hex')
+      signup "test0", pw, keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body) ->
+        res.statusCode.should.equal 403
+        done()
+
+
     it "should respond with 201", (done) ->
       signup "test0", "test0", keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body) ->
         res.statusCode.should.equal 201
