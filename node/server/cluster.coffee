@@ -43,15 +43,38 @@ requirejs ['underscore', 'winston'], (_, winston) ->
   logger = require("winston")
   async = require 'async'
 
+
+
+
   logger.remove winston.transports.Console
   logger.setLevels winston.config.syslog.levels
 
-  transports = [
-    new (winston.transports.Console)({colorize: true, timestamp: true, level: 'debug' }),
-    new (winston.transports.File)({ dirname: 'logs', filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'info' })]
+  transports = []
+  transports.push new (winston.transports.File)({ dirname: 'logs', filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'debug' })
 
+  #always use file transport
   logger.add transports[0], null, true
-  logger.add transports[1], null, true
+
+  logger.debug "process.env.NODE_ENV: " + process.env.NODE_ENV
+  logger.debug "process.env.NODE_SSL: " + process.env.NODE_SSL
+  logger.debug "__dirname: #{__dirname}"
+  dev = process.env.NODE_ENV != "linode"
+  nossl = process.env.NODE_NOSSL is "true"
+  database = process.env.NODE_DB
+  socketPort = process.env.SOCKET
+
+  database = 0 unless database?
+  socketPort = 443 unless socketPort?
+
+
+  logger.info "dev: #{dev}"
+  logger.info "database: #{database}"
+  logger.info "socket: #{socketPort}"
+
+  if dev
+    transports.push new (winston.transports.Console)({colorize: true, timestamp: true, level: 'debug' })
+    logger.add transports[1], null, true
+
 
   process.on "uncaughtException", uncaught = (err) ->
     logger.error "Uncaught Exception: " + err
@@ -86,26 +109,6 @@ requirejs ['underscore', 'winston'], (_, winston) ->
           callback null, client
       else
         callback null, client
-
-
-  logger.debug "process.env.NODE_ENV: " + process.env.NODE_ENV
-  logger.debug "process.env.NODE_SSL: " + process.env.NODE_SSL
-  logger.debug "__dirname: #{__dirname}"
-  dev = process.env.NODE_ENV != "linode"
-  nossl = process.env.NODE_NOSSL is "true"
-  database = process.env.NODE_DB
-  socketPort = process.env.SOCKET
-
-  if !database?
-    database = 0
-
-  if !socketPort?
-    socketPort = 443
-
-
-  logger.info "dev: #{dev}"
-  logger.info "database: #{database}"
-  logger.info "socket: #{socketPort}"
 
 
   if not dev
