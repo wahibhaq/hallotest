@@ -142,7 +142,6 @@ describe "surespot server", () ->
 
     it "should respond with 403 if password too long", (done) ->
       random = crypto.randomBytes 1025
-      
       pw = random.toString('hex')
       signup "test0", pw, keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body) ->
         res.statusCode.should.equal 403

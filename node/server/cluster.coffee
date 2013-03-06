@@ -258,6 +258,24 @@ requirejs ['underscore', 'winston'], (_, winston) ->
       return fn(new Error("[userExists] failed for user: " + username)) if err
       fn null, hlen > 0
 
+
+  checkUser = (username) ->
+    return username?.length > 0 and username?.length  <= 24
+
+
+  checkPassword = (password) ->
+    return password?.length > 0 and password?.length  <= 2048
+    
+
+  validateUsernamePassword = (req, res, next) ->
+    username = req.body.username
+    password = req.body.password
+
+    if !checkUser(username) or !checkPassword(password)
+      res.send 403
+    else 
+      next()
+
   validateUsernameExists = (req, res, next) ->
     userExists req.params.username, (err, exists) ->
       return next err if err?
@@ -744,14 +762,6 @@ requirejs ['underscore', 'winston'], (_, winston) ->
     #return next new Error('username required') unless username?
     #return next new Error('password required') unless password?
 
-    if (username?.length is 0 or username?.length  > 24)
-      logger.debug "username invalid"
-      return res.send 403
-
-    if (password?.length is 0 or password?.length > 2048)
-      logger.debug "password invalid"
-      return res.send 403
-
     userExists username, (err, exists) ->
       return next err if err?
       if exists
@@ -815,7 +825,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
                     next()
 
 
-  app.post "/users", createNewUser, passport.authenticate("local"), (req, res, next) ->
+  app.post "/users", validateUsernamePassword, createNewUser, passport.authenticate("local"), (req, res, next) ->
     res.send 201
 
   app.post "/login", passport.authenticate("local"), (req, res, next) ->
@@ -1101,6 +1111,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
 
 
   validateUser = (username, password, signature, gcmId, done) ->
+    return done(null, 403) if (!checkUser(username) or !checkPassword(password))
     return done(null, 403) if signature.length < 16
     userKey = "users:" + username
     logger.debug "validating: " + username

@@ -27,7 +27,8 @@
     "should": "~1.2.1",
     "request": "~2.12.0",
     "async": "~0.2.5",
-    "dcrypt": "0.0.2"
+    "dcrypt": "0.0.2",
+    "validator": "~0.4.25"
   },
   "subdomain": "2fours.com",
   "scripts": {
