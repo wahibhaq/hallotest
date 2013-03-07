@@ -965,46 +965,98 @@ requirejs ['underscore', 'winston'], (_, winston) ->
       #if they are, do nothing
       if result then res.send 409
       else
-        #todo use transaction
-        #add to the user's set of people he's invited
-        rc.sadd "invited:#{username}", friendname, (err, invitedCount) ->
-          next new Error("Could not set invited") if err
-
-          rc.sadd "invites:#{friendname}", username, (err, invitesCount) ->
-            next new Error("Could not set invites") if err
-
-            #send to room
-            #todo push notification
-            if invitesCount > 0
-              sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
-              #send gcm message
-              userKey = "users:" + friendname
-              rc.hget userKey, "gcmId", (err, gcmId) ->
-                if err?
-                  logger.error ("ERROR: " + err)
-                  return next new Error err
-
-                if gcmId?.length > 0
-                  logger.debug "sending gcm notification"
-                  gcmmessage = new gcm.Message()
-                  sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
-                  gcmmessage.addData "type", "invite"
-                  gcmmessage.addData "sentfrom", username
-                  gcmmessage.addData "to", friendname
-                  gcmmessage.delayWhileIdle = true
-                  gcmmessage.timeToLive = 3
-                  gcmmessage.collapseKey = "invite:#{friendname}"
-                  regIds = [gcmId]
-
-                  sender.send gcmmessage, regIds, 4, (result) ->
-                    #logger.debug(result)
+        #see if there's already an invite and if so accept automatically
+        inviteExists friendname, username, (err, invited) ->
+          if invited
+            deleteInvites friendname, username, (err) ->
+              return next err if err?
+              createFriendShip username, friendname, (err) ->
+                return next err if err?
+                sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: 'accept' }
+                sio.sockets.to(username).emit "inviteResponse", JSON.stringify { user: friendname, response: 'accept' }
+                sendInviteResponseGcm username, friendname, 'accept', (result) ->
+                  sendInviteResponseGcm friendname, username, 'accept', (result) ->
                     res.send 204
-                else
-                  logger.debug "gcmId not set for #{friendname}"
-                  res.send 204
-            else
-              res.send 403
+          else
+            #todo use transaction
+            #add to the user's set of people he's invited
+            rc.sadd "invited:#{username}", friendname, (err, invitedCount) ->
+              next new Error("Could not set invited") if err
 
+              rc.sadd "invites:#{friendname}", username, (err, invitesCount) ->
+                next new Error("Could not set invites") if err
+
+                #send to room
+                #todo push notification
+                if invitesCount > 0
+                  sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
+                  #send gcm message
+                  userKey = "users:" + friendname
+                  rc.hget userKey, "gcmId", (err, gcmId) ->
+                    if err?
+                      logger.error ("ERROR: " + err)
+                      return next new Error err
+
+                    if gcmId?.length > 0
+                      logger.debug "sending gcm notification"
+                      gcmmessage = new gcm.Message()
+                      sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+                      gcmmessage.addData "type", "invite"
+                      gcmmessage.addData "sentfrom", username
+                      gcmmessage.addData "to", friendname
+                      gcmmessage.delayWhileIdle = true
+                      gcmmessage.timeToLive = 3
+                      gcmmessage.collapseKey = "invite:#{friendname}"
+                      regIds = [gcmId]
+
+                      sender.send gcmmessage, regIds, 4, (result) ->
+                        #logger.debug(result)
+                        res.send 204
+                    else
+                      logger.debug "gcmId not set for #{friendname}"
+                      res.send 204
+                else
+                  res.send 403
+
+  createFriendShip = (username, friendname, callback) ->
+    rc.sadd "friends:#{username}", friendname, (err, data) ->
+      return next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
+      rc.sadd "friends:#{friendname}", username, (err, data) ->
+        return next new Error("[friend] sadd failed for username: " + friendname + ", friendname" + username) if err?
+        return null
+
+  deleteInvites = (username, friendname, callback) ->
+    rc.srem "invited:#{friendname}", username, (err, data) ->
+      callback new Error("[friend] srem failed for invited:#{friendname}:#{username}") if err?
+      rc.srem "invites:#{username}", friendname, (err, data) ->
+        callback new Error("[friend] srem failed for invites:#{username}:#{friendname}") if err?
+        callback null
+
+  sendInviteResponseGcm = (username, friendname, action, callback) ->
+    userKey = "users:" + friendname
+    rc.hget userKey, "gcmId", (err, gcmId) ->
+      if err?
+        logger.error ("ERROR: " + err)
+        return next new Error err
+
+      if gcmId?.length > 0
+        logger.debug "sending gcm invite response notification"
+
+        gcmmessage = new gcm.Message()
+        sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+        gcmmessage.addData("type", "inviteResponse")
+        gcmmessage.addData "sentfrom", username
+        gcmmessage.addData "to", friendname
+        gcmmessage.addData("response", action)
+        gcmmessage.delayWhileIdle = true
+        gcmmessage.timeToLive = 3
+        gcmmessage.collapseKey = "inviteResponse:#{friendname}"
+        regIds = [gcmId]
+
+        sender.send gcmmessage, regIds, 4, (result) ->
+          callback result
+      else
+          callback null
 
   app.post '/invites/:username/:action', ensureAuthenticated, (req, res, next) ->
     logger.debug 'POST /invites'
@@ -1016,51 +1068,19 @@ requirejs ['underscore', 'winston'], (_, winston) ->
       return next err if err?
       return res.send 404 if not result
       accept = req.params.action is 'accept'
-      #todo use transaction?
-      rc.srem "invited:#{friendname}", username, (err, data) ->
-        return next new Error("[friend] srem failed for invited:#{friendname}: " + username) if err?
-        rc.srem "invites:#{username}", friendname, (err, data) ->
-          #send to room
-          #TOdo push\
-          if accept
-            rc.sadd "friends:#{username}", friendname, (err, data) ->
-              return next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
-              rc.sadd "friends:#{friendname}", username, (err, data) ->
-                return next new Error("[friend] sadd failed for username: " + friendname + ", friendname" + username) if err?
-                sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: req.params.action }
-
-                if (req.params.action == "accept")
-                  userKey = "users:" + friendname
-                  rc.hget userKey, "gcmId", (err, gcmId) ->
-                    if err?
-                      logger.error ("ERROR: " + err)
-                      return next new Error err
-
-                    if gcmId?.length > 0
-                      logger.debug "sending gcm notification"
-
-                      gcmmessage = new gcm.Message()
-                      sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
-                      gcmmessage.addData("type", "inviteResponse")
-                      gcmmessage.addData "sentfrom", username
-                      gcmmessage.addData "to", friendname
-                      gcmmessage.addData("response", req.params.action)
-                      gcmmessage.delayWhileIdle = true
-                      gcmmessage.timeToLive = 3
-                      gcmmessage.collapseKey = "inviteResponse:#{friendname}"
-                      regIds = [gcmId]
-
-                      sender.send gcmmessage, regIds, 4, (result) ->
-                        #logger.debug(result)
-                        res.send 204
-                    else
-                      logger.debug "gcmId not set for #{friendname}"
-                      res.send 204
-          else
-            rc.sadd "ignores:#{username}", friendname, (err, data) ->
-              return next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
-              sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: req.params.action }
+      deleteInvites username, friendname, (err) ->
+        return next err if err?
+        if accept
+          createFriendShip username, friendname, (err) ->
+            return next err if err?
+            sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: req.params.action }
+            sendInviteResponseGcm username, friendname, req.params.action, (result) ->
               res.send 204
+        else
+          rc.sadd "ignores:#{username}", friendname, (err, data) ->
+            return next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
+            sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: req.params.action }
+            res.send 204
 
 
   getFriends = (req, res, next) ->
