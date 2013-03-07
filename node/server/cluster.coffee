@@ -967,6 +967,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
       else
         #see if there's already an invite and if so accept automatically
         inviteExists friendname, username, (err, invited) ->
+          return next err if err?
           if invited
             deleteInvites friendname, username, (err) ->
               return next err if err?
@@ -1020,10 +1021,10 @@ requirejs ['underscore', 'winston'], (_, winston) ->
 
   createFriendShip = (username, friendname, callback) ->
     rc.sadd "friends:#{username}", friendname, (err, data) ->
-      return next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
+      callback next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
       rc.sadd "friends:#{friendname}", username, (err, data) ->
-        return next new Error("[friend] sadd failed for username: " + friendname + ", friendname" + username) if err?
-        return null
+        callback next new Error("[friend] sadd failed for username: " + friendname + ", friendname" + username) if err?
+        callback null
 
   deleteInvites = (username, friendname, callback) ->
     rc.srem "invited:#{friendname}", username, (err, data) ->
