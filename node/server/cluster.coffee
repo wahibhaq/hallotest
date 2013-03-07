@@ -969,7 +969,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
         inviteExists friendname, username, (err, invited) ->
           return next err if err?
           if invited
-            deleteInvites friendname, username, (err) ->
+            deleteInvites username, friendname, (err) ->
               return next err if err?
               createFriendShip username, friendname, (err) ->
                 return next err if err?
