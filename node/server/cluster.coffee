@@ -792,11 +792,6 @@ requirejs ['underscore', 'winston'], (_, winston) ->
         if req.body.gcmId?
           user.gcmId = req.body.gcmId
 
-        #dump the key stuff to a file
-        #        key = '-----BEGIN PUBLIC KEY-----\n' + req.body.dhPub + '-----END PUBLIC KEY-----\n'
-        #        fs.writeFileSync "#{user.username}.sig", user.authSig
-        #        fs.writeFileSync "#{user.username}.key", key
-        #        fs.writeFileSync "#{user.username}.data", user.username
         logger.debug "gcmID: #{user.gcmId}"
 
         bcrypt.genSalt 10, (err, salt) ->
@@ -810,22 +805,22 @@ requirejs ['underscore', 'winston'], (_, winston) ->
             keys.dsaPubSig = crypto.createSign('sha256').update(new Buffer(keys.dsaPub)).sign(serverPrivateKey, 'base64')
             logger.debug "#{keys.username}, dhPubSig: #{keys.dhPubSig}, dsaPubSig: #{keys.dsaPubSig}"
 
-            userKey = "users:#{username}"
-            rc.hmset userKey, user, (err, data) ->
-              return next new Error("[createNewUserAccount] SET failed for user: " + username) if err?
-              logger.debug "set " + userKey + " in db"
-
-              #get key version
-              rc.incr "keyversion:#{username}", (err, kv) ->
+            #get key version
+            rc.incr "keyversion:#{username}", (err, kv) ->
+              return next err if err?
+              multi = rc.multi()
+              userKey = "users:#{username}"
+              keysKey = "keys:#{username}:#{kv}"
+              keys.version = kv + ""
+              multi.hmset userKey, user
+              multi.hmset keysKey, keys
+              multi.sadd "users", username
+              multi.exec (err,replies) ->
                 return next err if err?
-                keysKey = "keys:#{username}:#{kv}"
-                keys.version = kv + ""
-                #add the keys to the key set
-                rc.hmset keysKey, keys, (err, result) ->
-                  return next err if err?
-                  req.login user, ->
-                    req.user = user
-                    next()
+                logger.debug "created user: #{username}"
+                req.login user, ->
+                  req.user = user
+                  next()
 
 
   app.post "/users", validateUsernamePassword, createNewUser, passport.authenticate("local"), (req, res, next) ->
