@@ -760,7 +760,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
   createNewUser = (req, res, next) ->
     username = req.body.username
     password = req.body.password
-    logger.debug "/users, username: #{username}"
+    logger.debug "/users, username: #{username}, password: #{password}"
 
     #return next new Error('username required') unless username?
     #return next new Error('password required') unless password?
@@ -794,7 +794,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
 
         logger.debug "gcmID: #{user.gcmId}"
 
-        bcrypt.genSalt 10, (err, salt) ->
+        bcrypt.genSalt 10, 32, (err, salt) ->
           return next err if err?
           bcrypt.hash password, salt, (err, password) ->
             return next err if err?
