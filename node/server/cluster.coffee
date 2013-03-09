@@ -18,6 +18,7 @@ mkdirp = require("mkdirp")
 expressWinston = require "express-winston"
 logger = require("winston")
 async = require 'async'
+_ = require 'underscore'
 
 logger.remove logger.transports.Console
 logger.setLevels logger.config.syslog.levels
