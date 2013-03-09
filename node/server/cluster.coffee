@@ -1,80 +1,65 @@
 cluster = require('cluster')
 http = require('http')
 numCPUs = require('os').cpus().length
+http = require 'http'
+cookie = require("cookie")
+express = require("express")
+passport = require("passport")
+LocalStrategy = require("passport-local").Strategy
+crypto = require 'crypto'
+RedisStore = require("connect-redis")(express)
+path = require 'path'
+util = require("util")
+gcm = require("node-gcm")
+fs = require("fs")
+bcrypt = require 'bcrypt'
+dcrypt = require 'dcrypt'
+mkdirp = require("mkdirp")
+expressWinston = require "express-winston"
+logger = require("winston")
+async = require 'async'
 
-#if (cluster.isMaster)
-#  # Fork workers.
-#  for i in [0..1 - 1]
-#    cluster.fork();
-#
-#  cluster.on 'online', (worker, code, signal) ->
-#    logger.debug 'worker ' + worker.process.pid + ' online'
-#
-#  cluster.on 'exit', (worker, code, signal) ->
-#    logger.debug 'worker ' + worker.process.pid + ' died'
-#
-#else
-requirejs = require 'requirejs'
-requirejs.config {
-##appDir: '.'
-nodeRequire: require
-#  paths:
-#    {
-#      'cs': 'cs'
-#    }
-}
+logger.remove logger.transports.Console
+logger.setLevels logger.config.syslog.levels
 
-requirejs ['underscore', 'winston'], (_, winston) ->
-  http = require 'http'
-  cookie = require("cookie")
-  express = require("express")
-  passport = require("passport")
-  LocalStrategy = require("passport-local").Strategy
-  crypto = require 'crypto'
-  RedisStore = require("connect-redis")(express)
-  path = require 'path'
-  util = require("util")
-  gcm = require("node-gcm")
-  fs = require("fs")
-  bcrypt = require 'bcrypt'
-  dcrypt = require 'dcrypt'
-  mkdirp = require("mkdirp")
-  expressWinston = require "express-winston"
-  logger = require("winston")
-  async = require 'async'
+transports = []
+transports.push new (logger.transports.File)({ dirname: 'logs', filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'debug' })
+#always use file transport
+logger.add transports[0], null, true
+
+logger.debug "process.env.NODE_ENV: " + process.env.NODE_ENV
+logger.debug "process.env.NODE_SSL: " + process.env.NODE_SSL
+logger.debug "__dirname: #{__dirname}"
+
+nossl = process.env.NODE_NOSSL is "true"
+database = process.env.NODE_DB
+socketPort = process.env.SOCKET
+dev = process.env.NODE_ENV != "linode"
+
+if dev
+  transports.push new (logger.transports.Console)({colorize: true, timestamp: true, level: 'debug' })
+  logger.add transports[1], null, true
 
 
+if (cluster.isMaster)
+  # Fork workers.
+  for i in [0..1 - numCPUs]
+    cluster.fork();
 
+  cluster.on 'online', (worker, code, signal) ->
+    logger.debug 'worker ' + worker.process.pid + ' online'
 
-  logger.remove winston.transports.Console
-  logger.setLevels winston.config.syslog.levels
+  cluster.on 'exit', (worker, code, signal) ->
+    logger.debug 'worker ' + worker.process.pid + ' died'
 
-  transports = []
-  transports.push new (winston.transports.File)({ dirname: 'logs', filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'debug' })
-
-  #always use file transport
-  logger.add transports[0], null, true
-
-  logger.debug "process.env.NODE_ENV: " + process.env.NODE_ENV
-  logger.debug "process.env.NODE_SSL: " + process.env.NODE_SSL
-  logger.debug "__dirname: #{__dirname}"
-  dev = process.env.NODE_ENV != "linode"
-  nossl = process.env.NODE_NOSSL is "true"
-  database = process.env.NODE_DB
-  socketPort = process.env.SOCKET
+else
 
   database = 0 unless database?
   socketPort = 443 unless socketPort?
 
-
   logger.info "dev: #{dev}"
   logger.info "database: #{database}"
   logger.info "socket: #{socketPort}"
-
-  if dev
-    transports.push new (winston.transports.Console)({colorize: true, timestamp: true, level: 'debug' })
-    logger.add transports[1], null, true
-
 
   process.on "uncaughtException", uncaught = (err) ->
     logger.error "Uncaught Exception: " + err
@@ -268,7 +253,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
 
   checkPassword = (password) ->
     return password?.length > 0 and password?.length  <= 2048
-    
+
 
   validateUsernamePassword = (req, res, next) ->
     username = req.body.username
@@ -276,7 +261,7 @@ requirejs ['underscore', 'winston'], (_, winston) ->
 
     if !checkUser(username) or !checkPassword(password)
       res.send 403
-    else 
+    else
       next()
 
   validateUsernameExists = (req, res, next) ->
