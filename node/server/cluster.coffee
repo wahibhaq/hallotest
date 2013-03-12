@@ -399,6 +399,15 @@ else
       else
         callback newId
 
+  getNextUserControlId = (user, callback) ->
+          #INCR message id
+    rc.incr "control:user:#{user}:id", (err, newId) ->
+      if err?
+        logger.error "ERROR: getNextUserControlId, user: #{user}, error: #{err}"
+        callback null
+      else
+        callback newId
+
 
   createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id) ->
     logger.debug "new message"
@@ -490,12 +499,12 @@ else
 
     #send control message to ourselves
     getNextUserControlId who,(id) ->
-
+      return callback new Error 'could not get user control id' unless id?
       message.id = id
       newMessage = JSON.stringify(message)
       logger.debug "sending user control message to #{who}: #{who} has completed a key roll"
       #store messages in sorted sets
-      rc.zadd "control:#{who}:{id}", newMessage, (err, addcount) ->
+      rc.zadd "control:user:#{who}:{id}", id, newMessage, (err, addcount) ->
         #end transaction here
         logger.error ("ERROR: adding user control message, " + err) if err?
         return callback new error 'could not send user controlmessage' if err?
@@ -509,14 +518,14 @@ else
 
             #INCR message id
             getNextUserControlId to, (id) ->
-              return callback new Error 'could not get user message control id' unless id?
+              return callback new Error 'could not get user control id' unless id?
               message.id = id
 
               logger.debug "sending user control message to #{to}: #{who} has completed a key roll"
               newMessage = JSON.stringify(message)
 
               #store messages in sorted sets
-              rc.zadd "control:#{to}:{id}", newMessage, (err, addcount) ->
+              rc.zadd "control:user:#{to}:{id}", newMessage, (err, addcount) ->
                 #end transaction here
                 logger.error ("ERROR: adding user control message, " + err) if err?
                 return callback new error 'could not send user controlmessage' if err?
@@ -679,7 +688,7 @@ else
         out = fs.createWriteStream filename
         ins.pipe out
         ins.on "end", ->
-          createAndSendMessage "message", null, req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, relUri, "image/", id
+          createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, relUri, "image/", id
           fs.unlinkSync req.files.image.path
           res.send 202, { 'Location': relUri }
 

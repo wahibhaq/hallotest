@@ -155,6 +155,7 @@ describe "surespot chat test", () ->
       receivedMessage.from.should.equal jsonMessage.from
       receivedMessage.data.should.equal jsonMessage.data
       receivedMessage.mimeType.should.equal jsonMessage.mimeType
+      receivedMessage.iv.should.equal jsonMessage.iv
       done()
 
     request.post
@@ -177,7 +178,7 @@ describe "surespot chat test", () ->
                 jsonMessage.to = "test1"
                 client.send JSON.stringify(jsonMessage)
 
-  it 'should be able to delete a message', (done) ->
+  it 'should be able to delete received message', (done) ->
     deleteControlMessage = {}
     deleteControlMessage.type = 'message'
     deleteControlMessage.action = 'delete'
@@ -194,7 +195,60 @@ describe "surespot chat test", () ->
       receivedControlMessage.moredata.should.equal deleteControlMessage.moredata
       done()
 
+    client1.emit 'control', JSON.stringify(deleteControlMessage)
+
+  it 'deleted received message should be marked as deletedTo', (done) ->
+      #get the message to see if it's been marked as deleted
+    request.get
+      jar: jar1
+      url: baseUri + "/messages/test1/after/0"
+      (err, res, body) ->
+        if err
+          done err
+        else
+          messages = JSON.parse(body)
+          message = JSON.parse(messages[0])
+          message.deletedTo.should.equal true
+          done()
+
+
+  it 'should be able to delete sent message', (done) ->
+    deleteControlMessage = {}
+    deleteControlMessage.type = 'message'
+    deleteControlMessage.action = 'delete'
+    deleteControlMessage.localid = 1
+    deleteControlMessage.data = "test0:test1"
+    deleteControlMessage.moredata = 1
+
+    client.once 'control', (data) ->
+      receivedControlMessage = JSON.parse data
+      receivedControlMessage.type.should.equal deleteControlMessage.type
+      receivedControlMessage.action.should.equal deleteControlMessage.action
+      receivedControlMessage.localid.should.equal deleteControlMessage.localid
+      receivedControlMessage.data.should.equal deleteControlMessage.data
+      receivedControlMessage.moredata.should.equal deleteControlMessage.moredata
+      done()
+
     client.emit 'control', JSON.stringify(deleteControlMessage)
 
 
-  #after (done) -> cleanup done
+  it 'deleted message should be marked as deleted', (done) ->
+    #get the message to see if it's been marked as deleted
+    request.get
+      jar: jar1
+      url: baseUri + "/messages/test1/after/0"
+      (err, res, body) ->
+        if err
+          done err
+        else
+          messages = JSON.parse(body)
+          message = JSON.parse(messages[0])
+          message.data.should.equal 'deleted'
+          done()
+
+
+  after (done) ->
+    client.disconnect()
+    client1.disconnect()
+    done()
+#    cleanup done
