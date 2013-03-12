@@ -504,7 +504,7 @@ else
       newMessage = JSON.stringify(message)
       logger.debug "sending user control message to #{who}: #{who} has completed a key roll"
       #store messages in sorted sets
-      rc.zadd "control:user:#{who}:{id}", id, newMessage, (err, addcount) ->
+      rc.zadd "control:user:#{who}", id, newMessage, (err, addcount) ->
         #end transaction here
         logger.error ("ERROR: adding user control message, " + err) if err?
         return callback new error 'could not send user controlmessage' if err?
@@ -525,7 +525,7 @@ else
               newMessage = JSON.stringify(message)
 
               #store messages in sorted sets
-              rc.zadd "control:user:#{to}:{id}", newMessage, (err, addcount) ->
+              rc.zadd "control:user:#{to}", id, newMessage, (err, addcount) ->
                 #end transaction here
                 logger.error ("ERROR: adding user control message, " + err) if err?
                 return callback new error 'could not send user controlmessage' if err?
@@ -724,9 +724,27 @@ else
       else
         callback null, null
 
+
   #not sure what to do here...sending a GET with body is frowned upon from a REST standpoint
   #sending a get with the client's latest message ids in the querystring doesn't feel right as it leaks data (more easily)
   #so we are left with using a post with body even though nothing is being modified
+  app.post "/messageids", ensureAuthenticated, setNoCache, (req, res, next) ->
+    messageIds = null
+    if req.body?.messageIds?
+      logger.debug "/messageids: #{req.body.messageIds}"
+      messageIds = JSON.parse(req.body.messageIds)
+
+    #compare latest conversation ids against that which we received and then return new messages for conversations # that have them
+    getConversationIds req.user.username, (err, conversationIds) ->
+      return next err if err?
+      res.send conversationIds
+
+
+
+
+  #not sure what to do here...sending a GET with body is frowned upon from a REST standpoint
+  #sending a get with the client's latest message ids in the querystring doesn't feel right as it leaks data (more easily)
+  #so we are left with using a post with body even though nothing is being modified..roy?
   app.post "/messages", ensureAuthenticated, setNoCache, (req, res, next) ->
     messageIds = null
     if req.body?.messageIds?
@@ -766,7 +784,11 @@ else
 
 
 
-  #get last x messages
+
+  app.get "/messageandcontrolids", ensureAuthenticated, setNoCache, (req, res, next) ->
+
+
+            #get last x messages
   app.get "/messages/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
     #return last x messages
     getMessages getRoomName(req.user.username, req.params.username), 30, (err, data) ->
@@ -788,21 +810,6 @@ else
     getMessagesBeforeId getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
       return next err if err?
       res.send data
-
-  #get last message ids of conversations
-  #  app.get "/conversations/ids", ensureAuthenticated, setNoCache, (req, res, next) ->
-  #    rc.smembers "conversations:" + req.user.username, (err, conversations) ->
-  #      return next err if err?
-  #      if (conversations.length > 0)
-  #        conversationsWithId = _.map conversations, (conversation) -> conversation + ":id"
-  #        rc.mget conversationsWithId, (err, ids) ->
-  #          return next err if err?
-  #          some = {}
-  #          _.each conversations, (conversation, i) -> some[getOtherUser conversation, req.user.username] = ids[i]
-  #          res.send some
-  #      else
-  #        res.send 204
-
 
 
   #app.get "/test", (req, res) ->

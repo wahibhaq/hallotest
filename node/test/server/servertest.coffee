@@ -13,6 +13,7 @@ baseUri = "https://localhost:" + port
 
 cleanup = (done) ->
   keys = [
+    "users",
     "users:test0",
     "users:test1",
     "users:test2",
@@ -30,10 +31,13 @@ cleanup = (done) ->
     "keytoken:test0"
     "keyversion:test0",
     "keys:test0:1",
+    "keys:test0:2",
     "keyversion:test1",
     "keys:test1:1",
     "keyversion:test2",
-    "keys:test0:2"]
+    "keys:test2:1",
+    "control:user:test0"
+    "control:user:test0:id"]
   rc.del keys, (err, data) ->
     if err
       done err

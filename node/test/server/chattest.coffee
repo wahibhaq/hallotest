@@ -33,7 +33,10 @@ cleanup = (done) ->
     "keyversion:test0",
     "keys:test0:1",
     "keyversion:test1",
-    "keys:test1:1"]
+    "keys:test1:1",
+    "control:message:test0:test1",
+    "control:message:test0:test1:id",
+    "users"]
   rc.del keys, (err, data) ->
     if err
       done err
@@ -250,5 +253,4 @@ describe "surespot chat test", () ->
   after (done) ->
     client.disconnect()
     client1.disconnect()
-    done()
-#    cleanup done
+    cleanup done
