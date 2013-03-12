@@ -121,7 +121,7 @@ describe "surespot chat test", () ->
 
   client = undefined
   client1 = undefined
-  jsonMessage = {type: "user", to: "test0", toVersion: "1", from: "test1", fromVersion: "1", iv: 1, data: "message data", mimeType: "text/plain"}
+  jsonMessage = {type: "message", to: "test0", toVersion: "1", from: "test1", fromVersion: "1", iv: 1, data: "message data", mimeType: "text/plain"}
 
   it 'client 1 connect', (done) ->
     jar1 = request.jar()
@@ -139,11 +139,11 @@ describe "surespot chat test", () ->
       client1.once 'connect', ->
         done()
 
-  it 'should not be able to send a message to a non friend', (done) ->
-    #server will disconnect you!
-    client.once 'disconnect', ->
-      done()
-    client.send JSON.stringify jsonMessage
+#  it 'should not be able to send a message to a non friend', (done) ->
+#    #server will disconnect you!
+#    client.once 'disconnect', ->
+#      done()
+#    client.send JSON.stringify jsonMessage
 
 
   it 'should be able to send a message to a friend', (done) ->
@@ -171,10 +171,30 @@ describe "surespot chat test", () ->
               if err
                 done err
               else
-                client = io.connect baseUri, { 'force new connection': true}, cookie1
-                client.once 'connect', ->
-                  jsonMessage.from = "test0"
-                  jsonMessage.to = "test1"
-                  client.send JSON.stringify jsonMessage
+             #   client = io.connect baseUri, { 'force new connection': true}, cookie1
+              #  client.once 'connect', ->
+                jsonMessage.from = "test0"
+                jsonMessage.to = "test1"
+                client.send JSON.stringify(jsonMessage)
 
-  after (done) -> cleanup done
+  it 'should be able to delete a message', (done) ->
+    deleteControlMessage = {}
+    deleteControlMessage.type = 'message'
+    deleteControlMessage.action = 'delete'
+    deleteControlMessage.localid = 1
+    deleteControlMessage.data = "test0:test1"
+    deleteControlMessage.moredata = 1
+
+    client1.once 'control', (data) ->
+      receivedControlMessage = JSON.parse data
+      receivedControlMessage.type.should.equal deleteControlMessage.type
+      receivedControlMessage.action.should.equal deleteControlMessage.action
+      receivedControlMessage.localid.should.equal deleteControlMessage.localid
+      receivedControlMessage.data.should.equal deleteControlMessage.data
+      receivedControlMessage.moredata.should.equal deleteControlMessage.moredata
+      done()
+
+    client.emit 'control', JSON.stringify(deleteControlMessage)
+
+
+  #after (done) -> cleanup done

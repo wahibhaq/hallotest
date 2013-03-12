@@ -1,7 +1,6 @@
 cluster = require('cluster')
 http = require('http')
 numCPUs = require('os').cpus().length
-http = require 'http'
 cookie = require("cookie")
 express = require("express")
 passport = require("passport")
@@ -28,9 +27,6 @@ transports.push new (logger.transports.File)({ dirname: 'logs', filename: 'serve
 #always use file transport
 logger.add transports[0], null, true
 
-logger.debug "process.env.NODE_ENV: " + process.env.NODE_ENV
-logger.debug "process.env.NODE_SSL: " + process.env.NODE_SSL
-logger.debug "__dirname: #{__dirname}"
 
 nossl = process.env.NODE_NOSSL is "true"
 database = process.env.NODE_DB
@@ -40,9 +36,14 @@ dev = process.env.NODE_ENV != "linode"
 if dev
   transports.push new (logger.transports.Console)({colorize: true, timestamp: true, level: 'debug' })
   logger.add transports[1], null, true
+  numCPUs = 1
+
+logger.debug "process.env.NODE_ENV: " + process.env.NODE_ENV
+logger.debug "process.env.NODE_SSL: " + process.env.NODE_SSL
+logger.debug "__dirname: #{__dirname}"
 
 
-if (cluster.isMaster)
+if (cluster.isMaster && !dev)
   # Fork workers.
   for i in [0..1 - numCPUs]
     cluster.fork();
@@ -96,6 +97,7 @@ else
       else
         callback null, client
 
+  serverPrivateKey = undefined
 
   if not dev
     ssloptions = {
@@ -103,11 +105,13 @@ else
     cert: fs.readFileSync('ssl/www_surespot_me.crt'),
     ca: fs.readFileSync('ssl/PositiveSSLCA2.crt')
     }
+    serverPrivateKey = fs.readFileSync('ecprod/priv.pem')
   else
     ssloptions = {
     key: fs.readFileSync('ssllocal/local.key'),
     cert: fs.readFileSync('ssllocal/local.crt')
     }
+    serverPrivateKey = fs.readFileSync('ecdev/priv.pem')
 
   # create EC keys like so
   # priv key
@@ -119,7 +123,7 @@ else
   # openssl dgst -sha256 -verify key -signature sig.bin data
 
 
-  serverPrivateKey = fs.readFileSync('ec/priv.pem')
+
   #serverPublicKey = fs.readFileSync('ec/pub.pem')
 
 
@@ -139,26 +143,6 @@ else
     createRedisClient ((err, c) -> sub = c), database
     createRedisClient ((err, c) -> client = c), database
 
-  #    app.configure "amazon-stage", ->
-  #      logger.debug "running on amazon-stage"
-  #      redisPort = 6379
-  #      socketPort = 443
-  #      redisHost = "127.0.0.1"
-  #      redisAuth = "x3frgFyLaDH0oPVTMvDJHLUKBz8V+040"
-  #
-  #      sessionStore = new RedisStore(
-  #        host: redisHost
-  #        port: redisPort
-  #        pass: redisAuth
-  #      )
-  #      rc = createRedisClient(redisPort, redisHost, redisAuth)
-  #      rcs = createRedisClient(redisPort, redisHost, redisAuth)
-  #      pub = createRedisClient(redisPort, redisHost, redisAuth)
-  #      sub = createRedisClient(redisPort, redisHost, redisAuth)
-  #      client = createRedisClient(redisPort, redisHost, redisAuth)
-
-
-  app.configure ->
     app.use express["static"](__dirname + "/../assets")
     app.use express.cookieParser()
     app.use express.bodyParser()
@@ -186,17 +170,12 @@ else
   http.globalAgent.maxSockets = Infinity;
 
   app.listen socketPort, null
-  #app.maxHeadersCount = 4096
   sio = require("socket.io").listen app
 
 
   #winston up some socket.io
   sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warning, error: logger.error }
-  #    sio.configure 'load testing', 'linode', ->
-  #      sio.set 'close timeout', 180
-  #      sio.set 'heartbeat timeout', 180
-  #      sio.set 'heartbeat interval', 160
-  #      sio.set 'polling duration', 150
+
 
   sioRedisStore = require("socket.io/lib/stores/redis")
   sio.set "store", new sioRedisStore(
@@ -288,6 +267,8 @@ else
   isFriend = (username, friendname, callback) ->
     rc.sismember "friends:#{username}", friendname, callback
 
+  hasConversation = (username, room, callback) ->
+    rc.sismember "conversations:#{username}", room, callback
 
   inviteExists = (username, friendname, callback) ->
     rc.sismember "invited:#{username}", friendname, (err, result) =>
@@ -316,7 +297,6 @@ else
         res.send keys
 
   getMessage = (room, id, fn) ->
-    #return last x messages
     rc.zrangebyscore "messages:" + room, id, id, (err, data) ->
       return fn err if err?
       if data.length is 1
@@ -324,12 +304,17 @@ else
       else
         fn null, null
 
+  removeMessage = (room, id, fn) ->
+    rc.zremrangebyscore "messages:" + room, id, id, fn
+
 
   getMessages = (room, count, fn) ->
     #return last x messages
     rc.zrange "messages:" + room, -count, -1, (err, data) ->
       return fn err if err?
       fn null, data
+
+
 
   getMessagesAfterId = (room, id, fn) ->
     rc.zrangebyscore "messages:" + room, "(" + id, "+inf", (err, data) ->
@@ -374,6 +359,26 @@ else
     else
       callback null, false
 
+  getControlMessagesAfterId = (room, id, fn) ->
+    rc.zrangebyscore "control:messages:" + room, "(" + id, "+inf", (err, data) ->
+      return fn err if err?
+      fn null, data
+
+  checkForDuplicateControlMessage = (resendId, room, message, callback) ->
+    if (resendId?)
+      logger.debug "searching room: #{room} from id: #{resendId} for duplicate control messages"
+      #check messages client doesn't have for dupes
+      getControlMessagesAfterId room, resendId, (err, data) ->
+        return callback err if err
+        found = _.find data, (checkMessageJSON) ->
+          checkMessage = JSON.parse(checkMessageJSON)
+          checkMessage.localid is message.localid
+        return callback(null, found)
+    else
+      return callback null, false
+
+
+
   getNextMessageId = (room, id, callback) ->
     #we will alread have an id if we uploaded a file
     return callback id if id?
@@ -385,31 +390,28 @@ else
       else
         callback newId
 
-  createAndSendMessage = (type, subtype, from, fromVersion, to, toVersion, iv, data, mimeType, id) ->
+  getNextMessageControlId = (room, callback) ->
+    #INCR message id
+    rc.incr "control:message:#{room}:id", (err, newId) ->
+      if err?
+        logger.error "ERROR: getNextMessageControlId, room: #{room}, error: #{err}"
+        callback null
+      else
+        callback newId
+
+
+  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id) ->
     logger.debug "new message"
     message = {}
-    message.type = type
     message.to = to
     message.from = from
     message.datetime = Date.now()
-
-    if subtype?
-      message.subtype = subtype
-
-    if toVersion?
-      message.toVersion = toVersion
-
-    if fromVersion?
-      message.fromVersion = fromVersion
-
-    if iv?
-      message.iv = iv
-
-    if data?
-      message.data = data
-
-    if mimeType?
-      message.mimeType = mimeType
+    message.toVersion = toVersion
+    message.fromVersion = fromVersion
+    message.iv = iv
+    message.data = data
+    message.mimeType = mimeType
+    room = getRoomName(from,to)
 
 
     #INCR message id
@@ -417,11 +419,11 @@ else
       return unless id?
       message.id = id
 
-      logger.debug "sending message,  type: #{type}, id:  #{id}, iv: #{iv}, data: #{data}, to user: #{to}"
+      logger.debug "sending message, id:  #{id}, iv: #{iv}, data: #{data}, to user: #{to}"
       newMessage = JSON.stringify(message)
 
       #store messages in sorted sets
-      rc.zadd "messages:" + room, id, newMessage, (err, addcount) ->
+      rc.zadd "messages:#{room}", id, newMessage, (err, addcount) ->
         if err?
           logger.error ("ERROR: Socket.io onmessage, " + err)
           return
@@ -441,34 +443,34 @@ else
         sio.sockets.to(to).emit "message", newMessage
         sio.sockets.to(from).emit "message", newMessage
 
-        if type is "message"
-          #send gcm message
-          userKey = "users:" + to
-          rc.hget userKey, "gcmId", (err, gcm_id) ->
-            if err?
-              logger.error ("ERROR: Socket.io onmessage, " + err)
-              return
 
-            if gcm_id?.length > 0
-              logger.debug "sending gcm message"
-              gcmmessage = new gcm.Message()
-              sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
-              gcmmessage.addData("type", "message")
-              gcmmessage.addData("to", message.to)
-              gcmmessage.addData("sentfrom", message.from)
-              #todo add data? (won't be large when image is a url)
-              # gcmmessage.addData("data", message.data)
+        #send gcm message
+        userKey = "users:" + to
+        rc.hget userKey, "gcmId", (err, gcm_id) ->
+          if err?
+            logger.error ("ERROR: Socket.io onmessage, " + err)
+            return
 
-              gcmmessage.addData("mimeType", message.mimeType)
-              gcmmessage.delayWhileIdle = true
-              gcmmessage.timeToLive = 3
-              gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
-              regIds = [gcm_id]
+          if gcm_id?.length > 0
+            logger.debug "sending gcm message"
+            gcmmessage = new gcm.Message()
+            sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+            gcmmessage.addData("type", "message")
+            gcmmessage.addData("to", message.to)
+            gcmmessage.addData("sentfrom", message.from)
+            #todo add data? (won't be large when image is a url)
+            # gcmmessage.addData("data", message.data)
 
-              sender.send gcmmessage, regIds, 4, (result) ->
-                logger.debug "sendGcm result: #{result}"
-            else
-              logger.debug "no gcm id for #{to}"
+            gcmmessage.addData("mimeType", message.mimeType)
+            gcmmessage.delayWhileIdle = true
+            gcmmessage.timeToLive = 3
+            gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
+            regIds = [gcm_id]
+
+            sender.send gcmmessage, regIds, 4, (result) ->
+              logger.debug "sendGcm result: #{result}"
+          else
+            logger.debug "no gcm id for #{to}"
 
 
   # broadcast a key revocation message to who's conversations
@@ -477,37 +479,172 @@ else
 
     #send message to user to handle other devices
     message = {}
-    message.type = "system"
-    message.subtype = "revoke"
-    message.to = who
-    message.datetime = Date.now()
-    message.fromVersion = newVersion
-    message.from = who
-    sio.sockets.to(who).emit "message", JSON.stringify(message)
+    message.type = "user"
+    #message.subtype = "user"
+    message.action = "revoke"
+    message.data = who
+    #message.datetime = Date.now()
+    message.moredata = newVersion
 
-    #Get all the dude's conversations
-    rc.smembers "conversations:#{who}", (err, convos) ->
-      return callback err if err?
-      async.each convos, (room, callback) ->
-        to = getOtherUser(room, who)
-        message.to = to
 
-        #INCR message id
-        getNextMessageId room, null, (id) ->
-          return callback new Error 'could not get next message id' unless id?
-          message.id = id
 
-          logger.debug "sending system message to #{to}: #{who} has completed a key roll"
-          newMessage = JSON.stringify(message)
+    #send control message to ourselves
+    getNextUserControlId who,(id) ->
 
-          #store messages in sorted sets
-          rc.zadd "messages:" + room, id, newMessage, (err, addcount) ->
-            #end transaction here
-            logger.error ("ERROR: adding system message, " + err) if err?
-            return callback new error 'could not send system message' if err?
-            sio.sockets.to(to).emit "message", newMessage
-            callback()
-      , callback
+      message.id = id
+      newMessage = JSON.stringify(message)
+      logger.debug "sending user control message to #{who}: #{who} has completed a key roll"
+      #store messages in sorted sets
+      rc.zadd "control:#{who}:{id}", newMessage, (err, addcount) ->
+        #end transaction here
+        logger.error ("ERROR: adding user control message, " + err) if err?
+        return callback new error 'could not send user controlmessage' if err?
+        sio.sockets.to(who).emit "control", newMessage
+
+        #Get all the dude's conversations
+        rc.smembers "conversations:#{who}", (err, convos) ->
+          return callback err if err?
+          async.each convos, (room, callback) ->
+            to = getOtherUser(room, who)
+
+            #INCR message id
+            getNextUserControlId to, (id) ->
+              return callback new Error 'could not get user message control id' unless id?
+              message.id = id
+
+              logger.debug "sending user control message to #{to}: #{who} has completed a key roll"
+              newMessage = JSON.stringify(message)
+
+              #store messages in sorted sets
+              rc.zadd "control:#{to}:{id}", newMessage, (err, addcount) ->
+                #end transaction here
+                logger.error ("ERROR: adding user control message, " + err) if err?
+                return callback new error 'could not send user controlmessage' if err?
+                sio.sockets.to(to).emit "control", newMessage
+                callback()
+          , callback
+
+  handleControlMessage = (username, data) ->
+    logger.debug "received control message from user #{data}"
+    message = JSON.parse(data)
+
+    # message.user = user
+
+
+    type = message.type
+    return unless type?
+    action = message.action
+    return unless action?
+    localid = message.localid
+    return unless localid?
+    room = message.data
+    return unless room?
+    messageId = message.moredata
+    return unless messageId?
+    resendid = message.resendid
+
+    #make sure we're a member of this conversation
+    hasConversation username, room, (err, result) ->
+      return next err if err?
+      return if not result
+      otherUser = getOtherUser room, username
+
+      #check for dupes if message has been resent
+      checkForDuplicateControlMessage resendid, room, message, (err, found) ->
+        if found
+          logger.debug "found duplicate, not adding to db"
+          if (action is 'delete')
+            #if it's delete, broadcast
+            sio.sockets.to(username).emit "control", found
+            sio.sockets.to(otherUser).emit "control", found
+
+        else
+          #get the message we're modifying
+          getMessage room, messageId, (err, dMessage) ->
+            return if err?
+            return unless dMessage?
+            if action is "delete"
+
+
+              #if we sent it, delete the data
+              if (username is dMessage.from)
+                #delete the file if it's a file
+                if dMessage.mimeType is "image/"
+                  newPath = __dirname + "/static" + dMessage.data
+                  fs.unlink(newPath)
+
+                dMessage.data = 'deleted'
+              else
+                dMessage.deletedTo = true
+
+              #update message data
+              removeMessage room, messageId, (err, count) ->
+                return err if err?
+                rc.zadd "messages:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
+                  return err if err?
+
+                  #add control message
+                  getNextMessageControlId room, (id) ->
+                    return unless id?
+                    message.id = id
+                    sMessage = JSON.stringify message
+                    rc.zadd "control:message:#{room}", id, sMessage, (err, addcount) ->
+                      return err if err?
+                      sio.sockets.to(username).emit "control", sMessage
+                      sio.sockets.to(otherUser).emit "control", sMessage
+
+
+
+
+
+  handleMessage = (user, data) ->
+    #user = socket.handshake.session.passport.user
+
+    #todo check from and to exist and are friends
+    message = JSON.parse(data)
+
+    # message.user = user
+    logger.debug "received message from user #{user}"
+
+    to = message.to
+    return unless to?
+    from = message.from
+    return unless from?
+    toVersion = message.toVersion
+    return unless toVersion?
+    fromVersion = message.fromVersion
+    return unless fromVersion?
+    iv = message.iv
+    return unless iv?
+
+    #if this message isn't from the logged in user we have problems
+    return if user isnt from #then socket.disconnect()
+    userExists from, (err, exists) ->
+      return if err?
+      if exists
+        #if they're not friends disconnect them, wtf are they trying to do here?
+        # todo tell client not to reconnect when this happens...otherwise infinite connect loop for now we'll just do nothing
+        isFriend user, to, (err, aFriend) ->
+          return if err?
+          #return socket.disconnect() if not aFriend
+          #logger.debug "notafriend"
+          return if not aFriend
+
+          subtype = message.subtype
+          cipherdata = message.data
+
+          resendId = message.resendId
+          mimeType = message.mimeType
+          #room = getRoomName(from, to)
+
+          #check for dupes if message has been resent
+          checkForDuplicateMessage resendId, room, message, (err, found) ->
+            if found
+              logger.debug "found duplicate message, not adding to db"
+              sio.sockets.to(to).emit "message", found
+              sio.sockets.to(from).emit "message", found
+            else
+              createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType
 
 
   room = sio.on "connection", (socket) ->
@@ -517,77 +654,13 @@ else
     #join user's room
     logger.debug "user #{user} joining socket.io room"
     socket.join user
+
+    socket.on "control", (data) ->
+      handleControlMessage(user, data)
+
     socket.on "message", (data) ->
-      #user = socket.handshake.session.passport.user
+      handleMessage(user, data)
 
-      #todo check from and to exist and are friends
-      message = JSON.parse(data)
-
-      # message.user = user
-      logger.debug "received message from user #{user}"
-
-      type = message.type
-      return unless type?
-      to = message.to
-      return unless to?
-      from = message.from
-      return unless from?
-
-      toVersion = null
-      fromVersion = null
-      if type is "message"
-        toVersion = message.toVersion
-        return unless toVersion?
-
-        fromVersion = message.fromVersion
-        return unless fromVersion?
-
-      if type is "system"
-        return unless message.subtype?
-        return unless message.iv?
-
-      #if this message isn't from the logged in user we have problems
-      return if user isnt from #then socket.disconnect()
-      userExists from, (err, exists) ->
-        return if err?
-        if exists
-          #if they're not friends disconnect them, wtf are they trying to do here?
-          # todo tell client not to reconnect when this happens...otherwise infinite connect loop for now we'll just do nothing
-          isFriend user, to, (err, aFriend) ->
-            return if err?
-            #return socket.disconnect() if not aFriend
-            #logger.debug "notafriend"
-            return if not aFriend
-
-            subtype = message.subtype
-            cipherdata = message.data
-            iv = message.iv
-            resendId = message.resendId
-            mimeType = message.mimeType
-            room = getRoomName(from, to)
-
-            #check for dupes if message has been resent
-            checkForDuplicateMessage resendId, room, message, (err, found) ->
-              if (found)
-                logger.debug "found duplicate, not adding to db"
-                sio.sockets.to(to).emit "message", found
-                sio.sockets.to(from).emit "message", found
-              else
-                if type is "system"
-                  if subtype is "delete"
-                    getMessage room, iv, (err, dMessage) ->
-                      return if err?
-
-                      #delete the file if it's a file
-                      if dMessage?.mimeType is "image/"
-                        newPath = __dirname + "/static" + dMessage.data
-                        fs.unlink(newPath)
-
-                      rc.zremrangebyscore "messages:#{getRoomName(from, to)}", iv, iv, (err, nrem) ->
-                        return if err?
-                        createAndSendMessage type, subtype, from, fromVersion, to, toVersion, iv, cipherdata, mimeType
-                else
-                  createAndSendMessage type, subtype, from, fromVersion, to, toVersion, iv, cipherdata, mimeType
 
 
   app.post "/images/:fromversion/:username/:toversion", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
