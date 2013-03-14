@@ -317,9 +317,12 @@ else
 
 
   getMessagesAfterId = (room, id, fn) ->
-    rc.zrangebyscore "messages:" + room, "(" + id, "+inf", (err, data) ->
-      return fn err if err?
-      fn null, data
+    if id is -1
+      fn null, null
+    else
+      rc.zrangebyscore "messages:" + room, "(" + id, "+inf", (err, data) ->
+        return fn err if err?
+        fn null, data
 
   getMessagesBeforeId = (room, id, fn) ->
     rc.zrangebyscore "messages:" + room, id - 60, "(" + id, (err, data) ->
@@ -360,9 +363,12 @@ else
       callback null, false
 
   getControlMessagesAfterId = (room, id, fn) ->
-    rc.zrangebyscore "control:messages:" + room, "(" + id, "+inf", (err, data) ->
-      return fn err if err?
-      fn null, data
+    if id is -1
+      fn null, null
+    else
+      rc.zrangebyscore "control:message:" + room, "(" + id, "+inf", (err, data) ->
+        return fn err if err?
+        fn null, data
 
   checkForDuplicateControlMessage = (resendId, room, message, callback) ->
     if (resendId?)
@@ -534,11 +540,11 @@ else
           , callback
 
   handleControlMessage = (username, data) ->
-    logger.debug "received control message from user #{data}"
+    logger.debug "received control message: #{data}"
     message = JSON.parse(data)
 
     # message.user = user
-
+    return unless message.from is username
 
     type = message.type
     return unless type?
@@ -574,21 +580,25 @@ else
             return unless dMessage?
             if action is "delete"
 
+              #update message data
+              removeMessage room, messageId, (err, count) ->
+                return err if err?
 
-              #if we sent it, delete the data
-              if (username is dMessage.from)
                 #delete the file if it's a file
                 if dMessage.mimeType is "image/"
                   newPath = __dirname + "/static" + dMessage.data
                   fs.unlink(newPath)
 
-                dMessage.data = 'deleted'
-              else
-                dMessage.deletedTo = true
+                #if we sent it, delete the data
+                if (username is dMessage.from)
+                  dMessage.data = ''
+                  dMessage.deletedFrom = true
+                  dMessage.deletedTo = true
+                else
+                  dMessage.deletedTo = true
 
-              #update message data
-              removeMessage room, messageId, (err, count) ->
-                return err if err?
+
+
                 rc.zadd "messages:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
                   return err if err?
 
@@ -596,11 +606,15 @@ else
                   getNextMessageControlId room, (id) ->
                     return unless id?
                     message.id = id
+                    message.from = username
                     sMessage = JSON.stringify message
                     rc.zadd "control:message:#{room}", id, sMessage, (err, addcount) ->
                       return err if err?
                       sio.sockets.to(username).emit "control", sMessage
-                      sio.sockets.to(otherUser).emit "control", sMessage
+
+                      #if it's our message, tell the other user; if it's their message they don't care wtf we did
+                      if dMessage.deletedFrom
+                        sio.sockets.to(otherUser).emit "control", sMessage
 
 
 
@@ -785,7 +799,36 @@ else
 
 
 
-  app.get "/messageandcontrolids", ensureAuthenticated, setNoCache, (req, res, next) ->
+  app.get "/latestids", ensureAuthenticated, setNoCache, (req, res, next) ->
+    getConversationIds req.user.username, (err, conversationIds) ->
+      return next err if err?
+      return res.send '[]' unless conversationIds?
+
+      controlIdKeys = []
+      async.each(
+        conversationIds
+        (item, callback) ->
+          conversation = item.conversation
+
+          controlIdKey = "control:message:#{conversation}:id"
+          controlIdKeys.push controlIdKey
+          callback()
+        (err) ->
+          return next err if err?
+          #Get control ids
+          rc.mget controlIdKeys, (err, rControlIds) ->
+            return next err if err?
+            controlIds = []
+            _.each(
+              rControlIds
+              (controlId, i) ->
+                if controlId isnt null
+                  controlIds.push({conversation: conversationIds[i].conversation, controlId: controlId}))
+
+            data =  { conversationIds: conversationIds, controlIds: controlIds }
+            logger.debug "/latestids sending #{JSON.stringify(data)}"
+            res.send data)
+
 
 
             #get last x messages
@@ -798,11 +841,11 @@ else
 
 
   #get remote messages since id
-  app.get "/messages/:username/after/:messageid", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
-    #return messages since id
-    getMessagesAfterId getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
-      return next err if err?
-      res.send data
+#  app.get "/messages/:username/after/:messageid", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
+#    #return messages since id
+#    getMessagesAfterId getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
+#      return next err if err?
+#      res.send data
 
   #get remote messages before id
   app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
@@ -810,6 +853,26 @@ else
     getMessagesBeforeId getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
       return next err if err?
       res.send data
+
+
+#  app.get "/controlmessages/:username/after/:controlmessageid", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
+#    #return messages since id
+#    getControlMessagesAfterId getRoomName(req.user.username, req.params.username), req.params.controlmessageid, (err, data) ->
+#      return next err if err?
+#      res.send data
+
+  app.get "/messagedata/:username/:messageid/:controlmessageid", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
+    getMessagesAfterId getRoomName(req.user.username, req.params.username), req.params.messageid, (err, messageData) ->
+      return next err if err?
+      #return messages since id
+      getControlMessagesAfterId getRoomName(req.user.username, req.params.username), req.params.controlmessageid, (err, controlData) ->
+        return next err if err?
+        data = {}
+        if messageData?
+          data.messages = messageData
+        if controlData?
+          data.controlMessages = controlData
+        res.send JSON.stringify(data)
 
 
   #app.get "/test", (req, res) ->
