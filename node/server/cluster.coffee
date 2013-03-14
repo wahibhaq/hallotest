@@ -752,6 +752,9 @@ else
         callback null, null
 
 
+
+
+
   #not sure what to do here...sending a GET with body is frowned upon from a REST standpoint
   #sending a get with the client's latest message ids in the querystring doesn't feel right as it leaks data (more easily)
   #so we are left with using a post with body even though nothing is being modified
@@ -816,44 +819,41 @@ else
     userControlId = req.params.userControlId
     return next new Error 'no userControlId' unless userControlId?
 
-    getConversationIds req.user.username, (err, conversationIds) ->
+
+    getUserControlMessagesAfterId req.user.username, parseInt(userControlId), (err, userControlMessages) ->
       return next err if err?
-      return res.send '[]' unless conversationIds?
 
-      controlIdKeys = []
-      async.each(
-        conversationIds
-        (item, callback) ->
-          conversation = item.conversation
+      data =  {}
+      if userControlMessages?.length > 0
+        data.userControlMessages = userControlMessages
+        logger.debug "/latestids userControlMessages: #{userControlMessages}"
+      getConversationIds req.user.username, (err, conversationIds) ->
+        return next err if err?
 
-          controlIdKey = "control:message:#{conversation}:id"
-          controlIdKeys.push controlIdKey
-          callback()
-        (err) ->
-          return next err if err?
-          #Get control ids
-          rc.mget controlIdKeys, (err, rControlIds) ->
+        return res.send data unless conversationIds?
+        controlIdKeys = []
+        async.each(
+          conversationIds
+          (item, callback) ->
+            controlIdKeys.push "control:message:#{item.conversation}:id"
+            callback()
+          (err) ->
             return next err if err?
-            controlIds = []
-            _.each(
-              rControlIds
-              (controlId, i) ->
-                if controlId isnt null
-                  controlIds.push({conversation: conversationIds[i].conversation, id: controlId}))
-
-            getUserControlMessagesAfterId req.user.username, parseInt(userControlId), (err, userControlMessages) ->
+            #Get control ids
+            rc.mget controlIdKeys, (err, rControlIds) ->
               return next err if err?
+              controlIds = []
+              _.each(
+                rControlIds
+                (controlId, i) ->
+                  if controlId isnt null
+                    controlIds.push({conversation: conversationIds[i].conversation, id: controlId}))
 
-              data =  {}
               if conversationIds.length > 0
                 data.conversationIds = conversationIds
 
               if controlIds.length > 0
                 data.controlIds = controlIds
-
-              if userControlMessages?.length > 0
-                data.userControlMessages = userControlMessages
-
               logger.debug "/latestids sending #{JSON.stringify(data)}"
               res.send data)
 
@@ -1139,11 +1139,16 @@ else
               return next err if err?
               createFriendShip username, friendname, (err) ->
                 return next err if err?
-                sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: 'accept' }
-                sio.sockets.to(username).emit "inviteResponse", JSON.stringify { user: friendname, response: 'accept' }
-                sendInviteResponseGcm username, friendname, 'accept', (result) ->
-                  sendInviteResponseGcm friendname, username, 'accept', (result) ->
-                    res.send 204
+
+                createAndSendUserControlMessage username, "accept", friendname, null, (err) ->
+                  return next err if err?
+                  sendInviteResponseGcm username, friendname, 'accept', (result) ->
+                    createAndSendUserControlMessage friendname, "accept", username, null, (err) ->
+                      return next err if err?
+                      #sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: 'accept' }
+                      #sio.sockets.to(username).emit "inviteResponse", JSON.stringify { user: friendname, response: 'accept' }
+                      sendInviteResponseGcm friendname, username, 'accept', (result) ->
+                        res.send 204
           else
             #todo use transaction
             #add to the user's set of people he's invited
@@ -1156,32 +1161,36 @@ else
                 #send to room
                 #todo push notification
                 if invitesCount > 0
-                  sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
-                  #send gcm message
-                  userKey = "users:" + friendname
-                  rc.hget userKey, "gcmId", (err, gcmId) ->
-                    if err?
-                      logger.error ("ERROR: " + err)
-                      return next new Error err
+                  createAndSendUserControlMessage username, "invited", friendname, null, (err) ->
+                    return next err if err?
+                    createAndSendUserControlMessage friendname, "invite", username, null, (err) ->
+                      return next err if err?
+                      #sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
+                      #send gcm message
+                      userKey = "users:" + friendname
+                      rc.hget userKey, "gcmId", (err, gcmId) ->
+                        if err?
+                          logger.error ("ERROR: " + err)
+                          return next new Error err
 
-                    if gcmId?.length > 0
-                      logger.debug "sending gcm notification"
-                      gcmmessage = new gcm.Message()
-                      sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
-                      gcmmessage.addData "type", "invite"
-                      gcmmessage.addData "sentfrom", username
-                      gcmmessage.addData "to", friendname
-                      gcmmessage.delayWhileIdle = true
-                      gcmmessage.timeToLive = 3
-                      gcmmessage.collapseKey = "invite:#{friendname}"
-                      regIds = [gcmId]
+                        if gcmId?.length > 0
+                          logger.debug "sending gcm notification"
+                          gcmmessage = new gcm.Message()
+                          sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+                          gcmmessage.addData "type", "invite"
+                          gcmmessage.addData "sentfrom", username
+                          gcmmessage.addData "to", friendname
+                          gcmmessage.delayWhileIdle = true
+                          gcmmessage.timeToLive = 3
+                          gcmmessage.collapseKey = "invite:#{friendname}"
+                          regIds = [gcmId]
 
-                      sender.send gcmmessage, regIds, 4, (result) ->
-                        #logger.debug(result)
-                        res.send 204
-                    else
-                      logger.debug "gcmId not set for #{friendname}"
-                      res.send 204
+                          sender.send gcmmessage, regIds, 4, (result) ->
+                            #logger.debug(result)
+                            res.send 204
+                        else
+                          logger.debug "gcmId not set for #{friendname}"
+                          res.send 204
                 else
                   res.send 403
 
@@ -1247,14 +1256,15 @@ else
         if accept
           createFriendShip username, friendname, (err) ->
             return next err if err?
-            sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: req.params.action }
+            #sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: req.params.action }
             sendInviteResponseGcm username, friendname, req.params.action, (result) ->
               res.send 204
         else
           rc.sadd "ignores:#{username}", friendname, (err, data) ->
             return next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
-            sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: req.params.action }
-            res.send 204
+            createAndSendUserControlMessage friendname, "decline", username, null, (err) ->
+              #sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: req.params.action }
+              res.send 204
 
 
   getFriends = (req, res, next) ->
@@ -1262,19 +1272,27 @@ else
     rc.smembers "friends:#{username}", (err, rfriends) ->
       return next err if err?
       friends = []
-      return res.send friends unless rfriends?
+      return res.send {} unless rfriends?
 
-      _.each rfriends, (name) -> friends.push {status: "friend", name: name}
+      _.each rfriends, (name) -> friends.push {name: name}
 
       rc.smembers "invites:#{username}", (err, invites) ->
         return next err if err?
-        _.each invites, (name) -> friends.push {status: "invitee", name: name}
+        _.each invites, (name) -> friends.push {flags: 32, name: name}
 
         rc.smembers "invited:#{username}", (err, invited) ->
           return next err if err?
-          _.each invited, (name) -> friends.push {status: "invited", name: name}
-          logger.debug ("friends: " + JSON.stringify(friends))
-          res.send friends
+          _.each invited, (name) -> friends.push {flags: 2, name: name}
+
+
+          rc.get "control:user:#{username}:id", (err, id) ->
+            friendstate = {}
+            friendstate.userControlId = id ? 0
+            friendstate.friends = friends
+
+            sFriendState = JSON.stringify friendstate
+            logger.debug ("friendstate: " + sFriendState)
+            res.send sFriendState
 
   app.get "/friends", ensureAuthenticated, setNoCache, getFriends
 
