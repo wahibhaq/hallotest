@@ -315,14 +315,24 @@ else
       fn null, data
 
 
+  getControlMessages = (room, count, fn) ->
+        #return last x messages
+    rc.zrange "control:message:" + room, -count, -1, (err, data) ->
+      return fn err if err?
+      fn null, data
+
+
 
   getMessagesAfterId = (room, id, fn) ->
     if id is -1
       fn null, null
     else
-      rc.zrangebyscore "messages:" + room, "(" + id, "+inf", (err, data) ->
-        return fn err if err?
-        fn null, data
+      if id is 0
+        getMessages room, 30, fn
+      else
+        rc.zrangebyscore "messages:" + room, "(" + id, "+inf", (err, data) ->
+          return fn err if err?
+          fn null, data
 
   getMessagesBeforeId = (room, id, fn) ->
     rc.zrangebyscore "messages:" + room, id - 60, "(" + id, (err, data) ->
@@ -366,9 +376,12 @@ else
     if id is -1
       fn null, null
     else
-      rc.zrangebyscore "control:message:" + room, "(" + id, "+inf", (err, data) ->
-        return fn err if err?
-        fn null, data
+      if id is 0
+        getControlMessages room, 60, fn
+      else
+        rc.zrangebyscore "control:message:" + room, "(" + id, "+inf", (err, data) ->
+          return fn err if err?
+          fn null, data
 
   checkForDuplicateControlMessage = (resendId, room, message, callback) ->
     if (resendId?)
@@ -823,7 +836,7 @@ else
               rControlIds
               (controlId, i) ->
                 if controlId isnt null
-                  controlIds.push({conversation: conversationIds[i].conversation, controlId: controlId}))
+                  controlIds.push({conversation: conversationIds[i].conversation, id: controlId}))
 
             data =  { conversationIds: conversationIds, controlIds: controlIds }
             logger.debug "/latestids sending #{JSON.stringify(data)}"
@@ -862,10 +875,10 @@ else
 #      res.send data
 
   app.get "/messagedata/:username/:messageid/:controlmessageid", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
-    getMessagesAfterId getRoomName(req.user.username, req.params.username), req.params.messageid, (err, messageData) ->
+    getMessagesAfterId getRoomName(req.user.username, req.params.username), parseInt(req.params.messageid), (err, messageData) ->
       return next err if err?
       #return messages since id
-      getControlMessagesAfterId getRoomName(req.user.username, req.params.username), req.params.controlmessageid, (err, controlData) ->
+      getControlMessagesAfterId getRoomName(req.user.username, req.params.username), parseInt(req.params.controlmessageid), (err, controlData) ->
         return next err if err?
         data = {}
         if messageData?
