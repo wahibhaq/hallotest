@@ -8,7 +8,6 @@ fs = require("fs")
 io = require 'socket.io-client'
 async = require 'async'
 _ = require 'underscore'
-dcrypt = require 'dcrypt'
 crypto = require 'crypto'
 
 rc = redis.createClient()

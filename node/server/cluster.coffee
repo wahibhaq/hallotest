@@ -12,7 +12,6 @@ util = require("util")
 gcm = require("node-gcm")
 fs = require("fs")
 bcrypt = require 'bcrypt'
-dcrypt = require 'dcrypt'
 mkdirp = require("mkdirp")
 expressWinston = require "express-winston"
 logger = require("winston")
@@ -314,14 +313,15 @@ else
       return fn err if err?
       fn null, data
 
-
   getControlMessages = (room, count, fn) ->
-        #return last x messages
     rc.zrange "control:message:" + room, -count, -1, (err, data) ->
       return fn err if err?
       fn null, data
 
-
+  getUserControlMessages = (user, count, fn) ->
+    rc.zrange "control:user:" + user, -count, -1, (err, data) ->
+      return fn err if err?
+      fn null, data
 
   getMessagesAfterId = (room, id, fn) ->
     if id is -1
@@ -382,6 +382,18 @@ else
         rc.zrangebyscore "control:message:" + room, "(" + id, "+inf", (err, data) ->
           return fn err if err?
           fn null, data
+
+  getUserControlMessagesAfterId = (user, id, fn) ->
+    if id is -1
+      fn null, null
+    else
+      if id is 0
+        getUserControlMessages user, 20, fn
+      else
+        rc.zrangebyscore "control:user:" + user, "(" + id, "+inf", (err, data) ->
+          return fn err if err?
+          fn null, data
+
 
   checkForDuplicateControlMessage = (resendId, room, message, callback) ->
     if (resendId?)
@@ -500,57 +512,51 @@ else
           else
             logger.debug "no gcm id for #{to}"
 
+  createAndSendUserControlMessage = (user, action, data, moredata, callback) ->
+    message = {}
+    message.type = "user"
+    message.action = action
+    message.data = data
+
+    if moredata?
+      message.moredata = moredata
+
+    #send control message to ourselves
+    getNextUserControlId user,(id) ->
+      return callback new Error 'could not get user control id' unless id?
+      message.id = id
+      newMessage = JSON.stringify(message)
+      #store messages in sorted sets
+      rc.zadd "control:user:#{user}", id, newMessage, (err, addcount) ->
+        #end transaction here
+        return callback err if err?
+        sio.sockets.to(user).emit "control", newMessage
+        callback null
 
   # broadcast a key revocation message to who's conversations
   sendRevokeMessages = (who, newVersion, callback) ->
     logger.debug "new message"
 
-    #send message to user to handle other devices
-    message = {}
-    message.type = "user"
-    #message.subtype = "user"
-    message.action = "revoke"
-    message.data = who
-    #message.datetime = Date.now()
-    message.moredata = newVersion
+    logger.debug "sending user control message to #{who}: #{who} has completed a key roll"
+
+    createAndSendUserControlMessage who, "revoke", who, newVersion, (err) ->
+      logger.error ("ERROR: adding user control message, " + err) if err?
+      return callback new error 'could not send user controlmessage' if err?
+
+
+      #Get all the dude's conversations
+      rc.smembers "conversations:#{who}", (err, convos) ->
+        return callback err if err?
+        async.each convos, (room, callback) ->
+          to = getOtherUser(room, who)
+          createAndSendUserControlMessage to, "revoke", who, newVersion, (err) ->
+            logger.error ("ERROR: adding user control message, " + err) if err?
+            return callback new error 'could not send user controlmessage' if err?
+            callback()
+        , callback
 
 
 
-    #send control message to ourselves
-    getNextUserControlId who,(id) ->
-      return callback new Error 'could not get user control id' unless id?
-      message.id = id
-      newMessage = JSON.stringify(message)
-      logger.debug "sending user control message to #{who}: #{who} has completed a key roll"
-      #store messages in sorted sets
-      rc.zadd "control:user:#{who}", id, newMessage, (err, addcount) ->
-        #end transaction here
-        logger.error ("ERROR: adding user control message, " + err) if err?
-        return callback new error 'could not send user controlmessage' if err?
-        sio.sockets.to(who).emit "control", newMessage
-
-        #Get all the dude's conversations
-        rc.smembers "conversations:#{who}", (err, convos) ->
-          return callback err if err?
-          async.each convos, (room, callback) ->
-            to = getOtherUser(room, who)
-
-            #INCR message id
-            getNextUserControlId to, (id) ->
-              return callback new Error 'could not get user control id' unless id?
-              message.id = id
-
-              logger.debug "sending user control message to #{to}: #{who} has completed a key roll"
-              newMessage = JSON.stringify(message)
-
-              #store messages in sorted sets
-              rc.zadd "control:user:#{to}", id, newMessage, (err, addcount) ->
-                #end transaction here
-                logger.error ("ERROR: adding user control message, " + err) if err?
-                return callback new error 'could not send user controlmessage' if err?
-                sio.sockets.to(to).emit "control", newMessage
-                callback()
-          , callback
 
   handleControlMessage = (username, data) ->
     logger.debug "received control message: #{data}"
@@ -610,8 +616,6 @@ else
                 else
                   dMessage.deletedTo = true
 
-
-
                 rc.zadd "messages:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
                   return err if err?
 
@@ -628,10 +632,6 @@ else
                       #if it's our message, tell the other user; if it's their message they don't care wtf we did
                       if dMessage.deletedFrom
                         sio.sockets.to(otherUser).emit "control", sMessage
-
-
-
-
 
   handleMessage = (user, data) ->
     #user = socket.handshake.session.passport.user
@@ -772,47 +772,50 @@ else
   #not sure what to do here...sending a GET with body is frowned upon from a REST standpoint
   #sending a get with the client's latest message ids in the querystring doesn't feel right as it leaks data (more easily)
   #so we are left with using a post with body even though nothing is being modified..roy?
-  app.post "/messages", ensureAuthenticated, setNoCache, (req, res, next) ->
-    messageIds = null
-    if req.body?.messageIds?
-      logger.debug "/messages, messageIds:#{req.body.messageIds}"
-      messageIds = JSON.parse(req.body.messageIds)
-
-    #compare latest conversation ids against that which we received and then return new messages for conversations # that have them
-    getConversationIds req.user.username, (err, conversationIds) ->
-      return res.send '[]' unless conversationIds?
-      allMessages = []
-      async.each(
-        conversationIds
-        (item, callback) ->
-          conversation = item.conversation
-          clientId = null
-          if messageIds?
-            clientId = messageIds[conversation]
-          if clientId?
-            delta = item.id - clientId
-            if delta is 0
-              logger.debug "/messages, conversation:#{conversation}, delta nought"
-              callback()
-            else
-              getMessagesAfterId(conversation, clientId, (err, messages) ->
-                return callback err if err?
-                allMessages.push { spot: conversation, messages: messages }
-                callback())
-          else
-            getMessages(conversation, 30, (err, messages) ->
-              return callback err if err?
-              allMessages.push {spot: conversation, messages: messages}
-              callback())
-        (err) ->
-          return next err if err?
-          logger.debug "/messages sending #{JSON.stringify(allMessages)}"
-          res.send allMessages)
-
-
+#  app.post "/messages", ensureAuthenticated, setNoCache, (req, res, next) ->
+#    messageIds = null
+#    if req.body?.messageIds?
+#      logger.debug "/messages, messageIds:#{req.body.messageIds}"
+#      messageIds = JSON.parse(req.body.messageIds)
+#
+#    #compare latest conversation ids against that which we received and then return new messages for conversations # that have them
+#    getConversationIds req.user.username, (err, conversationIds) ->
+#      return res.send '[]' unless conversationIds?
+#      allMessages = []
+#      async.each(
+#        conversationIds
+#        (item, callback) ->
+#          conversation = item.conversation
+#          clientId = null
+#          if messageIds?
+#            clientId = messageIds[conversation]
+#          if clientId?
+#            delta = item.id - clientId
+#            if delta is 0
+#              logger.debug "/messages, conversation:#{conversation}, delta nought"
+#              callback()
+#            else
+#              getMessagesAfterId(conversation, clientId, (err, messages) ->
+#                return callback err if err?
+#                allMessages.push { spot: conversation, messages: messages }
+#                callback())
+#          else
+#            getMessages(conversation, 30, (err, messages) ->
+#              return callback err if err?
+#              allMessages.push {spot: conversation, messages: messages}
+#              callback())
+#        (err) ->
+#          return next err if err?
+#          logger.debug "/messages sending #{JSON.stringify(allMessages)}"
+#          res.send allMessages)
 
 
-  app.get "/latestids", ensureAuthenticated, setNoCache, (req, res, next) ->
+
+
+  app.get "/latestids/:userControlId", ensureAuthenticated, setNoCache, (req, res, next) ->
+    userControlId = req.params.userControlId
+    return next new Error 'no userControlId' unless userControlId?
+
     getConversationIds req.user.username, (err, conversationIds) ->
       return next err if err?
       return res.send '[]' unless conversationIds?
@@ -838,9 +841,21 @@ else
                 if controlId isnt null
                   controlIds.push({conversation: conversationIds[i].conversation, id: controlId}))
 
-            data =  { conversationIds: conversationIds, controlIds: controlIds }
-            logger.debug "/latestids sending #{JSON.stringify(data)}"
-            res.send data)
+            getUserControlMessagesAfterId req.user.username, parseInt(userControlId), (err, userControlMessages) ->
+              return next err if err?
+
+              data =  {}
+              if conversationIds.length > 0
+                data.conversationIds = conversationIds
+
+              if controlIds.length > 0
+                data.controlIds = controlIds
+
+              if userControlMessages?.length > 0
+                data.userControlMessages = userControlMessages
+
+              logger.debug "/latestids sending #{JSON.stringify(data)}"
+              res.send data)
 
 
 
@@ -886,6 +901,11 @@ else
         if controlData?
           data.controlMessages = controlData
         res.send JSON.stringify(data)
+
+#  app.get "/usercontrol/:controlmessageid", ensureAuthenticated, setNoCache, (req, res, next) ->
+#    getUserControlMessagesAfterId req.user.username, parseInt(req.params.controlmessageid), (err, data) ->
+#      return next err if err?
+#      res.send JSON.stringify(data)
 
 
   #app.get "/test", (req, res) ->
@@ -1169,8 +1189,15 @@ else
     rc.sadd "friends:#{username}", friendname, (err, data) ->
       callback next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
       rc.sadd "friends:#{friendname}", username, (err, data) ->
-        callback next new Error("[friend] sadd failed for username: " + friendname + ", friendname" + username) if err?
-        callback null
+        callback next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
+        createAndSendUserControlMessage username, "added", friendname, null, (err) ->
+          return callback err if err?
+          createAndSendUserControlMessage friendname, "added", username, null, (err) ->
+            return callback err if err?
+            callback null
+
+
+
 
   deleteInvites = (username, friendname, callback) ->
     rc.srem "invited:#{friendname}", username, (err, data) ->
