@@ -403,6 +403,12 @@ else
         return callback err if err
         found = _.find data, (checkMessageJSON) ->
           checkMessage = JSON.parse(checkMessageJSON)
+#          checkMessage.type is message.type
+#          checkMessage.action is message.action
+#          checkMessage.data is message.data
+#          checkMessage.moredata is message.data
+
+          checkMessage.from is message.from
           checkMessage.localid is message.localid
         return callback(null, found)
     else
@@ -575,7 +581,7 @@ else
     return unless room?
     messageId = message.moredata
     return unless messageId?
-    resendid = message.resendid
+    resendId = message.resendId
 
     #make sure we're a member of this conversation
     hasConversation username, room, (err, result) ->
@@ -584,9 +590,9 @@ else
       otherUser = getOtherUser room, username
 
       #check for dupes if message has been resent
-      checkForDuplicateControlMessage resendid, room, message, (err, found) ->
+      checkForDuplicateControlMessage resendId, room, message, (err, found) ->
         if found
-          logger.debug "found duplicate, not adding to db"
+          logger.debug "found duplicate control message, not adding to db"
           if (action is 'delete')
             #if it's delete, broadcast
             sio.sockets.to(username).emit "control", found
@@ -669,12 +675,11 @@ else
           #logger.debug "notafriend"
           return if not aFriend
 
-          subtype = message.subtype
-          cipherdata = message.data
 
+          cipherdata = message.data
           resendId = message.resendId
           mimeType = message.mimeType
-          #room = getRoomName(from, to)
+          room = getRoomName(from, to)
 
           #check for dupes if message has been resent
           checkForDuplicateMessage resendId, room, message, (err, found) ->

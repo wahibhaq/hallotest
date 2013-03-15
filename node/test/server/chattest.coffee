@@ -35,7 +35,11 @@ cleanup = (done) ->
     "keyversion:test1",
     "keys:test1:1",
     "control:message:test0:test1",
-    "control:message:test0:test1:id",
+    "control:message:test0:test1:id"
+    "control:user:test0",
+    "control:user:test1",
+    "control:user:test0:id",
+    "control:user:test1:id"
     "users"]
   rc.del keys, (err, data) ->
     if err
@@ -191,6 +195,7 @@ describe "surespot chat test", () ->
       receivedControlMessage.data.should.equal 'test0'
       should.not.exist receivedControlMessage.localid
       should.not.exist receivedControlMessage.moredata
+      should.not.exist receivedControlMessage.from
       client1Received = true
       done() if clientReceived
 
@@ -202,6 +207,7 @@ describe "surespot chat test", () ->
       receivedControlMessage.data.should.equal 'test1'
       should.not.exist receivedControlMessage.localid
       should.not.exist receivedControlMessage.moredata
+      should.not.exist receivedControlMessage.from
       clientReceived = true
       done() if client1Received
 
@@ -212,8 +218,43 @@ describe "surespot chat test", () ->
         if err
           done err
 
+  it 'should have created 2 user control messages', (done) ->
+    request.get
+      jar: jar1
+      url: baseUri + "/latestids/0"
+      (err, res, body) ->
+        if err
+          done err
+        else
+          res.statusCode.should.equal 200
+          messageData = JSON.parse(body)
+
+          controlData = messageData.userControlMessages
+          controlData.length.should.equal 2
+          receivedControlMessage = JSON.parse(controlData[0])
+          receivedControlMessage.type.should.equal "user"
+          receivedControlMessage.action.should.equal "invite"
+          receivedControlMessage.data.should.equal "test1"
+          receivedControlMessage.id.should.equal 1
+          should.not.exist receivedControlMessage.localid
+          should.not.exist receivedControlMessage.moredata
+          should.not.exist receivedControlMessage.from
+
+
+
+          receivedControlMessage = JSON.parse(controlData[1])
+          receivedControlMessage.type.should.equal "user"
+          receivedControlMessage.action.should.equal "added"
+          receivedControlMessage.data.should.equal "test1"
+          receivedControlMessage.id.should.equal 2
+
+          should.not.exist receivedControlMessage.localid
+          should.not.exist receivedControlMessage.moredata
+          should.not.exist receivedControlMessage.from
+          done()
+
+
   it 'should be able to send a message to a friend', (done) ->
-    # make them friends
     client1.once 'message', (receivedMessage) ->
       receivedMessage = JSON.parse receivedMessage
       receivedMessage.to.should.equal jsonMessage.to
@@ -245,11 +286,12 @@ describe "surespot chat test", () ->
       receivedControlMessage.localid.should.equal deleteControlMessage.localid
       receivedControlMessage.data.should.equal deleteControlMessage.data
       receivedControlMessage.moredata.should.equal deleteControlMessage.moredata
+      receivedControlMessage.from.should.equal deleteControlMessage.from
       done()
 
     client1.emit 'control', JSON.stringify(deleteControlMessage)
 
-  it 'deleted received message should be marked as deletedTo', (done) ->
+  it 'deleted received message should be marked as deletedTo, deletedFrom should not exist, and data should be present', (done) ->
       #get the message to see if it's been marked as deleted
     request.get
       jar: jar1
@@ -262,6 +304,8 @@ describe "surespot chat test", () ->
           messages = messageData.messages
           message = JSON.parse(messages[0])
           message.deletedTo.should.equal true
+          should.not.exist message.deletedFrom
+          should.exist message.data
           done()
 
 
@@ -269,7 +313,7 @@ describe "surespot chat test", () ->
     deleteControlMessage = {}
     deleteControlMessage.type = 'message'
     deleteControlMessage.action = 'delete'
-    deleteControlMessage.localid = 1
+    deleteControlMessage.localid = 2
     deleteControlMessage.data = "test0:test1"
     deleteControlMessage.moredata = 1
     deleteControlMessage.from = "test0"
@@ -281,6 +325,7 @@ describe "surespot chat test", () ->
       receivedControlMessage.localid.should.equal deleteControlMessage.localid
       receivedControlMessage.data.should.equal deleteControlMessage.data
       receivedControlMessage.moredata.should.equal deleteControlMessage.moredata
+      receivedControlMessage.from.should.equal deleteControlMessage.from
       done()
 
     client.emit 'control', JSON.stringify(deleteControlMessage)
@@ -302,6 +347,127 @@ describe "surespot chat test", () ->
           message.deletedFrom.should.equal true
           should.not.exist(message.data)
           done()
+
+  it 'sending 3 messages then asking for messages after the 2nd messages should return 1 message with the correct id, and 2 delete control messages for the prior deletes', (done) ->
+
+    jsonMessage.from = "test0"
+    jsonMessage.to = "test1"
+    jsonMessage.iv = 2
+    #id 2
+    client.send JSON.stringify(jsonMessage)
+    #id 3
+    jsonMessage.iv = 3
+    client.send JSON.stringify(jsonMessage)
+    #id 4
+    jsonMessage.iv = 4
+    client.send JSON.stringify(jsonMessage)
+    request.get
+      jar: jar1
+      url: baseUri + "/messagedata/test1/3/0"
+      (err, res, body) ->
+        if err
+          done err
+        else
+          res.statusCode.should.equal 200
+          messageData = JSON.parse(body)
+
+          messages = messageData.messages
+          messages.length.should.equal 1
+          receivedMessage = JSON.parse(messages[0])
+          receivedMessage.to.should.equal jsonMessage.to
+          receivedMessage.id.should.equal 4
+          receivedMessage.from.should.equal jsonMessage.from
+          receivedMessage.data.should.equal jsonMessage.data
+          receivedMessage.mimeType.should.equal jsonMessage.mimeType
+          receivedMessage.iv.should.equal 4
+
+
+          controlData = messageData.controlMessages
+          controlData.length.should.equal 2
+          receivedControlMessage = JSON.parse(controlData[0])
+          receivedControlMessage.type.should.equal "message"
+          receivedControlMessage.action.should.equal "delete"
+          receivedControlMessage.localid.should.equal 1
+          receivedControlMessage.data.should.equal "test0:test1"
+          receivedControlMessage.moredata.should.equal 1
+          receivedControlMessage.from.should.equal "test1"
+          receivedControlMessage.id.should.equal 1
+
+
+          receivedControlMessage = JSON.parse(controlData[1])
+          receivedControlMessage.type.should.equal "message"
+          receivedControlMessage.action.should.equal "delete"
+          receivedControlMessage.localid.should.equal 2
+          receivedControlMessage.data.should.equal "test0:test1"
+          receivedControlMessage.moredata.should.equal 1
+          receivedControlMessage.from.should.equal "test0"
+          receivedControlMessage.id.should.equal 2
+          done()
+
+
+  it 'resending message should not create new message', (done) ->
+    client1.once 'message', (receivedMessage) ->
+      receivedMessage = JSON.parse receivedMessage
+      receivedMessage.id.should.equal 4
+
+
+      done()
+
+
+    jsonMessage.from = "test0"
+    jsonMessage.to = "test1"
+    jsonMessage.resendId = 3
+    client.send JSON.stringify(jsonMessage)
+
+
+  it 'resending control message should not create new message', (done) ->
+    client1.once 'control', (receivedMessage) ->
+      receivedMessage = JSON.parse receivedMessage
+      receivedMessage.id.should.equal 2
+
+      request.get
+        jar: jar1
+        url: baseUri + "/messagedata/test1/-1/0"
+        (err, res, body) ->
+          if err
+            done err
+          else
+            res.statusCode.should.equal 200
+            messageData = JSON.parse(body)
+
+
+            controlData = messageData.controlMessages
+            controlData.length.should.equal 2
+            receivedControlMessage = JSON.parse(controlData[0])
+            receivedControlMessage.type.should.equal "message"
+            receivedControlMessage.action.should.equal "delete"
+            receivedControlMessage.localid.should.equal 1
+            receivedControlMessage.data.should.equal "test0:test1"
+            receivedControlMessage.moredata.should.equal 1
+            receivedControlMessage.from.should.equal "test1"
+            receivedControlMessage.id.should.equal 1
+
+
+            receivedControlMessage = JSON.parse(controlData[1])
+            receivedControlMessage.type.should.equal receivedMessage.type
+            receivedControlMessage.action.should.equal receivedMessage.action
+            receivedControlMessage.localid.should.equal receivedMessage.localid
+            receivedControlMessage.data.should.equal receivedMessage.data
+            receivedControlMessage.moredata.should.equal receivedMessage.moredata
+            receivedControlMessage.from.should.equal receivedMessage.from
+            receivedControlMessage.id.should.equal receivedMessage.id
+            done()
+
+    deleteControlMessage = {}
+    deleteControlMessage.type = 'message'
+    deleteControlMessage.action = 'delete'
+    deleteControlMessage.localid = 2
+    deleteControlMessage.data = "test0:test1"
+    deleteControlMessage.moredata = 1
+    deleteControlMessage.from = "test0"
+    deleteControlMessage.resendId = 0
+    client.emit 'control', JSON.stringify(deleteControlMessage)
+
 
 
   after (done) ->
