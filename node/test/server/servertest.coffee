@@ -406,7 +406,7 @@ describe "surespot server", () ->
   describe "getting other user's messages after x", ->
     it "should not be allowed", (done) ->
       http.get
-        url: baseUri + "/messages/test0/after/0"
+        url: baseUri + "/messagedata/test0/0/0"
         (err, res, body) ->
           if err
             done err

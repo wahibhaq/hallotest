@@ -603,16 +603,19 @@ else
               removeMessage room, messageId, (err, count) ->
                 return err if err?
 
-                #delete the file if it's a file
-                if dMessage.mimeType is "image/"
-                  newPath = __dirname + "/static" + dMessage.data
-                  fs.unlink(newPath)
 
                 #if we sent it, delete the data
                 if (username is dMessage.from)
-                  dMessage.data = ''
+                  #delete the file if it's a file
+                  if dMessage.mimeType is "image/"
+                    newPath = __dirname + "/static" + dMessage.data
+                    fs.unlink(newPath)
+
                   dMessage.deletedFrom = true
                   dMessage.deletedTo = true
+                  delete dMessage.data
+                  delete dMessage.datetime
+
                 else
                   dMessage.deletedTo = true
 

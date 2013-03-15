@@ -149,6 +149,69 @@ describe "surespot chat test", () ->
 #    client.send JSON.stringify jsonMessage
 
 
+  it 'invite user should emit invite and invited user control messages', (done) ->
+    clientReceived = false
+    client1Received = false
+    client1.once 'control', (data) ->
+      receivedControlMessage = JSON.parse data
+      receivedControlMessage.type.should.equal 'user'
+      receivedControlMessage.action.should.equal 'invited'
+      receivedControlMessage.data.should.equal 'test0'
+      should.not.exist receivedControlMessage.localid
+      should.not.exist receivedControlMessage.moredata
+      client1Received = true
+      done() if clientReceived
+
+
+    client.once 'control', (data) ->
+      receivedControlMessage = JSON.parse data
+      receivedControlMessage.type.should.equal 'user'
+      receivedControlMessage.action.should.equal 'invite'
+      receivedControlMessage.data.should.equal 'test1'
+      should.not.exist receivedControlMessage.localid
+      should.not.exist receivedControlMessage.moredata
+      clientReceived = true
+      done() if client1Received
+
+
+    request.post
+      jar: jar2
+      url: baseUri + "/invite/test0"
+      (err, res, body) ->
+        if err
+          done err
+
+  it 'accept invite should emit added user control messages', (done) ->
+    clientReceived = false
+    client1Received = false
+    client1.once 'control', (data) ->
+      receivedControlMessage = JSON.parse data
+      receivedControlMessage.type.should.equal 'user'
+      receivedControlMessage.action.should.equal 'added'
+      receivedControlMessage.data.should.equal 'test0'
+      should.not.exist receivedControlMessage.localid
+      should.not.exist receivedControlMessage.moredata
+      client1Received = true
+      done() if clientReceived
+
+
+    client.once 'control', (data) ->
+      receivedControlMessage = JSON.parse data
+      receivedControlMessage.type.should.equal 'user'
+      receivedControlMessage.action.should.equal 'added'
+      receivedControlMessage.data.should.equal 'test1'
+      should.not.exist receivedControlMessage.localid
+      should.not.exist receivedControlMessage.moredata
+      clientReceived = true
+      done() if client1Received
+
+    request.post
+      jar: jar1
+      url: baseUri + "/invites/test1/accept"
+      (err, res, body) ->
+        if err
+          done err
+
   it 'should be able to send a message to a friend', (done) ->
     # make them friends
     client1.once 'message', (receivedMessage) ->
@@ -161,25 +224,10 @@ describe "surespot chat test", () ->
       receivedMessage.iv.should.equal jsonMessage.iv
       done()
 
-    request.post
-      jar: jar2
-      url: baseUri + "/invite/test0"
-      (err, res, body) ->
-        if err
-          done err
-        else
-          request.post
-            jar: jar1
-            url: baseUri + "/invites/test1/accept"
-            (err, res, body) ->
-              if err
-                done err
-              else
-             #   client = io.connect baseUri, { 'force new connection': true}, cookie1
-              #  client.once 'connect', ->
-                jsonMessage.from = "test0"
-                jsonMessage.to = "test1"
-                client.send JSON.stringify(jsonMessage)
+
+    jsonMessage.from = "test0"
+    jsonMessage.to = "test1"
+    client.send JSON.stringify(jsonMessage)
 
   it 'should be able to delete received message', (done) ->
     deleteControlMessage = {}
@@ -188,6 +236,7 @@ describe "surespot chat test", () ->
     deleteControlMessage.localid = 1
     deleteControlMessage.data = "test0:test1"
     deleteControlMessage.moredata = 1
+    deleteControlMessage.from = "test1"
 
     client1.once 'control', (data) ->
       receivedControlMessage = JSON.parse data
@@ -204,12 +253,13 @@ describe "surespot chat test", () ->
       #get the message to see if it's been marked as deleted
     request.get
       jar: jar1
-      url: baseUri + "/messages/test1/after/0"
+      url: baseUri + "/messagedata/test1/0/0"
       (err, res, body) ->
         if err
           done err
         else
-          messages = JSON.parse(body)
+          messageData = JSON.parse(body)
+          messages = messageData.messages
           message = JSON.parse(messages[0])
           message.deletedTo.should.equal true
           done()
@@ -222,6 +272,7 @@ describe "surespot chat test", () ->
     deleteControlMessage.localid = 1
     deleteControlMessage.data = "test0:test1"
     deleteControlMessage.moredata = 1
+    deleteControlMessage.from = "test0"
 
     client.once 'control', (data) ->
       receivedControlMessage = JSON.parse data
@@ -235,18 +286,21 @@ describe "surespot chat test", () ->
     client.emit 'control', JSON.stringify(deleteControlMessage)
 
 
-  it 'deleted message should be marked as deleted', (done) ->
+  it 'deleted message should be marked as deletedFrom and deletedTo and data should be empty', (done) ->
     #get the message to see if it's been marked as deleted
     request.get
       jar: jar1
-      url: baseUri + "/messages/test1/after/0"
+      url: baseUri + "/messagedata/test1/0/0"
       (err, res, body) ->
         if err
           done err
         else
-          messages = JSON.parse(body)
+          messageData = JSON.parse(body)
+          messages = messageData.messages
           message = JSON.parse(messages[0])
-          message.data.should.equal 'deleted'
+          message.deletedTo.should.equal true
+          message.deletedFrom.should.equal true
+          should.not.exist(message.data)
           done()
 
 
