@@ -313,7 +313,7 @@ else
       scoredMessages = []
       sendMessages = []
       index = 0
-      for index in [0..messages.length] by 2
+      for index in [0..messages.length-1] by 2
         scoredMessages.push { id: messages[index+1], message: messages[index] }
 
       async.each(
@@ -924,7 +924,10 @@ else
           data.messages = messageData
         if controlData?
           data.controlMessages = controlData
-        res.send JSON.stringify(data)
+
+        sData = JSON.stringify(data)
+        logger.debug "sending: #{sData}"
+        res.send sData
 
 #  app.get "/usercontrol/:controlmessageid", ensureAuthenticated, setNoCache, (req, res, next) ->
 #    getUserControlMessagesAfterId req.user.username, parseInt(req.params.controlmessageid), (err, data) ->
