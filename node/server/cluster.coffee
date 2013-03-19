@@ -156,9 +156,9 @@ else
     })
     app.use app.router
 
-#    app.use(expressWinston.errorLogger({
-#    transports: transports
-#    }))
+    app.use(expressWinston.errorLogger({
+    transports: transports
+    }))
     app.use(express.errorHandler({
     showMessage: true,
     showStack: true,
@@ -303,15 +303,37 @@ else
       else
         fn null, null
 
-  removeMessage = (room, id, fn) ->
-    rc.zremrangebyscore "messages:" + room, id, id, fn
-
-
-  getMessages = (room, count, fn) ->
-    #return last x messages
-    rc.zrange "messages:" + room, -count, -1, (err, data) ->
+  removeMessage = (to, room, id, fn) ->
+    rc.zremrangebyscore "messages:" + room, id, id, (err, message) ->
       return fn err if err?
-      fn null, data
+      rc.srem "deleted:#{to}:#{room}", id, fn
+
+  filterDeletedMessages = (username, room, messages, callback) ->
+    rc.smembers "deleted:#{username}:#{room}", (err, deleted) ->
+      scoredMessages = []
+      sendMessages = []
+      index = 0
+      for index in [0..messages.length] by 2
+        scoredMessages.push { id: messages[index+1], message: messages[index] }
+
+      async.each(
+        scoredMessages
+        (item, icallback) ->
+          if not (item.id in deleted)
+            sendMessages.push item.message
+          icallback()
+        (err) ->
+          callback err if err?
+          callback null, sendMessages)
+
+  getMessages = (username, room, count, fn) ->
+    #return last x messages
+    #args = []
+    rc.zrange "messages:#{room}", -count, -1, 'withscores', (err, data) ->
+      return fn err if err?
+      filterDeletedMessages username, room, data, (err, messages) ->
+        return fn err if err?
+        fn null, messages
 
   getControlMessages = (room, count, fn) ->
     rc.zrange "control:message:" + room, -count, -1, (err, data) ->
@@ -323,28 +345,27 @@ else
       return fn err if err?
       fn null, data
 
-  getMessagesAfterId = (room, id, fn) ->
+  getMessagesAfterId = (username, room, id, fn) ->
     if id is -1
       fn null, null
     else
       if id is 0
-        getMessages room, 30, fn
+        getMessages username, room, 30, fn
       else
-        rc.zrangebyscore "messages:" + room, "(" + id, "+inf", (err, data) ->
-          return fn err if err?
-          fn null, data
+        #args = []
+        rc.zrangebyscore "messages:#{room}", "(" + id, "+inf", 'withscores', (err, data) ->
+          filterDeletedMessages username, room, data, fn
 
-  getMessagesBeforeId = (room, id, fn) ->
-    rc.zrangebyscore "messages:" + room, id - 60, "(" + id, (err, data) ->
-      return fn err if err?
-      fn null, data
+  getMessagesBeforeId = (username, room, id, fn) ->
+    rc.zrangebyscore "messages:#{room}", id - 60, "(" + id, 'withscores', (err, data) ->
+      filterDeletedMessages username, room, data, fn
 
-  checkForDuplicateMessage = (resendId, room, message, callback) ->
+  checkForDuplicateMessage = (resendId, username, room, message, callback) ->
     if (resendId?)
       if (resendId > 0)
         logger.debug "searching room: #{room} from id: #{resendId} for duplicate messages"
         #check messages client doesn't have for dupes
-        getMessagesAfterId room, resendId, (err, data) ->
+        getMessagesAfterId username, room, resendId, (err, data) ->
           return callback err if err
           found = _.find data, (checkMessageJSON) ->
             checkMessage = JSON.parse(checkMessageJSON)
@@ -358,7 +379,7 @@ else
       else
         logger.debug "searching 30 messages from room: #{room} for duplicates"
         #check last 30 for dupes
-        getMessages room, 30, (err, data) ->
+        getMessages username, room, 30, (err, data) ->
           return callback err if err
           found = _.find data, (checkMessageJSON) ->
             checkMessage = JSON.parse(checkMessageJSON)
@@ -604,43 +625,38 @@ else
             return if err?
             return unless dMessage?
             if action is "delete"
+              #if we sent it, delete the data
+              if (username is dMessage.from)
+                #update message data
+                removeMessage dMessage.to, room, messageId, (err, count) ->
+                  return err if err?
 
-              #update message data
-              removeMessage room, messageId, (err, count) ->
-                return err if err?
-
-
-                #if we sent it, delete the data
-                if (username is dMessage.from)
-                  #delete the file if it's a file
+                         #delete the file if it's a file
                   if dMessage.mimeType is "image/"
                     newPath = __dirname + "/static" + dMessage.data
                     fs.unlink(newPath)
 
-                  dMessage.deletedFrom = true
-                  dMessage.deletedTo = true
-                  delete dMessage.data
-                  delete dMessage.datetime
-
-                else
-                  dMessage.deletedTo = true
-
-                rc.zadd "messages:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
+#                  dMessage.deletedFrom = true
+#                  dMessage.deletedTo = true
+#                  delete dMessage.data
+#                  delete dMessage.datetime
+              else
+                rc.sadd "deleted:#{username}:#{room}", messageId, (err, count) ->
                   return err if err?
 
-                  #add control message
-                  getNextMessageControlId room, (id) ->
-                    return unless id?
-                    message.id = id
-                    message.from = username
-                    sMessage = JSON.stringify message
-                    rc.zadd "control:message:#{room}", id, sMessage, (err, addcount) ->
-                      return err if err?
-                      sio.sockets.to(username).emit "control", sMessage
+              #add control message
+              getNextMessageControlId room, (id) ->
+                return unless id?
+                message.id = id
+                message.from = username
+                sMessage = JSON.stringify message
+                rc.zadd "control:message:#{room}", id, sMessage, (err, addcount) ->
+                  return err if err?
+                  sio.sockets.to(username).emit "control", sMessage
 
-                      #if it's our message, tell the other user; if it's their message they don't care wtf we did
-                      if dMessage.deletedFrom
-                        sio.sockets.to(otherUser).emit "control", sMessage
+                  #if it's our message, tell the other user; if it's their message they don't care wtf we did
+                  if dMessage.from is username
+                    sio.sockets.to(otherUser).emit "control", sMessage
 
   handleMessage = (user, data) ->
     #user = socket.handshake.session.passport.user
@@ -682,7 +698,7 @@ else
           room = getRoomName(from, to)
 
           #check for dupes if message has been resent
-          checkForDuplicateMessage resendId, room, message, (err, found) ->
+          checkForDuplicateMessage resendId, user, room, message, (err, found) ->
             if found
               logger.debug "found duplicate message, not adding to db"
               sio.sockets.to(to).emit "message", found
@@ -870,7 +886,7 @@ else
             #get last x messages
   app.get "/messages/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
     #return last x messages
-    getMessages getRoomName(req.user.username, req.params.username), 30, (err, data) ->
+    getMessages req.user.username, getRoomName(req.user.username, req.params.username), 30, (err, data) ->
       #    rc.zrange "messages:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
       return next err if err?
       res.send data
@@ -886,7 +902,7 @@ else
   #get remote messages before id
   app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
     #return messages since id
-    getMessagesBeforeId getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
+    getMessagesBeforeId req.user.username, getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
       return next err if err?
       res.send data
 
@@ -898,7 +914,7 @@ else
 #      res.send data
 
   app.get "/messagedata/:username/:messageid/:controlmessageid", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
-    getMessagesAfterId getRoomName(req.user.username, req.params.username), parseInt(req.params.messageid), (err, messageData) ->
+    getMessagesAfterId req.user.username, getRoomName(req.user.username, req.params.username), parseInt(req.params.messageid), (err, messageData) ->
       return next err if err?
       #return messages since id
       getControlMessagesAfterId getRoomName(req.user.username, req.params.username), parseInt(req.params.controlmessageid), (err, controlData) ->
