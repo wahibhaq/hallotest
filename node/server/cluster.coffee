@@ -539,6 +539,27 @@ else
           else
             logger.debug "no gcm id for #{to}"
 
+  createAndSendMessageControlMessage = (username, room, action, data, moredata, callback) ->
+    message = {}
+    message.type = "message"
+    message.action = action
+    message.data = data
+
+    if moredata?
+      message.moredata = moredata
+
+    #add control message
+    getNextMessageControlId room, (id) ->
+      callback new Error 'could not create next message control id' unless id?
+      message.id = id
+      message.from = username
+      sMessage = JSON.stringify message
+      rc.zadd "control:message:#{room}", id, sMessage, (err, addcount) ->
+        callback err if err?
+        sio.sockets.to(username).emit "control", sMessage
+        sio.sockets.to(getOtherUser(room,username)).emit "control", sMessage
+        callback null
+
   createAndSendUserControlMessage = (user, action, data, moredata, callback) ->
     message = {}
     message.type = "user"
@@ -614,49 +635,45 @@ else
       checkForDuplicateControlMessage resendId, room, message, (err, found) ->
         if found
           logger.debug "found duplicate control message, not adding to db"
-          if (action is 'delete')
-            #if it's delete, broadcast
-            sio.sockets.to(username).emit "control", found
-            sio.sockets.to(otherUser).emit "control", found
+          sio.sockets.to(username).emit "control", found
+          sio.sockets.to(otherUser).emit "control", found
 
         else
           #get the message we're modifying
           getMessage room, messageId, (err, dMessage) ->
             return if err?
             return unless dMessage?
-            if action is "delete"
-              #if we sent it, delete the data
-              if (username is dMessage.from)
-                #update message data
-                removeMessage dMessage.to, room, messageId, (err, count) ->
-                  return err if err?
 
-                         #delete the file if it's a file
+            #if we sent it, delete the data
+            if (username is dMessage.from)
+
+              #update message data
+              removeMessage dMessage.to, room, messageId, (err, count) ->
+                return err if err?
+                if action is "delete"
+                #delete the file if it's a file
                   if dMessage.mimeType is "image/"
                     newPath = __dirname + "/static" + dMessage.data
                     fs.unlink(newPath)
 
-#                  dMessage.deletedFrom = true
-#                  dMessage.deletedTo = true
-#                  delete dMessage.data
-#                  delete dMessage.datetime
-              else
+                  createAndSendMessageControlMessage username, room, action, room, messageId, (err) ->
+                    return err if err?
+                else
+                  if action is 'shareable' or action is 'notshareable'
+                    dMessage.shareable = if action is 'shareable' then true else false
+                    rc.zadd "messages:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
+                      return err if err?
+                      createAndSendMessageControlMessage username, room, action, room, messageId, (err) ->
+                        return err if err?
+            else
+              if action is 'delete'
                 rc.sadd "deleted:#{username}:#{room}", messageId, (err, count) ->
                   return err if err?
+                  createAndSendMessageControlMessage username, room, action, room, messageId, (err) ->
+                    return err if err?
 
-              #add control message
-              getNextMessageControlId room, (id) ->
-                return unless id?
-                message.id = id
-                message.from = username
-                sMessage = JSON.stringify message
-                rc.zadd "control:message:#{room}", id, sMessage, (err, addcount) ->
-                  return err if err?
-                  sio.sockets.to(username).emit "control", sMessage
 
-                  #if it's our message, tell the other user; if it's their message they don't care wtf we did
-                  if dMessage.from is username
-                    sio.sockets.to(otherUser).emit "control", sMessage
+
 
   handleMessage = (user, data) ->
     #user = socket.handshake.session.passport.user
