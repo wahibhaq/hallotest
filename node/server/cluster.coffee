@@ -16,6 +16,7 @@ mkdirp = require("mkdirp")
 expressWinston = require "express-winston"
 logger = require("winston")
 async = require 'async'
+shortid = require 'shortid'
 _ = require 'underscore'
 
 logger.remove logger.transports.Console
@@ -971,6 +972,15 @@ else
       return next err if err?
       res.send exists
 
+  handleAutoAddToken = (username, autoAddToken, callback) ->
+    rc.get "autoaddtoken:#{autoAddToken}", (err, autoInviteUser) ->
+      return callback err if err?
+      #send invite
+      inviteUser username, autoInviteUser, autoAddToken, (err, inviteSent) ->
+        return callback err if err?
+        rc.del "autoaddtoken:#{autoAddToken}", (err, deleted) ->
+          callback()
+
 
   createNewUser = (req, res, next) ->
     username = req.body.username
@@ -1007,7 +1017,10 @@ else
         if req.body.gcmId?
           user.gcmId = req.body.gcmId
 
+        autoAddToken = req.body.autoAddToken
+
         logger.debug "gcmID: #{user.gcmId}"
+        logger.debug "autoAddToken: #{autoAddToken}"
 
         bcrypt.genSalt 10, 32, (err, salt) ->
           return next err if err?
@@ -1035,15 +1048,48 @@ else
                 logger.debug "created user: #{username}"
                 req.login user, ->
                   req.user = user
-                  next()
+                  if autoAddToken?
+                    handleAutoAddToken username, autoAddToken, (err) ->
+                      next()
+                  else
+                    next()
+
 
 
   app.post "/users", validateUsernamePassword, createNewUser, passport.authenticate("local"), (req, res, next) ->
     res.send 201
 
   app.post "/login", passport.authenticate("local"), (req, res, next) ->
-    logger.debug "/login post"
+
+    username = req.user.username
+    autoAddToken = req.body.autoAddToken
+    logger.debug "/login post, user #{username}, autoAddToken: #{autoAddToken}"
+
+    if autoAddToken?
+      handleAutoAddToken username, autoAddToken, (err) -> "#{username} auto invited user"
+
     res.send 204
+
+
+  getAutoAddToken = (user, callback) ->
+    id = shortid.generate()
+    key = "autoaddtoken:#{id}"
+    logger.debug "generated autoaddtoken, key: #{key}"
+    rc.exists key, (err, exists) ->
+      return callback err if err?
+      if not exists
+        #set ttl to 2 weeks
+        logger.debug "setting db key: #{key}"
+        rc.setex key, 1209600 ,user, (err, added) ->
+          return callback err if err?
+          callback null, id
+      else
+        getAutoAddToken(user, callback)
+
+
+  app.get "/autoaddtoken", ensureAuthenticated, setNoCache, (req, res, next) ->
+    getAutoAddToken req.user.username, (err, id) ->
+      res.send id
 
   app.post "/keytoken", setNoCache, (req, res, next) ->
     return res.send 403 unless req.body?.username?
@@ -1161,6 +1207,49 @@ else
       return next err if err?
       res.send 204
 
+
+  inviteUser = (username, friendname, autoAddToken, callback) ->
+    rc.sadd "invited:#{username}", friendname, (err, invitedCount) ->
+      return callback new Error("Could not set invited") if err?
+
+      rc.sadd "invites:#{friendname}", username, (err, invitesCount) ->
+        return callback new Error("Could not set invites") if err?
+
+        #send to room
+        if invitesCount > 0
+          createAndSendUserControlMessage username, "invited", friendname, autoAddToken, (err) ->
+            return callback err if err?
+            createAndSendUserControlMessage friendname, "invite", username, autoAddToken, (err) ->
+              return callback err if err?
+              #sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
+              #send gcm message
+              userKey = "users:" + friendname
+              rc.hget userKey, "gcmId", (err, gcmId) ->
+                if err?
+                  logger.error ("ERROR: " + err)
+                  return callback new Error err
+
+                if gcmId?.length > 0
+                  logger.debug "sending gcm notification"
+                  gcmmessage = new gcm.Message()
+                  sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+                  gcmmessage.addData "type", "invite"
+                  gcmmessage.addData "sentfrom", username
+                  gcmmessage.addData "to", friendname
+                  gcmmessage.delayWhileIdle = true
+                  gcmmessage.timeToLive = 3
+                  gcmmessage.collapseKey = "invite:#{friendname}"
+                  regIds = [gcmId]
+
+                  sender.send gcmmessage, regIds, 4, (result) ->
+                    #logger.debug(result)
+                    callback null, true
+                else
+                  logger.debug "gcmId not set for #{friendname}"
+                  callback null, true
+        else
+          callback null, false
+
   app.post "/invite/:username", ensureAuthenticated, validateUsernameExists, (req, res, next) ->
     friendname = req.params.username
     username = req.user.username
@@ -1194,49 +1283,8 @@ else
                       sendInviteResponseGcm friendname, username, 'accept', (result) ->
                         res.send 204
           else
-            #todo use transaction
-            #add to the user's set of people he's invited
-            rc.sadd "invited:#{username}", friendname, (err, invitedCount) ->
-              next new Error("Could not set invited") if err
-
-              rc.sadd "invites:#{friendname}", username, (err, invitesCount) ->
-                next new Error("Could not set invites") if err
-
-                #send to room
-                #todo push notification
-                if invitesCount > 0
-                  createAndSendUserControlMessage username, "invited", friendname, null, (err) ->
-                    return next err if err?
-                    createAndSendUserControlMessage friendname, "invite", username, null, (err) ->
-                      return next err if err?
-                      #sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
-                      #send gcm message
-                      userKey = "users:" + friendname
-                      rc.hget userKey, "gcmId", (err, gcmId) ->
-                        if err?
-                          logger.error ("ERROR: " + err)
-                          return next new Error err
-
-                        if gcmId?.length > 0
-                          logger.debug "sending gcm notification"
-                          gcmmessage = new gcm.Message()
-                          sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
-                          gcmmessage.addData "type", "invite"
-                          gcmmessage.addData "sentfrom", username
-                          gcmmessage.addData "to", friendname
-                          gcmmessage.delayWhileIdle = true
-                          gcmmessage.timeToLive = 3
-                          gcmmessage.collapseKey = "invite:#{friendname}"
-                          regIds = [gcmId]
-
-                          sender.send gcmmessage, regIds, 4, (result) ->
-                            #logger.debug(result)
-                            res.send 204
-                        else
-                          logger.debug "gcmId not set for #{friendname}"
-                          res.send 204
-                else
-                  res.send 403
+            inviteUser username, friendname, null, (err, inviteSent) ->
+              res.send if inviteSent then 204 else 403
 
   createFriendShip = (username, friendname, callback) ->
     rc.sadd "friends:#{username}", friendname, (err, data) ->
