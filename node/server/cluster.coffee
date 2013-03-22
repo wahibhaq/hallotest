@@ -78,6 +78,8 @@ else
   app = undefined
   ssloptions = undefined
   connectionCount = 0
+  googleApiKey = 'AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ'
+
 
   createRedisClient = (callback, database, port, hostname, password) ->
     if port? and hostname? and password?
@@ -524,7 +526,7 @@ else
           if gcm_id?.length > 0
             logger.debug "sending gcm message"
             gcmmessage = new gcm.Message()
-            sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+            sender = new gcm.Sender("#{googleApiKey}")
             gcmmessage.addData("type", "message")
             gcmmessage.addData("to", message.to)
             gcmmessage.addData("sentfrom", message.from)
@@ -1091,11 +1093,11 @@ else
 
   shortenUrl = (url, callback) ->
     request.post
-      url:  'https://www.googleapis.com/urlshortener/v1/url',
+      url: "https://www.googleapis.com/urlshortener/v1/url?key=#{googleApiKey}",
       json: { longUrl: url }
       (err, res, body) ->
         return callback null, url if err?
-        callback null, body.id
+        callback null, body?.id ? url
 
   getAutoInviteUrl = (user, medium, callback) ->
     getAutoAddToken user, (err, id) ->
@@ -1260,7 +1262,7 @@ else
                 if gcmId?.length > 0
                   logger.debug "sending gcm notification"
                   gcmmessage = new gcm.Message()
-                  sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+                  sender = new gcm.Sender("#{googleApiKey}")
                   gcmmessage.addData "type", "invite"
                   gcmmessage.addData "sentfrom", username
                   gcmmessage.addData "to", friendname
@@ -1346,7 +1348,7 @@ else
         logger.debug "sending gcm invite response notification"
 
         gcmmessage = new gcm.Message()
-        sender = new gcm.Sender("AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ")
+        sender = new gcm.Sender("#{googleApiKey}")
         gcmmessage.addData("type", "inviteResponse")
         gcmmessage.addData "sentfrom", username
         gcmmessage.addData "to", friendname
