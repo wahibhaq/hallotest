@@ -18,6 +18,8 @@ logger = require("winston")
 async = require 'async'
 shortid = require 'shortid'
 _ = require 'underscore'
+querystring = require 'querystring'
+request = require 'request'
 
 logger.remove logger.transports.Console
 logger.setLevels logger.config.syslog.levels
@@ -1087,9 +1089,35 @@ else
         getAutoAddToken(user, callback)
 
 
-  app.get "/autoaddtoken", ensureAuthenticated, setNoCache, (req, res, next) ->
-    getAutoAddToken req.user.username, (err, id) ->
-      res.send id
+  shortenUrl = (url, callback) ->
+    request.post
+      url:  'https://www.googleapis.com/urlshortener/v1/url',
+      json: { longUrl: url }
+      (err, res, body) ->
+        return callback null, url if err?
+        callback null, body.id
+
+  getAutoInviteUrl = (user, medium, callback) ->
+    getAutoAddToken user, (err, id) ->
+      return callback err if err?
+      url = "https://play.google.com/store/apps/details?id=com.twofours.surespot&referrer="
+      query = {}
+      query.utm_source="surespot_android"
+      query.utm_medium=medium
+      query.utm_content=id
+
+      encQuery = querystring.stringify query
+      url = url + encQuery
+      shortenUrl url, (err, shortUrl) ->
+        return callback err if err?
+        logger.debug "received short url: #{shortUrl}"
+        callback null, shortUrl
+
+
+  app.get "/autoinviteurl/:medium", ensureAuthenticated, setNoCache, (req, res, next) ->
+    getAutoInviteUrl req.user.username, req.params.medium, (err, url) ->
+      return next err if err?
+      res.send url
 
   app.post "/keytoken", setNoCache, (req, res, next) ->
     return res.send 403 unless req.body?.username?

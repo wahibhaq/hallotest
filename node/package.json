@@ -29,7 +29,8 @@
     "async": "~0.2.5",
     "dcrypt": "0.0.2",
     "validator": "~0.4.25",
-    "forever": "~0.10.0"
+    "forever": "~0.10.0",
+    "goo.gl": "0.0.2"
   },
   "subdomain": "2fours.com",
   "scripts": {
