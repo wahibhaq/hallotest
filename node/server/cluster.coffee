@@ -544,7 +544,7 @@ else
           else
             logger.debug "no gcm id for #{to}"
 
-  createAndSendMessageControlMessage = (username, room, action, data, moredata, callback) ->
+  createAndSendMessageControlMessage = (username, room, action, data, moredata, localid, callback) ->
     message = {}
     message.type = "message"
     message.action = action
@@ -558,6 +558,7 @@ else
       callback new Error 'could not create next message control id' unless id?
       message.id = id
       message.from = username
+      message.localid = localid
       sMessage = JSON.stringify message
       rc.zadd "control:message:#{room}", id, sMessage, (err, addcount) ->
         callback err if err?
@@ -661,20 +662,20 @@ else
                     newPath = __dirname + "/static" + dMessage.data
                     fs.unlink(newPath)
 
-                  createAndSendMessageControlMessage username, room, action, room, messageId, (err) ->
+                  createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
                     return err if err?
                 else
                   if action is 'shareable' or action is 'notshareable'
                     dMessage.shareable = if action is 'shareable' then true else false
                     rc.zadd "messages:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
                       return err if err?
-                      createAndSendMessageControlMessage username, room, action, room, messageId, (err) ->
+                      createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
                         return err if err?
             else
               if action is 'delete'
                 rc.sadd "deleted:#{username}:#{room}", messageId, (err, count) ->
                   return err if err?
-                  createAndSendMessageControlMessage username, room, action, room, messageId, (err) ->
+                  createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
                     return err if err?
 
 
@@ -1314,7 +1315,7 @@ else
                       sendInviteResponseGcm friendname, username, 'accept', (result) ->
                         res.send 204
           else
-            inviteUser username, friendname, null, (err, inviteSent) ->
+            inviteUser username, friendname, (err, inviteSent) ->
               res.send if inviteSent then 204 else 403
 
   createFriendShip = (username, friendname, callback) ->

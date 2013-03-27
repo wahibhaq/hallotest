@@ -291,7 +291,7 @@ describe "surespot chat test", () ->
 
     client1.emit 'control', JSON.stringify(deleteControlMessage)
 
-  it 'deleted received message should be marked as deletedTo, deletedFrom should not exist, and data should be present', (done) ->
+  it 'deleted received message should not be returned', (done) ->
       #get the message to see if it's been marked as deleted
     request.get
       jar: jar1
@@ -301,11 +301,7 @@ describe "surespot chat test", () ->
           done err
         else
           messageData = JSON.parse(body)
-          messages = messageData.messages
-          message = JSON.parse(messages[0])
-          message.deletedTo.should.equal true
-          should.not.exist message.deletedFrom
-          should.exist message.data
+          messageData.messages.should.not.exist
           done()
 
 
@@ -331,7 +327,7 @@ describe "surespot chat test", () ->
     client.emit 'control', JSON.stringify(deleteControlMessage)
 
 
-  it 'deleted message should be marked as deletedFrom and deletedTo and data should be empty', (done) ->
+  it 'deleted sent message should not be returned from the server', (done) ->
     #get the message to see if it's been marked as deleted
     request.get
       jar: jar1
@@ -341,11 +337,7 @@ describe "surespot chat test", () ->
           done err
         else
           messageData = JSON.parse(body)
-          messages = messageData.messages
-          message = JSON.parse(messages[0])
-          message.deletedTo.should.equal true
-          message.deletedFrom.should.equal true
-          should.not.exist(message.data)
+          messageData.messages.should.not.exist
           done()
 
   it 'sending 3 messages then asking for messages after the 2nd messages should return 1 message with the correct id, and 2 delete control messages for the prior deletes', (done) ->
