@@ -976,14 +976,11 @@ else
       return next err if err?
       res.send exists
 
-  handleAutoAddToken = (username, autoAddToken, callback) ->
-    rc.get "autoaddtoken:#{autoAddToken}", (err, autoInviteUser) ->
-      return callback err if err?
+  handleAutoInviteUser = (username, autoInviteUser, callback) ->
       #send invite
-      inviteUser username, autoInviteUser, autoAddToken, (err, inviteSent) ->
+      inviteUser username, autoInviteUser, (err, inviteSent) ->
         return callback err if err?
-        rc.del "autoaddtoken:#{autoAddToken}", (err, deleted) ->
-          callback()
+        callback()
 
 
   createNewUser = (req, res, next) ->
@@ -1021,10 +1018,10 @@ else
         if req.body.gcmId?
           user.gcmId = req.body.gcmId
 
-        autoAddToken = req.body.autoAddToken
+        autoInviteUser = req.body.autoInviteUser
 
         logger.debug "gcmID: #{user.gcmId}"
-        logger.debug "autoAddToken: #{autoAddToken}"
+        logger.debug "autoInviteUser: #{autoInviteUser}"
 
         bcrypt.genSalt 10, 32, (err, salt) ->
           return next err if err?
@@ -1052,8 +1049,9 @@ else
                 logger.debug "created user: #{username}"
                 req.login user, ->
                   req.user = user
-                  if autoAddToken?
-                    handleAutoAddToken username, autoAddToken, (err) ->
+                  if autoInviteUser
+                    handleAutoInviteUser username, autoInviteUser, (err) ->
+                      return next err if err?
                       next()
                   else
                     next()
@@ -1064,62 +1062,65 @@ else
     res.send 201
 
   app.post "/login", passport.authenticate("local"), (req, res, next) ->
-
     username = req.user.username
-    autoAddToken = req.body.autoAddToken
-    logger.debug "/login post, user #{username}, autoAddToken: #{autoAddToken}"
+    autoInviteUser = req.body.autoInviteUser
+    logger.debug "/login post, user #{username}, autoInviteUser: #{autoInviteUser}"
 
-    if autoAddToken?
-      handleAutoAddToken username, autoAddToken, (err) -> "#{username} auto invited user"
-
-    res.send 204
-
-
-  getAutoAddToken = (user, callback) ->
-    id = shortid.generate()
-    key = "autoaddtoken:#{id}"
-    logger.debug "generated autoaddtoken, key: #{key}"
-    rc.exists key, (err, exists) ->
-      return callback err if err?
-      if not exists
-        #set ttl to 2 weeks
-        logger.debug "setting db key: #{key}"
-        rc.setex key, 1209600 ,user, (err, added) ->
-          return callback err if err?
-          callback null, id
-      else
-        getAutoAddToken(user, callback)
+    if autoInviteUser?
+      userExists autoInviteUser, (err, exists) ->
+        if exists
+          handleAutoInviteUser username, autoInviteUser, (err) ->
+            "#{username} auto invited user"
+            res.send 204
+    else
+      res.send 204
 
 
-  shortenUrl = (url, callback) ->
-    request.post
-      url: "https://www.googleapis.com/urlshortener/v1/url?key=#{googleApiKey}",
-      json: { longUrl: url }
-      (err, res, body) ->
-        return callback null, url if err?
-        callback null, body?.id ? url
-
-  getAutoInviteUrl = (user, medium, callback) ->
-    getAutoAddToken user, (err, id) ->
-      return callback err if err?
-      url = "https://play.google.com/store/apps/details?id=com.twofours.surespot&referrer="
-      query = {}
-      query.utm_source="surespot_android"
-      query.utm_medium=medium
-      query.utm_content=id
-
-      encQuery = querystring.stringify query
-      url = url + encQuery
-      shortenUrl url, (err, shortUrl) ->
-        return callback err if err?
-        logger.debug "received short url: #{shortUrl}"
-        callback null, shortUrl
+#  getAutoAddToken = (user, callback) ->
+#    id = shortid.generate()
+#    key = "autoaddtoken:#{id}"
+#    logger.debug "generated autoaddtoken, key: #{key}"
+#    rc.exists key, (err, exists) ->
+#      return callback err if err?
+#      if not exists
+#        #set ttl to 2 weeks
+#        logger.debug "setting db key: #{key}"
+#        rc.setex key, 1209600 ,user, (err, added) ->
+#          return callback err if err?
+#          callback null, id
+#      else
+#        getAutoAddToken(user, callback)
 
 
-  app.get "/autoinviteurl/:medium", ensureAuthenticated, setNoCache, (req, res, next) ->
-    getAutoInviteUrl req.user.username, req.params.medium, (err, url) ->
-      return next err if err?
-      res.send url
+#  shortenUrl = (url, callback) ->
+#    request.post
+#      url: "https://www.googleapis.com/urlshortener/v1/url?key=#{googleApiKey}",
+#      json: { longUrl: url }
+#      (err, res, body) ->
+#        return callback null, url if err?
+#        callback null, body?.id ? url
+
+#  getAutoInviteUrl = (user, medium, callback) ->
+#    getAutoAddToken user, (err, id) ->
+#      return callback err if err?
+#      url = "https://play.google.com/store/apps/details?id=com.twofours.surespot&referrer="
+#      query = {}
+#      query.utm_source="surespot_android"
+#      query.utm_medium=medium
+#      query.utm_content=id
+#
+#      encQuery = querystring.stringify query
+#      url = url + encQuery
+#      shortenUrl url, (err, shortUrl) ->
+#        return callback err if err?
+#        logger.debug "received short url: #{shortUrl}"
+#        callback null, shortUrl
+
+
+#  app.get "/autoinviteurl/:medium", ensureAuthenticated, setNoCache, (req, res, next) ->
+#    getAutoInviteUrl req.user.username, req.params.medium, (err, url) ->
+#      return next err if err?
+#      res.send url
 
   app.post "/keytoken", setNoCache, (req, res, next) ->
     return res.send 403 unless req.body?.username?
@@ -1238,7 +1239,7 @@ else
       res.send 204
 
 
-  inviteUser = (username, friendname, autoAddToken, callback) ->
+  inviteUser = (username, friendname, callback) ->
     rc.sadd "invited:#{username}", friendname, (err, invitedCount) ->
       return callback new Error("Could not set invited") if err?
 
@@ -1247,9 +1248,9 @@ else
 
         #send to room
         if invitesCount > 0
-          createAndSendUserControlMessage username, "invited", friendname, autoAddToken, (err) ->
+          createAndSendUserControlMessage username, "invited", friendname, null, (err) ->
             return callback err if err?
-            createAndSendUserControlMessage friendname, "invite", username, autoAddToken, (err) ->
+            createAndSendUserControlMessage friendname, "invite", username, null, (err) ->
               return callback err if err?
               #sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
               #send gcm message
