@@ -1050,7 +1050,7 @@ else
                 logger.debug "created user: #{username}"
                 req.login user, ->
                   req.user = user
-                  if autoInviteUser
+                  if autoInviteUser?
                     handleAutoInviteUser username, autoInviteUser, (err) ->
                       return next err if err?
                       next()
@@ -1069,10 +1069,14 @@ else
 
     if autoInviteUser?
       userExists autoInviteUser, (err, exists) ->
+        return next err if err?
         if exists
           handleAutoInviteUser username, autoInviteUser, (err) ->
+            return next err if err?
             "#{username} auto invited user"
             res.send 204
+        else
+          res.send 204
     else
       res.send 204
 

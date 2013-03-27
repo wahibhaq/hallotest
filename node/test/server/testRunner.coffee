@@ -9,5 +9,5 @@ mocha = new Mocha(
   })
 
 #mocha.addFile 'chattest.js'
-mocha.addFile 'chattest.js'
+mocha.addFile 'externalInviteTest.js'
 mocha.run()
