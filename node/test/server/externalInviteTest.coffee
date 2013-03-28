@@ -174,7 +174,7 @@ describe "surespot chat test", () ->
 
 
 
-  describe 'get friends', () ->
+  describe 'get friends after signup', () ->
     it 'should have user marked invited', (done) ->
       request.get
         jar: jar1
@@ -246,7 +246,7 @@ describe "surespot chat test", () ->
 
 
 
-  describe 'get friends', () ->
+  describe 'get friends after login', () ->
     it 'should have user marked invited', (done) ->
       request.get
         jar: jar3

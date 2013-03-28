@@ -331,6 +331,14 @@ else
           callback err if err?
           callback null, sendMessages)
 
+  getAllEarlierMessagesInclusiveOf = (username, room, messageId, fn) ->
+    #return last x messages
+    #args = []
+    rc.zrangebyscore "messages:#{room}", 0, messageId, (err, data) ->
+      return fn err if err?
+      fn null, data
+
+
   getMessages = (username, room, count, fn) ->
     #return last x messages
     #args = []
@@ -645,38 +653,78 @@ else
           sio.sockets.to(otherUser).emit "control", found
 
         else
-          #get the message we're modifying
-          getMessage room, messageId, (err, dMessage) ->
-            return if err?
-            return unless dMessage?
+          if action is "deleteAll"
 
-            #if we sent it, delete the data
-            if (username is dMessage.from)
+            lastMessageId = messageId
 
-              #update message data
-              removeMessage dMessage.to, room, messageId, (err, count) ->
-                return err if err?
-                if action is "delete"
-                #delete the file if it's a file
-                  if dMessage.mimeType is "image/"
-                    newPath = __dirname + "/static" + dMessage.data
-                    fs.unlink(newPath)
+            getAllEarlierMessagesInclusiveOf username, room, lastMessageId, (err, messages) ->
+              return if err?
+              ourMessageIds = []
+              theirMessageIds = []
+              async.filter(
+                messages,
+                (item, callback) ->
+                  oMessage = JSON.parse(item)
+                  if oMessage.from is username
+                    ourMessageIds.push oMessage.id
+                    callback true
+                  else
+                    theirMessageIds.push oMessage.id
+                    callback false
+                (results) ->
 
-                  createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
-                    return err if err?
-                else
-                  if action is 'shareable' or action is 'notshareable'
-                    dMessage.shareable = if action is 'shareable' then true else false
-                    rc.zadd "messages:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
-                      return err if err?
-                      createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
-                        return err if err?
-            else
-              if action is 'delete'
-                rc.sadd "deleted:#{username}:#{room}", messageId, (err, count) ->
-                  return err if err?
-                  createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
-                    return err if err?
+                  multi = rc.multi()
+                  if ourMessageIds.length > 0
+                    results.unshift "messages:#{room}"
+                    #need z remove by score here :( http://redis.io/commands/zrem#comment-845220154
+                    #remove the messages
+                    multi.zrem results
+                    #remove deleted message ids from other user's deleted set as the message is gone now
+                    multi.srem "deleted:#{otherUser}:#{room}", ourMessageIds
+                    #todo remove the associated control messages
+
+                  if theirMessageIds.length > 0
+                    #add their message id's to our deleted message set
+                    multi.sadd "deleted:#{username}:#{room}", theirMessageIds
+
+
+                  multi.exec (err, mResults) ->
+                    return if err?
+                    createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
+                      return if err?)
+          else
+            #get the message we're modifying
+            getMessage room, messageId, (err, dMessage) ->
+              return if err?
+              return unless dMessage?
+
+              #if we sent it, delete the data
+              if (username is dMessage.from)
+
+                #update message data
+                removeMessage dMessage.to, room, messageId, (err, count) ->
+                  return if err?
+                  if action is "delete"
+                  #delete the file if it's a file
+                    if dMessage.mimeType is "image/"
+                      newPath = __dirname + "/static" + dMessage.data
+                      fs.unlink(newPath)
+
+                    createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
+                      return if err?
+                  else
+                    if action is 'shareable' or action is 'notshareable'
+                      dMessage.shareable = if action is 'shareable' then true else false
+                      rc.zadd "messages:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
+                        return if err?
+                        createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
+                          return if err?
+              else
+                if action is 'delete'
+                  rc.sadd "deleted:#{username}:#{room}", messageId, (err, count) ->
+                    return if err?
+                    createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
+                      return if err?
 
 
 
