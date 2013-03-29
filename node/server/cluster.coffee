@@ -331,7 +331,7 @@ else
           callback err if err?
           callback null, sendMessages)
 
-  getAllEarlierMessagesInclusiveOf = (username, room, messageId, fn) ->
+  getAllEarlierMessagesInclusiveOf = (room, messageId, fn) ->
     #return last x messages
     #args = []
     rc.zrangebyscore "messages:#{room}", 0, messageId, (err, data) ->
@@ -552,11 +552,12 @@ else
           else
             logger.debug "no gcm id for #{to}"
 
-  createAndSendMessageControlMessage = (username, room, action, data, moredata, localid, callback) ->
+  createAndSendMessageControlMessage = (from, to, room, action, data, moredata, callback) ->
     message = {}
     message.type = "message"
     message.action = action
     message.data = data
+
 
     if moredata?
       message.moredata = moredata
@@ -565,13 +566,11 @@ else
     getNextMessageControlId room, (id) ->
       callback new Error 'could not create next message control id' unless id?
       message.id = id
-      message.from = username
-      message.localid = localid
+      message.from = from
       sMessage = JSON.stringify message
       rc.zadd "control:message:#{room}", id, sMessage, (err, addcount) ->
         callback err if err?
-        sio.sockets.to(username).emit "control", sMessage
-        sio.sockets.to(getOtherUser(room,username)).emit "control", sMessage
+        sio.sockets.to(to).emit "control", sMessage
         callback null
 
   createAndSendUserControlMessage = (user, action, data, moredata, callback) ->
@@ -620,111 +619,111 @@ else
 
 
 
-  handleControlMessage = (username, data) ->
-    logger.debug "received control message: #{data}"
-    message = JSON.parse(data)
-
-    # message.user = user
-    return unless message.from is username
-
-    type = message.type
-    return unless type?
-    action = message.action
-    return unless action?
-    localid = message.localid
-    return unless localid?
-    room = message.data
-    return unless room?
-    messageId = message.moredata
-    return unless messageId?
-    resendId = message.resendId
-
-    #make sure we're a member of this conversation
-    hasConversation username, room, (err, result) ->
-      return next err if err?
-      return if not result
-      otherUser = getOtherUser room, username
-
-      #check for dupes if message has been resent
-      checkForDuplicateControlMessage resendId, room, message, (err, found) ->
-        if found
-          logger.debug "found duplicate control message, not adding to db"
-          sio.sockets.to(username).emit "control", found
-          sio.sockets.to(otherUser).emit "control", found
-
-        else
-          if action is "deleteAll"
-
-            lastMessageId = messageId
-
-            getAllEarlierMessagesInclusiveOf username, room, lastMessageId, (err, messages) ->
-              return if err?
-              ourMessageIds = []
-              theirMessageIds = []
-              async.filter(
-                messages,
-                (item, callback) ->
-                  oMessage = JSON.parse(item)
-                  if oMessage.from is username
-                    ourMessageIds.push oMessage.id
-                    callback true
-                  else
-                    theirMessageIds.push oMessage.id
-                    callback false
-                (results) ->
-
-                  multi = rc.multi()
-                  if ourMessageIds.length > 0
-                    results.unshift "messages:#{room}"
-                    #need z remove by score here :( http://redis.io/commands/zrem#comment-845220154
-                    #remove the messages
-                    multi.zrem results
-                    #remove deleted message ids from other user's deleted set as the message is gone now
-                    multi.srem "deleted:#{otherUser}:#{room}", ourMessageIds
-                    #todo remove the associated control messages
-
-                  if theirMessageIds.length > 0
-                    #add their message id's to our deleted message set
-                    multi.sadd "deleted:#{username}:#{room}", theirMessageIds
-
-
-                  multi.exec (err, mResults) ->
-                    return if err?
-                    createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
-                      return if err?)
-          else
-            #get the message we're modifying
-            getMessage room, messageId, (err, dMessage) ->
-              return if err?
-              return unless dMessage?
-
-              #if we sent it, delete the data
-              if (username is dMessage.from)
-
-                #update message data
-                removeMessage dMessage.to, room, messageId, (err, count) ->
-                  return if err?
-                  if action is "delete"
-                  #delete the file if it's a file
-                    if dMessage.mimeType is "image/"
-                      newPath = __dirname + "/static" + dMessage.data
-                      fs.unlink(newPath)
-
-                    createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
-                      return if err?
-                  else
-                    if action is 'shareable' or action is 'notshareable'
-                      dMessage.shareable = if action is 'shareable' then true else false
-                      rc.zadd "messages:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
-                        return if err?
-                        createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
-                          return if err?
-              else
-                if action is 'delete'
-                  rc.sadd "deleted:#{username}:#{room}", messageId, (err, count) ->
-                    return if err?
-                    createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
-                      return if err?
+#  handleControlMessage = (username, data) ->
+#    logger.debug "received control message: #{data}"
+#    message = JSON.parse(data)
+#
+#    # message.user = user
+#    return unless message.from is username
+#
+#    type = message.type
+#    return unless type?
+#    action = message.action
+#    return unless action?
+#    localid = message.localid
+#    return unless localid?
+#    room = message.data
+#    return unless room?
+#    messageId = message.moredata
+#    return unless messageId?
+#    resendId = message.resendId
+#
+#    #make sure we're a member of this conversation
+#    hasConversation username, room, (err, result) ->
+#      return next err if err?
+#      return if not result
+#      otherUser = getOtherUser room, username
+#
+#      #check for dupes if message has been resent
+#      checkForDuplicateControlMessage resendId, room, message, (err, found) ->
+#        if found
+#          logger.debug "found duplicate control message, not adding to db"
+#          sio.sockets.to(username).emit "control", found
+#          sio.sockets.to(otherUser).emit "control", found
+#
+#        else
+#          if action is "deleteAll"
+#
+#            lastMessageId = messageId
+#
+#            getAllEarlierMessagesInclusiveOf username, room, lastMessageId, (err, messages) ->
+#              return if err?
+#              ourMessageIds = []
+#              theirMessageIds = []
+#              async.filter(
+#                messages,
+#                (item, callback) ->
+#                  oMessage = JSON.parse(item)
+#                  if oMessage.from is username
+#                    ourMessageIds.push oMessage.id
+#                    callback true
+#                  else
+#                    theirMessageIds.push oMessage.id
+#                    callback false
+#                (results) ->
+#
+#                  multi = rc.multi()
+#                  if ourMessageIds.length > 0
+#                    results.unshift "messages:#{room}"
+#                    #need z remove by score here :( http://redis.io/commands/zrem#comment-845220154
+#                    #remove the messages
+#                    multi.zrem results
+#                    #remove deleted message ids from other user's deleted set as the message is gone now
+#                    multi.srem "deleted:#{otherUser}:#{room}", ourMessageIds
+#                    #todo remove the associated control messages
+#
+#                  if theirMessageIds.length > 0
+#                    #add their message id's to our deleted message set
+#                    multi.sadd "deleted:#{username}:#{room}", theirMessageIds
+#
+#
+#                  multi.exec (err, mResults) ->
+#                    return if err?
+#                    createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
+#                      return if err?)
+#          else
+#            #get the message we're modifying
+#            getMessage room, messageId, (err, dMessage) ->
+#              return if err?
+#              return unless dMessage?
+#
+#              #if we sent it, delete the data
+#              if (username is dMessage.from)
+#
+#                #update message data
+#                removeMessage dMessage.to, room, messageId, (err, count) ->
+#                  return if err?
+#                  if action is "delete"
+#                  #delete the file if it's a file
+#                    if dMessage.mimeType is "image/"
+#                      newPath = __dirname + "/static" + dMessage.data
+#                      fs.unlink(newPath)
+#
+#                    createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
+#                      return if err?
+#                  else
+#                    if action is 'shareable' or action is 'notshareable'
+#                      dMessage.shareable = if action is 'shareable' then true else false
+#                      rc.zadd "messages:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
+#                        return if err?
+#                        createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
+#                          return if err?
+#              else
+#                if action is 'delete'
+#                  rc.sadd "deleted:#{username}:#{room}", messageId, (err, count) ->
+#                    return if err?
+#                    createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
+#                      return if err?
 
 
 
@@ -786,13 +785,123 @@ else
     logger.debug "user #{user} joining socket.io room"
     socket.join user
 
-    socket.on "control", (data) ->
-      handleControlMessage(user, data)
+#    socket.on "control", (data) ->
+#      handleControlMessage(user, data)
 
     socket.on "message", (data) ->
       handleMessage(user, data)
 
 
+  app.delete "/messages/:username/before/:id", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
+    messageId = req.params.id
+    return next new Error 'id required' unless messageId?
+
+    username = req.user.username
+    otherUser = req.params.username
+    room = getRoomName username, otherUser
+    lastMessageId = messageId
+
+    getAllEarlierMessagesInclusiveOf room, lastMessageId, (err, messages) ->
+      return next err if err?
+      ourMessageIds = []
+      theirMessageIds = []
+      async.filter(
+        messages,
+        (item, callback) ->
+          oMessage = JSON.parse(item)
+          if oMessage.from is username
+            ourMessageIds.push oMessage.id
+            callback true
+          else
+            theirMessageIds.push oMessage.id
+            callback false
+        (results) ->
+
+          multi = rc.multi()
+          if ourMessageIds.length > 0
+            #zrem does not handle array as last parameter https://github.com/mranney/node_redis/issues/404
+            results.unshift "messages:#{room}"
+            #need z remove by score here :( http://redis.io/commands/zrem#comment-845220154
+            #remove the messages
+            multi.zrem results
+            #remove deleted message ids from other user's deleted set as the message is gone now
+            multi.srem "deleted:#{otherUser}:#{room}", ourMessageIds
+          #todo remove the associated control messages
+
+          if theirMessageIds.length > 0
+            #add their message id's to our deleted message set
+            multi.sadd "deleted:#{username}:#{room}", theirMessageIds
+
+
+          multi.exec (err, mResults) ->
+            return next err if err?
+            createAndSendMessageControlMessage username, otherUser, room, "deleteAll", room, messageId, (err) ->
+              return next err if err?
+              res.send 204)
+
+
+  app.delete "/messages/:username/:id", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
+
+    messageId = req.params.id
+    return next new Error 'id required' unless messageId?
+
+    username = req.user.username
+    otherUser = req.params.username
+    room = getRoomName username, otherUser
+    #get the message we're modifying
+    getMessage room, messageId, (err, dMessage) ->
+      return next err if err?
+      return res.send 404 unless dMessage?
+
+      deleteMessage = (callback) ->
+        #if we sent it, delete the data
+        if (username is dMessage.from)
+
+          #update message data
+          removeMessage dMessage.to, room, messageId, (err, count) ->
+            return callback err if err?
+
+            #delete the file if it's a file
+            if dMessage.mimeType is "image/"
+              newPath = __dirname + "/static" + dMessage.data
+              fs.unlink(newPath)
+
+            callback()
+        else
+          rc.sadd "deleted:#{username}:#{room}", messageId, (err, count) ->
+            return callback err if err?
+            callback()
+
+      deleteMessage (err) ->
+        return next err if err?
+        createAndSendMessageControlMessage username, otherUser, room, "delete", room, messageId, (err) ->
+          return next err if err?
+          res.send 204
+
+
+  app.put "/messages/:username/:id/shareable", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
+    messageId = req.params.id
+    shareable = req.body.shareable
+    return next new Error 'id required' unless messageId?
+    return next new Error 'shareable required' unless shareable?
+
+    username = req.user.username
+    otherUser = req.params.username
+    room = getRoomName username, otherUser
+    #get the message we're modifying
+    getMessage room, messageId, (err, dMessage) ->
+      return next err if err?
+      return res.send 404 unless dMessage?
+
+      #update message data
+      removeMessage dMessage.to, room, messageId, (err, count) ->
+        return next err if err?
+        dMessage.shareable = shareable is 'true'
+        rc.zadd "messages:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
+          return next err if err?
+          createAndSendMessageControlMessage username, otherUser, room, (if shareable then "shareable" else "notshareable"), room, messageId, (err) ->
+            return next err if err?
+            res.send 204
 
   app.post "/images/:fromversion/:username/:toversion", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
     #create a message and send it to chat recipients
