@@ -276,11 +276,34 @@ else
       else
         #if we're not friends check if he deleted himself
         rc.sismember "users:deleted:#{username}", friendname, (err, isDeleted) ->
+          return next err if err?
           if isDeleted
             next()
           else
             res.send 403
 
+  validateAreFriendsOrDeletedOrInvited = (req, res, next) ->
+    username = req.user.username
+    friendname = req.params.username
+
+    isFriend username, friendname, (err, result) ->
+      return next err if err?
+      if result
+        next()
+      else
+        #we've been deleted
+        rc.sismember "users:deleted:#{username}", friendname, (err, isDeleted) ->
+          return next err if err?
+          if isDeleted
+            next()
+          else
+            #we invited someone
+            rc.sismember "invited:#{username}", friendname, (err, isInvited) ->
+              return next err if err?
+              if isInvited
+                next()
+              else
+                res.send 403
 
 
   #is friendname a friend of username
@@ -1249,33 +1272,36 @@ else
     if friendname is username then return res.send 403
 
     logger.debug "#{username} inviting #{friendname} to be friends"
-    #todo check if friendname has ignored username
-    #see if they are already friends
-    isFriend username, friendname, (err, result) ->
-      #if they are, do nothing
-      if result then res.send 409
-      else
-        #see if there's already an invite and if so accept automatically
-        inviteExists friendname, username, (err, invited) ->
-          return next err if err?
-          if invited
-            deleteInvites username, friendname, (err) ->
-              return next err if err?
-              createFriendShip username, friendname, (err) ->
-                return next err if err?
+    #check if friendname has blocked username
+    rc.sismember "blocked:#{friendname}", username, (err, blocked) ->
+      return res.send 404 if blocked
 
-                createAndSendUserControlMessage username, "accept", friendname, null, (err) ->
+      #see if they are already friends
+      isFriend username, friendname, (err, result) ->
+        #if they are, do nothing
+        if result then res.send 409
+        else
+          #see if there's already an invite and if so accept automatically
+          inviteExists friendname, username, (err, invited) ->
+            return next err if err?
+            if invited
+              deleteInvites username, friendname, (err) ->
+                return next err if err?
+                createFriendShip username, friendname, (err) ->
                   return next err if err?
-                  sendInviteResponseGcm username, friendname, 'accept', (result) ->
-                    createAndSendUserControlMessage friendname, "accept", username, null, (err) ->
-                      return next err if err?
-                      #sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: 'accept' }
-                      #sio.sockets.to(username).emit "inviteResponse", JSON.stringify { user: friendname, response: 'accept' }
-                      sendInviteResponseGcm friendname, username, 'accept', (result) ->
-                        res.send 204
-          else
-            inviteUser username, friendname, (err, inviteSent) ->
-              res.send if inviteSent then 204 else 403
+
+                  createAndSendUserControlMessage username, "accept", friendname, null, (err) ->
+                    return next err if err?
+                    sendInviteResponseGcm username, friendname, 'accept', (result) ->
+                      createAndSendUserControlMessage friendname, "accept", username, null, (err) ->
+                        return next err if err?
+                        #sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: 'accept' }
+                        #sio.sockets.to(username).emit "inviteResponse", JSON.stringify { user: friendname, response: 'accept' }
+                        sendInviteResponseGcm friendname, username, 'accept', (result) ->
+                          res.send 204
+            else
+              inviteUser username, friendname, (err, inviteSent) ->
+                res.send if inviteSent then 204 else 403
 
   createFriendShip = (username, friendname, callback) ->
     multi = rc.multi()
@@ -1325,7 +1351,9 @@ else
       else
           callback null
 
-  app.post '/invites/:username/:action', ensureAuthenticated, (req, res, next) ->
+  app.post '/invites/:username/:action', ensureAuthenticated, validateUsernameExists, (req, res, next) ->
+    return next new Error 'action required' unless req.params.action?
+
     logger.debug 'POST /invites'
     username = req.user.username
     friendname = req.params.username
@@ -1334,21 +1362,28 @@ else
     inviteExists friendname, username, (err, result) ->
       return next err if err?
       return res.send 404 if not result
-      accept = req.params.action is 'accept'
+      action = req.params.action
       deleteInvites username, friendname, (err) ->
         return next err if err?
-        if accept
-          createFriendShip username, friendname, (err) ->
-            return next err if err?
-            #sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: req.params.action }
-            sendInviteResponseGcm username, friendname, req.params.action, (result) ->
+        switch action
+          when 'accept'
+            createFriendShip username, friendname, (err) ->
+              return next err if err?
+              sendInviteResponseGcm username, friendname, action, (result) ->
+                res.send 204
+          when 'ignore'
+            createAndSendUserControlMessage friendname, 'ignore', username, null, (err) ->
+              return next err if err?
               res.send 204
-        else
-          rc.sadd "ignores:#{username}", friendname, (err, data) ->
-            return next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
-            createAndSendUserControlMessage friendname, "decline", username, null, (err) ->
-              #sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: req.params.action }
-              res.send 204
+
+          when 'block'
+            rc.sadd "blocked:#{username}", friendname, (err, data) ->
+              return next err if err?
+              createAndSendUserControlMessage friendname, 'ignore', username, null, (err) ->
+                return next err if err?
+                res.send 204
+
+          else return next new Error 'invalid action'
 
 
   getFriends = (req, res, next) ->
@@ -1391,81 +1426,100 @@ else
 
   app.get "/friends", ensureAuthenticated, setNoCache, getFriends
 
-  app.delete "/friends/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, (req, res, next) ->
+  app.delete "/friends/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeletedOrInvited, (req, res, next) ->
     username = req.user.username
     theirUsername = req.params.username
     room = getRoomName username, theirUsername
 
-    multi = rc.multi()
 
-    #delete the set that held message ids of theirs that we deleted
-    multi.del "deleted:#{username}:#{room}"
 
-    #delete the conversation with this user from the set of my conversations
-    multi.srem "conversations:#{username}", room
 
-    #todo delete related user control messages
+    #if i invited him
 
-    #if i've been deleted by them this will be populated with their username
-    rc.sismember "users:deleted:#{username}", theirUsername, (err, theyHaveDeletedMe) ->
+    rc.sismember "invited:#{username}", theirUsername, (err, isInvited) ->
       return next err if err?
+      if isInvited
+        deleteInvites theirUsername, username, (err) ->
+          return next err if err?
 
-      #if we are deleting them and they haven't deleted us already
-      if not theyHaveDeletedMe
-        #delete our messages with the other user
-        rc.get "#{room}:id", (err, id) ->
-
-          deleteMessages = (messageId, callback) ->
-            if messageId?
-              deleteMyMessagesBeforeId username, theirUsername, messageId, false, (err) ->
-                callback err if err?
-                callback()
-            else
-              callback()
-
-          deleteMessages id, (err) ->
+          #if all we've done is invite them
+          createAndSendUserControlMessage username, "rescind", theirUsername, null, (err) ->
             return next err if err?
-            #delete friend association
-            multi.srem "friends:#{username}", theirUsername
-            multi.srem "friends:#{theirUsername}", username
+            #tell them we've been deleted
+            createAndSendUserControlMessage theirUsername, "rescind", username, null, (err) ->
+              return next err if err?
+              res.send 204
+      else
+        multi = rc.multi()
 
-            #add me to their set of deleted users
-            multi.sadd "users:deleted:#{theirUsername}", username
+        #delete the set that held message ids of theirs that we deleted
+        multi.del "deleted:#{username}:#{room}"
+
+        #delete the conversation with this user from the set of my conversations
+        multi.srem "conversations:#{username}", room
+
+        #todo delete related user control messages
+
+        #if i've been deleted by them this will be populated with their username
+        rc.sismember "users:deleted:#{username}", theirUsername, (err, theyHaveDeletedMe) ->
+          return next err if err?
+
+          #if we are deleting them and they haven't deleted us already
+          if not theyHaveDeletedMe
+            #delete our messages with the other user
+            rc.get "#{room}:id", (err, id) ->
+
+              deleteMessages = (messageId, callback) ->
+                if messageId?
+                  deleteMyMessagesBeforeId username, theirUsername, messageId, false, (err) ->
+                    callback err if err?
+                    callback()
+                else
+                  callback()
+
+              deleteMessages id, (err) ->
+                return next err if err?
+                #delete friend association
+                multi.srem "friends:#{username}", theirUsername
+                multi.srem "friends:#{theirUsername}", username
+
+                #add me to their set of deleted users
+                multi.sadd "users:deleted:#{theirUsername}", username
+                multi.exec (err, results) ->
+                  return next err if err?
+                  #tell (todo) other connections logged in as us that we deleted someone
+                  createAndSendUserControlMessage username, "delete", theirUsername, username, (err) ->
+                    return next err if err?
+                    #tell them we've been deleted
+                    createAndSendUserControlMessage theirUsername, "delete", username, username, (err) ->
+                      return next err if err?
+                      res.send 204
+
+          #they've already deleted me
+          else
+            #delete control message data
+            multi.del "control:message:#{room}"
+            multi.del "control:message:#{room}:id"
+
+            #remove them from deleted set
+            multi.srem "users:deleted:#{username}", theirUsername
+
+            #delete message data
+            multi.del "#{room}:id"
+            multi.del "messages:#{room}"
+
             multi.exec (err, results) ->
               return next err if err?
+
               #tell (todo) other connections logged in as us that we deleted someone
               createAndSendUserControlMessage username, "delete", theirUsername, username, (err) ->
                 return next err if err?
-                #tell them we've been deleted
-                createAndSendUserControlMessage theirUsername, "delete", username, username, (err) ->
-                  return next err if err?
-                  res.send 204
-
-      #they've already deleted me
-      else
-        #delete control message data
-        multi.del "control:message:#{room}"
-        multi.del "control:message:#{room}:id"
-
-        #remove them from deleted set
-        multi.srem "users:deleted:#{username}", theirUsername
-
-        #delete message data
-        multi.del "#{room}:id"
-        multi.del "messages:#{room}"
-
-        multi.exec (err, results) ->
-          return next err if err?
-
-          #tell (todo) other connections logged in as us that we deleted someone
-          createAndSendUserControlMessage username, "delete", theirUsername, username, (err) ->
-            return next err if err?
-            res.send 204
+                res.send 204
 
 
-    app.post "/logout", ensureAuthenticated, (req, res) ->
-      req.logout()
-      res.send 204
+  app.post "/logout", ensureAuthenticated, (req, res) ->
+    req.logout()
+    res.send 204
 
 
   comparePassword = (password, dbpassword, callback) ->
