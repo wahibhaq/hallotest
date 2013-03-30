@@ -633,117 +633,6 @@ else
         , callback
 
 
-
-
-#  handleControlMessage = (username, data) ->
-#    logger.debug "received control message: #{data}"
-#    message = JSON.parse(data)
-#
-#    # message.user = user
-#    return unless message.from is username
-#
-#    type = message.type
-#    return unless type?
-#    action = message.action
-#    return unless action?
-#    localid = message.localid
-#    return unless localid?
-#    room = message.data
-#    return unless room?
-#    messageId = message.moredata
-#    return unless messageId?
-#    resendId = message.resendId
-#
-#    #make sure we're a member of this conversation
-#    hasConversation username, room, (err, result) ->
-#      return next err if err?
-#      return if not result
-#      otherUser = getOtherUser room, username
-#
-#      #check for dupes if message has been resent
-#      checkForDuplicateControlMessage resendId, room, message, (err, found) ->
-#        if found
-#          logger.debug "found duplicate control message, not adding to db"
-#          sio.sockets.to(username).emit "control", found
-#          sio.sockets.to(otherUser).emit "control", found
-#
-#        else
-#          if action is "deleteAll"
-#
-#            lastMessageId = messageId
-#
-#            getAllEarlierMessagesInclusiveOf username, room, lastMessageId, (err, messages) ->
-#              return if err?
-#              ourMessageIds = []
-#              theirMessageIds = []
-#              async.filter(
-#                messages,
-#                (item, callback) ->
-#                  oMessage = JSON.parse(item)
-#                  if oMessage.from is username
-#                    ourMessageIds.push oMessage.id
-#                    callback true
-#                  else
-#                    theirMessageIds.push oMessage.id
-#                    callback false
-#                (results) ->
-#
-#                  multi = rc.multi()
-#                  if ourMessageIds.length > 0
-#                    results.unshift "messages:#{room}"
-#                    #need z remove by score here :( http://redis.io/commands/zrem#comment-845220154
-#                    #remove the messages
-#                    multi.zrem results
-#                    #remove deleted message ids from other user's deleted set as the message is gone now
-#                    multi.srem "deleted:#{otherUser}:#{room}", ourMessageIds
-#                    #todo remove the associated control messages
-#
-#                  if theirMessageIds.length > 0
-#                    #add their message id's to our deleted message set
-#                    multi.sadd "deleted:#{username}:#{room}", theirMessageIds
-#
-#
-#                  multi.exec (err, mResults) ->
-#                    return if err?
-#                    createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
-#                      return if err?)
-#          else
-#            #get the message we're modifying
-#            getMessage room, messageId, (err, dMessage) ->
-#              return if err?
-#              return unless dMessage?
-#
-#              #if we sent it, delete the data
-#              if (username is dMessage.from)
-#
-#                #update message data
-#                removeMessage dMessage.to, room, messageId, (err, count) ->
-#                  return if err?
-#                  if action is "delete"
-#                  #delete the file if it's a file
-#                    if dMessage.mimeType is "image/"
-#                      newPath = __dirname + "/static" + dMessage.data
-#                      fs.unlink(newPath)
-#
-#                    createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
-#                      return if err?
-#                  else
-#                    if action is 'shareable' or action is 'notshareable'
-#                      dMessage.shareable = if action is 'shareable' then true else false
-#                      rc.zadd "messages:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
-#                        return if err?
-#                        createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
-#                          return if err?
-#              else
-#                if action is 'delete'
-#                  rc.sadd "deleted:#{username}:#{room}", messageId, (err, count) ->
-#                    return if err?
-#                    createAndSendMessageControlMessage username, room, action, room, messageId, localid, (err) ->
-#                      return if err?
-
-
-
-
   handleMessage = (user, data) ->
     #user = socket.handshake.session.passport.user
 
@@ -996,52 +885,6 @@ else
       return next err if err?
       res.send conversationIds
 
-
-
-
-  #not sure what to do here...sending a GET with body is frowned upon from a REST standpoint
-  #sending a get with the client's latest message ids in the querystring doesn't feel right as it leaks data (more easily)
-  #so we are left with using a post with body even though nothing is being modified..roy?
-#  app.post "/messages", ensureAuthenticated, setNoCache, (req, res, next) ->
-#    messageIds = null
-#    if req.body?.messageIds?
-#      logger.debug "/messages, messageIds:#{req.body.messageIds}"
-#      messageIds = JSON.parse(req.body.messageIds)
-#
-#    #compare latest conversation ids against that which we received and then return new messages for conversations # that have them
-#    getConversationIds req.user.username, (err, conversationIds) ->
-#      return res.send '[]' unless conversationIds?
-#      allMessages = []
-#      async.each(
-#        conversationIds
-#        (item, callback) ->
-#          conversation = item.conversation
-#          clientId = null
-#          if messageIds?
-#            clientId = messageIds[conversation]
-#          if clientId?
-#            delta = item.id - clientId
-#            if delta is 0
-#              logger.debug "/messages, conversation:#{conversation}, delta nought"
-#              callback()
-#            else
-#              getMessagesAfterId(conversation, clientId, (err, messages) ->
-#                return callback err if err?
-#                allMessages.push { spot: conversation, messages: messages }
-#                callback())
-#          else
-#            getMessages(conversation, 30, (err, messages) ->
-#              return callback err if err?
-#              allMessages.push {spot: conversation, messages: messages}
-#              callback())
-#        (err) ->
-#          return next err if err?
-#          logger.debug "/messages sending #{JSON.stringify(allMessages)}"
-#          res.send allMessages)
-
-
-
-
   app.get "/latestids/:userControlId", ensureAuthenticated, setNoCache, (req, res, next) ->
     userControlId = req.params.userControlId
     return next new Error 'no userControlId' unless userControlId?
@@ -1094,27 +937,12 @@ else
       return next err if err?
       res.send data
 
-
-  #get remote messages since id
-#  app.get "/messages/:username/after/:messageid", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
-#    #return messages since id
-#    getMessagesAfterId getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
-#      return next err if err?
-#      res.send data
-
   #get remote messages before id
   app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
     #return messages since id
     getMessagesBeforeId req.user.username, getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
       return next err if err?
       res.send data
-
-
-#  app.get "/controlmessages/:username/after/:controlmessageid", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
-#    #return messages since id
-#    getControlMessagesAfterId getRoomName(req.user.username, req.params.username), req.params.controlmessageid, (err, data) ->
-#      return next err if err?
-#      res.send data
 
   app.get "/messagedata/:username/:messageid/:controlmessageid", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
     getMessagesAfterId req.user.username, getRoomName(req.user.username, req.params.username), parseInt(req.params.messageid), (err, messageData) ->
@@ -1131,12 +959,6 @@ else
         sData = JSON.stringify(data)
         logger.debug "sending: #{sData}"
         res.send sData
-
-#  app.get "/usercontrol/:controlmessageid", ensureAuthenticated, setNoCache, (req, res, next) ->
-#    getUserControlMessagesAfterId req.user.username, parseInt(req.params.controlmessageid), (err, data) ->
-#      return next err if err?
-#      res.send JSON.stringify(data)
-
 
   #app.get "/test", (req, res) ->
   # res.sendfile path.normalize __dirname + "/../assets/html/test.html"
@@ -1259,53 +1081,6 @@ else
           res.send 204
     else
       res.send 204
-
-
-#  getAutoAddToken = (user, callback) ->
-#    id = shortid.generate()
-#    key = "autoaddtoken:#{id}"
-#    logger.debug "generated autoaddtoken, key: #{key}"
-#    rc.exists key, (err, exists) ->
-#      return callback err if err?
-#      if not exists
-#        #set ttl to 2 weeks
-#        logger.debug "setting db key: #{key}"
-#        rc.setex key, 1209600 ,user, (err, added) ->
-#          return callback err if err?
-#          callback null, id
-#      else
-#        getAutoAddToken(user, callback)
-
-
-#  shortenUrl = (url, callback) ->
-#    request.post
-#      url: "https://www.googleapis.com/urlshortener/v1/url?key=#{googleApiKey}",
-#      json: { longUrl: url }
-#      (err, res, body) ->
-#        return callback null, url if err?
-#        callback null, body?.id ? url
-
-#  getAutoInviteUrl = (user, medium, callback) ->
-#    getAutoAddToken user, (err, id) ->
-#      return callback err if err?
-#      url = "https://play.google.com/store/apps/details?id=com.twofours.surespot&referrer="
-#      query = {}
-#      query.utm_source="surespot_android"
-#      query.utm_medium=medium
-#      query.utm_content=id
-#
-#      encQuery = querystring.stringify query
-#      url = url + encQuery
-#      shortenUrl url, (err, shortUrl) ->
-#        return callback err if err?
-#        logger.debug "received short url: #{shortUrl}"
-#        callback null, shortUrl
-
-
-#  app.get "/autoinviteurl/:medium", ensureAuthenticated, setNoCache, (req, res, next) ->
-#    getAutoInviteUrl req.user.username, req.params.medium, (err, url) ->
-#      return next err if err?
-#      res.send url
 
   app.post "/keytoken", setNoCache, (req, res, next) ->
     return res.send 403 unless req.body?.username?
