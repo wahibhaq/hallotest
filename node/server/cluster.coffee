@@ -1492,6 +1492,8 @@ else
     multi = rc.multi()
     multi.sadd "friends:#{username}", friendname
     multi.sadd "friends:#{friendname}", username
+    multi.srem "users:deleted:#{username}", friendname
+    multi.srem "users:deleted:#{friendname}", username
     multi.exec (err, results) ->
       callback next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
       createAndSendUserControlMessage username, "added", friendname, null, (err) ->
@@ -1562,34 +1564,61 @@ else
 
   getFriends = (req, res, next) ->
     username = req.user.username
+    #get users we're friends with
     rc.smembers "friends:#{username}", (err, rfriends) ->
       return next err if err?
-      friends = []
+      friends = {}
       return res.send {} unless rfriends?
 
-      _.each rfriends, (name) -> friends.push {name: name}
+      _.each rfriends, (name) -> friends[name] = 0
 
+      #get users that invited us
       rc.smembers "invites:#{username}", (err, invites) ->
         return next err if err?
-        _.each invites, (name) -> friends.push {flags: 32, name: name}
+        _.each invites, (name) -> friends[name] = 32
 
+        #get users that we invited
         rc.smembers "invited:#{username}", (err, invited) ->
           return next err if err?
-          _.each invited, (name) -> friends.push {flags: 2, name: name}
+          _.each invited, (name) -> friends[name] = 2
 
+          #get users that deleted us that we haven't deleted
+          rc.smembers "users:deleted:#{username}", (err, deleted) ->
+            return next err if err?
+            _.each deleted, (name) ->
+              if not friends[name]?
+                friends[name] = 1
+              else
+                friends[name] += 1
 
-          rc.get "control:user:#{username}:id", (err, id) ->
-            friendstate = {}
-            friendstate.userControlId = id ? 0
-            friendstate.friends = friends
+            rc.get "control:user:#{username}:id", (err, id) ->
+              friendstate = {}
+              friendstate.userControlId = id ? 0
+              friendstate.friends = friends
 
-            sFriendState = JSON.stringify friendstate
-            logger.debug ("friendstate: " + sFriendState)
-            res.send sFriendState
+              sFriendState = JSON.stringify friendstate
+              logger.debug ("friendstate: " + sFriendState)
+              res.send sFriendState
 
   app.get "/friends", ensureAuthenticated, setNoCache, getFriends
 
-  app.delete "/friends/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
+
+  validateDeleteFriends = (req, res, next) ->
+    username = req.user.username
+    friendname = req.params.username
+    isFriend username, friendname, (err, result) ->
+      return next err if err?
+      if result
+        next()
+      else
+        #if we're not friends check if he deleted himself
+        rc.sismember "users:deleted:#{username}", friendname, (err, isDeleted) ->
+          if isDeleted
+            next()
+          else
+            res.send 403
+
+  app.delete "/friends/:username", ensureAuthenticated, validateUsernameExists, validateDeleteFriends, (req, res, next) ->
     username = req.user.username
     theirUsername = req.params.username
     room = getRoomName username, theirUsername
@@ -1602,22 +1631,33 @@ else
     #delete the conversation with this user from the set of my conversations
     multi.srem "conversations:#{username}", room
 
-    #delete this user from my set of friends
-    multi.srem "friends:#{username}", theirUsername
-
     #todo delete related user control messages
 
-
-    isFriend theirUsername, username, (err, theyHaveMeAsAFriend) ->
+    #if i've been deleted by them this will be populated with their username
+    rc.sismember "users:deleted:#{username}", theirUsername, (err, theyHaveDeletedMe) ->
       return next err if err?
 
       #if we are deleting them and they haven't deleted us already
-      if theyHaveMeAsAFriend
+      if not theyHaveDeletedMe
         #delete our messages with the other user
         rc.get "#{room}:id", (err, id) ->
-          return next new Error 'could not get id' unless id?
-          deleteMyMessagesBeforeId username, theirUsername, id, false, (err) ->
+
+          deleteMessages = (messageId, callback) ->
+            if messageId?
+              deleteMyMessagesBeforeId username, theirUsername, messageId, false, (err) ->
+                callback err if err?
+                callback()
+            else
+              callback()
+
+          deleteMessages id, (err) ->
             return next err if err?
+            #delete friend association
+            multi.srem "friends:#{username}", theirUsername
+            multi.srem "friends:#{theirUsername}", username
+
+            #add me to their set of deleted users
+            multi.sadd "users:deleted:#{theirUsername}", username
             multi.exec (err, results) ->
               return next err if err?
               #tell (todo) other connections logged in as us that we deleted someone
@@ -1628,11 +1668,14 @@ else
                   return next err if err?
                   res.send 204
 
-      #they've already deleted us
+      #they've already deleted me
       else
         #delete control message data
         multi.del "control:message:#{room}"
         multi.del "control:message:#{room}:id"
+
+        #remove them from deleted set
+        multi.srem "users:deleted:#{username}", theirUsername
 
         #delete message data
         multi.del "#{room}:id"
