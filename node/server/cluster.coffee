@@ -573,7 +573,7 @@ else
         sio.sockets.to(to).emit "control", sMessage
         callback null
 
-  createAndSendUserControlMessage = (user, action, data, moredata, callback) ->
+  createAndSendUserControlMessage = (to, action, data, moredata, callback) ->
     message = {}
     message.type = "user"
     message.action = action
@@ -583,15 +583,15 @@ else
       message.moredata = moredata
 
     #send control message to ourselves
-    getNextUserControlId user,(id) ->
+    getNextUserControlId to,(id) ->
       return callback new Error 'could not get user control id' unless id?
       message.id = id
       newMessage = JSON.stringify(message)
       #store messages in sorted sets
-      rc.zadd "control:user:#{user}", id, newMessage, (err, addcount) ->
+      rc.zadd "control:user:#{to}", id, newMessage, (err, addcount) ->
         #end transaction here
         return callback err if err?
-        sio.sockets.to(user).emit "control", newMessage
+        sio.sockets.to(to).emit "control", newMessage
         callback null
 
   # broadcast a key revocation message to who's conversations
@@ -753,28 +753,31 @@ else
     userExists from, (err, exists) ->
       return if err?
       if exists
-        #if they're not friends disconnect them, wtf are they trying to do here?
+        #if they're not friends with us or we're not friends with them we have a problem
         # todo tell client not to reconnect when this happens...otherwise infinite connect loop for now we'll just do nothing
         isFriend user, to, (err, aFriend) ->
           return if err?
-          #return socket.disconnect() if not aFriend
-          #logger.debug "notafriend"
           return if not aFriend
+          isFriend to, user, (err, aFriend) ->
+            return if err?
+            #return socket.disconnect() if not aFriend
+            #logger.debug "notafriend"
+            return if not aFriend
 
 
-          cipherdata = message.data
-          resendId = message.resendId
-          mimeType = message.mimeType
-          room = getRoomName(from, to)
+            cipherdata = message.data
+            resendId = message.resendId
+            mimeType = message.mimeType
+            room = getRoomName(from, to)
 
-          #check for dupes if message has been resent
-          checkForDuplicateMessage resendId, user, room, message, (err, found) ->
-            if found
-              logger.debug "found duplicate message, not adding to db"
-              sio.sockets.to(to).emit "message", found
-              sio.sockets.to(from).emit "message", found
-            else
-              createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType
+            #check for dupes if message has been resent
+            checkForDuplicateMessage resendId, user, room, message, (err, found) ->
+              if found
+                logger.debug "found duplicate message, not adding to db"
+                sio.sockets.to(to).emit "message", found
+                sio.sockets.to(from).emit "message", found
+              else
+                createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType
 
 
   room = sio.on "connection", (socket) ->
@@ -799,14 +802,23 @@ else
     username = req.user.username
     otherUser = req.params.username
     room = getRoomName username, otherUser
-    lastMessageId = messageId
 
-    getAllEarlierMessagesInclusiveOf room, lastMessageId, (err, messages) ->
+
+    deleteMyMessagesBeforeId username, otherUser, messageId, true, (err) ->
       return next err if err?
+      createAndSendMessageControlMessage username, otherUser, room, "deleteAll", room, messageId, (err) ->
+        return next err if err?
+        res.send 204
+
+
+  deleteMyMessagesBeforeId = (username, otherUser, messageId, markTheirsDeleted, callback) ->
+    room = getRoomName username, otherUser
+    getAllEarlierMessagesInclusiveOf room, messageId, (err, messages) ->
+      return callback err if err?
       ourMessageIds = []
       theirMessageIds = []
       async.filter(
-        messages,
+        messages
         (item, callback) ->
           oMessage = JSON.parse(item)
           if oMessage.from is username
@@ -816,7 +828,6 @@ else
             theirMessageIds.push oMessage.id
             callback false
         (results) ->
-
           multi = rc.multi()
           if ourMessageIds.length > 0
             #zrem does not handle array as last parameter https://github.com/mranney/node_redis/issues/404
@@ -828,16 +839,14 @@ else
             multi.srem "deleted:#{otherUser}:#{room}", ourMessageIds
           #todo remove the associated control messages
 
-          if theirMessageIds.length > 0
+          if theirMessageIds.length > 0 and markTheirsDeleted
             #add their message id's to our deleted message set
             multi.sadd "deleted:#{username}:#{room}", theirMessageIds
 
 
           multi.exec (err, mResults) ->
-            return next err if err?
-            createAndSendMessageControlMessage username, otherUser, room, "deleteAll", room, messageId, (err) ->
-              return next err if err?
-              res.send 204)
+            return callback err if err?
+            callback())
 
 
   app.delete "/messages/:username/:id", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
@@ -1480,25 +1489,24 @@ else
               res.send if inviteSent then 204 else 403
 
   createFriendShip = (username, friendname, callback) ->
-    rc.sadd "friends:#{username}", friendname, (err, data) ->
+    multi = rc.multi()
+    multi.sadd "friends:#{username}", friendname
+    multi.sadd "friends:#{friendname}", username
+    multi.exec (err, results) ->
       callback next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
-      rc.sadd "friends:#{friendname}", username, (err, data) ->
-        callback next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
-        createAndSendUserControlMessage username, "added", friendname, null, (err) ->
+      createAndSendUserControlMessage username, "added", friendname, null, (err) ->
+        return callback err if err?
+        createAndSendUserControlMessage friendname, "added", username, null, (err) ->
           return callback err if err?
-          createAndSendUserControlMessage friendname, "added", username, null, (err) ->
-            return callback err if err?
-            callback null
-
-
-
+          callback null
 
   deleteInvites = (username, friendname, callback) ->
-    rc.srem "invited:#{friendname}", username, (err, data) ->
-      callback new Error("[friend] srem failed for invited:#{friendname}:#{username}") if err?
-      rc.srem "invites:#{username}", friendname, (err, data) ->
-        callback new Error("[friend] srem failed for invites:#{username}:#{friendname}") if err?
-        callback null
+    multi = rc.multi()
+    multi.srem "invited:#{friendname}", username
+    multi.srem "invites:#{username}", friendname
+    multi.exec (err, results) ->
+      callback new Error("[friend] srem failed for invites:#{username}:#{friendname}") if err?
+      callback null
 
   sendInviteResponseGcm = (username, friendname, action, callback) ->
     userKey = "users:" + friendname
@@ -1581,10 +1589,67 @@ else
 
   app.get "/friends", ensureAuthenticated, setNoCache, getFriends
 
+  app.delete "/friends/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
+    username = req.user.username
+    theirUsername = req.params.username
+    room = getRoomName username, theirUsername
 
-  app.post "/logout", ensureAuthenticated, (req, res) ->
-    req.logout()
-    res.send 204
+    multi = rc.multi()
+
+    #delete the set that held message ids of theirs that we deleted
+    multi.del "deleted:#{username}:#{room}"
+
+    #delete the conversation with this user from the set of my conversations
+    multi.srem "conversations:#{username}", room
+
+    #delete this user from my set of friends
+    multi.srem "friends:#{username}", theirUsername
+
+    #todo delete related user control messages
+
+
+    isFriend theirUsername, username, (err, theyHaveMeAsAFriend) ->
+      return next err if err?
+
+      #if we are deleting them and they haven't deleted us already
+      if theyHaveMeAsAFriend
+        #delete our messages with the other user
+        rc.get "#{room}:id", (err, id) ->
+          return next new Error 'could not get id' unless id?
+          deleteMyMessagesBeforeId username, theirUsername, id, false, (err) ->
+            return next err if err?
+            multi.exec (err, results) ->
+              return next err if err?
+              #tell (todo) other connections logged in as us that we deleted someone
+              createAndSendUserControlMessage username, "delete", theirUsername, username, (err) ->
+                return next err if err?
+                #tell them we've been deleted
+                createAndSendUserControlMessage theirUsername, "delete", username, username, (err) ->
+                  return next err if err?
+                  res.send 204
+
+      #they've already deleted us
+      else
+        #delete control message data
+        multi.del "control:message:#{room}"
+        multi.del "control:message:#{room}:id"
+
+        #delete message data
+        multi.del "#{room}:id"
+        multi.del "messages:#{room}"
+
+        multi.exec (err, results) ->
+          return next err if err?
+
+          #tell (todo) other connections logged in as us that we deleted someone
+          createAndSendUserControlMessage username, "delete", theirUsername, username, (err) ->
+            return next err if err?
+            res.send 204
+
+
+    app.post "/logout", ensureAuthenticated, (req, res) ->
+      req.logout()
+      res.send 204
 
 
   comparePassword = (password, dbpassword, callback) ->
