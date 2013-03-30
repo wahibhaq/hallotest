@@ -1223,46 +1223,48 @@ else
 
 
   inviteUser = (username, friendname, callback) ->
-    rc.sadd "invited:#{username}", friendname, (err, invitedCount) ->
-      return callback new Error("Could not set invited") if err?
-
-      rc.sadd "invites:#{friendname}", username, (err, invitesCount) ->
-        return callback new Error("Could not set invites") if err?
-
-        #send to room
-        if invitesCount > 0
-          createAndSendUserControlMessage username, "invited", friendname, null, (err) ->
+    multi = rc.multi()
+    #remove you from my blocked set if you're blocked
+    multi.srem "blocked:#{username}", friendname
+    multi.sadd "invited:#{username}", friendname
+    multi.sadd "invites:#{friendname}", username
+    multi.exec (err, results) ->
+      return callback err if err?
+      invitesCount = results[2]
+      #send to room
+      if invitesCount > 0
+        createAndSendUserControlMessage username, "invited", friendname, null, (err) ->
+          return callback err if err?
+          createAndSendUserControlMessage friendname, "invite", username, null, (err) ->
             return callback err if err?
-            createAndSendUserControlMessage friendname, "invite", username, null, (err) ->
-              return callback err if err?
-              #sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
-              #send gcm message
-              userKey = "users:" + friendname
-              rc.hget userKey, "gcmId", (err, gcmId) ->
-                if err?
-                  logger.error ("ERROR: " + err)
-                  return callback new Error err
+            #sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
+            #send gcm message
+            userKey = "users:" + friendname
+            rc.hget userKey, "gcmId", (err, gcmId) ->
+              if err?
+                logger.error ("ERROR: " + err)
+                return callback new Error err
 
-                if gcmId?.length > 0
-                  logger.debug "sending gcm notification"
-                  gcmmessage = new gcm.Message()
-                  sender = new gcm.Sender("#{googleApiKey}")
-                  gcmmessage.addData "type", "invite"
-                  gcmmessage.addData "sentfrom", username
-                  gcmmessage.addData "to", friendname
-                  gcmmessage.delayWhileIdle = true
-                  gcmmessage.timeToLive = 3
-                  gcmmessage.collapseKey = "invite:#{friendname}"
-                  regIds = [gcmId]
+              if gcmId?.length > 0
+                logger.debug "sending gcm notification"
+                gcmmessage = new gcm.Message()
+                sender = new gcm.Sender("#{googleApiKey}")
+                gcmmessage.addData "type", "invite"
+                gcmmessage.addData "sentfrom", username
+                gcmmessage.addData "to", friendname
+                gcmmessage.delayWhileIdle = true
+                gcmmessage.timeToLive = 3
+                gcmmessage.collapseKey = "invite:#{friendname}"
+                regIds = [gcmId]
 
-                  sender.send gcmmessage, regIds, 4, (result) ->
-                    #logger.debug(result)
-                    callback null, true
-                else
-                  logger.debug "gcmId not set for #{friendname}"
+                sender.send gcmmessage, regIds, 4, (result) ->
+                  #logger.debug(result)
                   callback null, true
-        else
-          callback null, false
+              else
+                logger.debug "gcmId not set for #{friendname}"
+                callback null, true
+      else
+        callback null, false
 
   app.post "/invite/:username", ensureAuthenticated, validateUsernameExists, (req, res, next) ->
     friendname = req.params.username
