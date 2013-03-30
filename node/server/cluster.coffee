@@ -266,6 +266,22 @@ else
       else
         res.send 403
 
+  validateAreFriendsOrDeleted = (req, res, next) ->
+    username = req.user.username
+    friendname = req.params.username
+    isFriend username, friendname, (err, result) ->
+      return next err if err?
+      if result
+        next()
+      else
+        #if we're not friends check if he deleted himself
+        rc.sismember "users:deleted:#{username}", friendname, (err, isDeleted) ->
+          if isDeleted
+            next()
+          else
+            res.send 403
+
+
 
   #is friendname a friend of username
   isFriend = (username, friendname, callback) ->
@@ -757,27 +773,24 @@ else
         # todo tell client not to reconnect when this happens...otherwise infinite connect loop for now we'll just do nothing
         isFriend user, to, (err, aFriend) ->
           return if err?
+          #return socket.disconnect() if not aFriend
+          #logger.debug "notafriend"
           return if not aFriend
-          isFriend to, user, (err, aFriend) ->
-            return if err?
-            #return socket.disconnect() if not aFriend
-            #logger.debug "notafriend"
-            return if not aFriend
 
 
-            cipherdata = message.data
-            resendId = message.resendId
-            mimeType = message.mimeType
-            room = getRoomName(from, to)
+          cipherdata = message.data
+          resendId = message.resendId
+          mimeType = message.mimeType
+          room = getRoomName(from, to)
 
-            #check for dupes if message has been resent
-            checkForDuplicateMessage resendId, user, room, message, (err, found) ->
-              if found
-                logger.debug "found duplicate message, not adding to db"
-                sio.sockets.to(to).emit "message", found
-                sio.sockets.to(from).emit "message", found
-              else
-                createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType
+          #check for dupes if message has been resent
+          checkForDuplicateMessage resendId, user, room, message, (err, found) ->
+            if found
+              logger.debug "found duplicate message, not adding to db"
+              sio.sockets.to(to).emit "message", found
+              sio.sockets.to(from).emit "message", found
+            else
+              createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType
 
 
   room = sio.on "connection", (socket) ->
@@ -795,7 +808,8 @@ else
       handleMessage(user, data)
 
 
-  app.delete "/messages/:username/before/:id", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
+  #delete messages
+  app.delete "/messages/:username/before/:id", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, (req, res, next) ->
     messageId = req.params.id
     return next new Error 'id required' unless messageId?
 
@@ -849,7 +863,7 @@ else
             callback())
 
 
-  app.delete "/messages/:username/:id", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
+  app.delete "/messages/:username/:id", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, (req, res, next) ->
 
     messageId = req.params.id
     return next new Error 'id required' unless messageId?
@@ -1073,7 +1087,7 @@ else
 
 
             #get last x messages
-  app.get "/messages/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
+  app.get "/messages/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
     #return last x messages
     getMessages req.user.username, getRoomName(req.user.username, req.params.username), 30, (err, data) ->
       #    rc.zrange "messages:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
@@ -1089,7 +1103,7 @@ else
 #      res.send data
 
   #get remote messages before id
-  app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
+  app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
     #return messages since id
     getMessagesBeforeId req.user.username, getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
       return next err if err?
@@ -1102,7 +1116,7 @@ else
 #      return next err if err?
 #      res.send data
 
-  app.get "/messagedata/:username/:messageid/:controlmessageid", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, (req, res, next) ->
+  app.get "/messagedata/:username/:messageid/:controlmessageid", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
     getMessagesAfterId req.user.username, getRoomName(req.user.username, req.params.username), parseInt(req.params.messageid), (err, messageData) ->
       return next err if err?
       #return messages since id
@@ -1131,9 +1145,9 @@ else
   # res.sendfile path.normalize __dirname + "/../assets/html/layout.html"
 
   #todo figure out caching
-  app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends, setNoCache, getPublicKeys
-  app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriends, setCache(oneYear), getPublicKeys
-  app.get "/keyversion/:username", ensureAuthenticated, validateUsernameExists, validateAreFriends,(req, res, next) ->
+  app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, getPublicKeys
+  app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setCache(oneYear), getPublicKeys
+  app.get "/keyversion/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted,(req, res, next) ->
     rc.get "keyversion:#{req.params.username}", (err, version) ->
       return callback err if err?
       res.send version
@@ -1602,23 +1616,7 @@ else
 
   app.get "/friends", ensureAuthenticated, setNoCache, getFriends
 
-
-  validateDeleteFriends = (req, res, next) ->
-    username = req.user.username
-    friendname = req.params.username
-    isFriend username, friendname, (err, result) ->
-      return next err if err?
-      if result
-        next()
-      else
-        #if we're not friends check if he deleted himself
-        rc.sismember "users:deleted:#{username}", friendname, (err, isDeleted) ->
-          if isDeleted
-            next()
-          else
-            res.send 403
-
-  app.delete "/friends/:username", ensureAuthenticated, validateUsernameExists, validateDeleteFriends, (req, res, next) ->
+  app.delete "/friends/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, (req, res, next) ->
     username = req.user.username
     theirUsername = req.params.username
     room = getRoomName username, theirUsername
