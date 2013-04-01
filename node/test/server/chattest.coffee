@@ -11,10 +11,10 @@ async = require 'async'
 rc = redis.createClient()
 port = 443
 baseUri = "https://localhost:" + port
+jar0 = undefined
 jar1 = undefined
-jar2 = undefined
+cookie0 = undefined
 cookie1 = undefined
-cookie2 = undefined
 
 cleanup = (done) ->
   keys = [
@@ -131,18 +131,18 @@ describe "surespot chat test", () ->
   jsonMessage = {type: "message", to: "test0", toVersion: "1", from: "test1", fromVersion: "1", iv: 1, data: "message data", mimeType: "text/plain"}
 
   it 'client 1 connect', (done) ->
-    jar1 = request.jar()
-    signup 'test0', 'test0', jar1, keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body, cookie) ->
+    jar0 = request.jar()
+    signup 'test0', 'test0', jar0, keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body, cookie) ->
       client = io.connect baseUri, { 'force new connection': true}, cookie
-      cookie1 = cookie
+      cookie0 = cookie
       client.once 'connect', ->
         done()
 
   it 'client 2 connect', (done) ->
-    jar2 = request.jar()
-    signup 'test1', 'test1', jar2, keys[1].ecdh.pem_pub, keys[1].ecdsa.pem_pub, keys[1].sig, done, (res, body, cookie) ->
+    jar1 = request.jar()
+    signup 'test1', 'test1', jar1, keys[1].ecdh.pem_pub, keys[1].ecdsa.pem_pub, keys[1].sig, done, (res, body, cookie) ->
       client1 = io.connect baseUri, { 'force new connection': true}, cookie
-      cookie2 = cookie
+      cookie1 = cookie
       client1.once 'connect', ->
         done()
 
@@ -189,7 +189,7 @@ describe "surespot chat test", () ->
 
 
     request.post
-      jar: jar2
+      jar: jar1
       url: baseUri + "/invite/test0"
       (err, res, body) ->
         if err
@@ -222,7 +222,7 @@ describe "surespot chat test", () ->
       done() if client1Received
 
     request.post
-      jar: jar1
+      jar: jar0
       url: baseUri + "/invites/test1/accept"
       (err, res, body) ->
         if err
@@ -230,7 +230,7 @@ describe "surespot chat test", () ->
 
   it 'should have created 2 user control messages', (done) ->
     request.get
-      jar: jar1
+      jar: jar0
       url: baseUri + "/latestids/0"
       (err, res, body) ->
         if err
@@ -302,7 +302,7 @@ describe "surespot chat test", () ->
         done()
 
     request.del
-      jar: jar2
+      jar: jar1
       url: baseUri + "/messages/test0/1"
       (err, res, body) ->
         if err
@@ -318,7 +318,7 @@ describe "surespot chat test", () ->
   it 'deleted received message should not be returned', (done) ->
       #get the message to see if it's been marked as deleted
     request.get
-      jar: jar1
+      jar: jar0
       url: baseUri + "/messagedata/test1/0/0"
       (err, res, body) ->
         if err
@@ -352,7 +352,7 @@ describe "surespot chat test", () ->
 
     client.emit 'control', JSON.stringify(deleteControlMessage)
     request.del
-      jar: jar1
+      jar: jar0
       url: baseUri + "/messages/test1/1"
       (err, res, body) ->
         if err
@@ -368,7 +368,7 @@ describe "surespot chat test", () ->
   it 'deleted sent message should not be returned from the server', (done) ->
     #get the message to see if it's been marked as deleted
     request.get
-      jar: jar1
+      jar: jar0
       url: baseUri + "/messagedata/test1/0/0"
       (err, res, body) ->
         if err
@@ -392,7 +392,7 @@ describe "surespot chat test", () ->
     jsonMessage.iv = 4
     client.send JSON.stringify(jsonMessage)
     request.get
-      jar: jar1
+      jar: jar0
       url: baseUri + "/messagedata/test1/3/0"
       (err, res, body) ->
         if err

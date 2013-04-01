@@ -11,10 +11,10 @@ async = require 'async'
 rc = redis.createClient()
 port = 443
 baseUri = "https://localhost:" + port
+jar0 = undefined
 jar1 = undefined
-jar2 = undefined
+cookie0 = undefined
 cookie1 = undefined
-cookie2 = undefined
 
 cleanup = (done) ->
   keys = [
@@ -164,24 +164,24 @@ describe "surespot delete test", () ->
 
 
   it 'client 1 connect', (done) ->
-    jar1 = request.jar()
-    signup 'test0', 'test0', jar1, keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body, cookie) ->
+    jar0 = request.jar()
+    signup 'test0', 'test0', jar0, keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body, cookie) ->
       client = io.connect baseUri, { 'force new connection': true}, cookie
-      cookie1 = cookie
+      cookie0 = cookie
       client.once 'connect', ->
         done()
 
   it 'client 2 connect', (done) ->
-    jar2 = request.jar()
-    signup 'test1', 'test1', jar2, keys[1].ecdh.pem_pub, keys[1].ecdsa.pem_pub, keys[1].sig, done, (res, body, cookie) ->
+    jar1 = request.jar()
+    signup 'test1', 'test1', jar1, keys[1].ecdh.pem_pub, keys[1].ecdsa.pem_pub, keys[1].sig, done, (res, body, cookie) ->
       client1 = io.connect baseUri, { 'force new connection': true}, cookie
-      cookie2 = cookie
+      cookie1 = cookie
       client1.once 'connect', ->
         done()
 
   it 'become friends', (done) ->
     request.post
-      jar: jar2
+      jar: jar1
       url: baseUri + "/invite/test0"
       (err, res, body) ->
         if err
@@ -189,7 +189,7 @@ describe "surespot delete test", () ->
         else
 
           request.post
-            jar: jar1
+            jar: jar0
             url: baseUri + "/invites/test1/accept"
             (err, res, body) ->
               if err
@@ -204,7 +204,7 @@ describe "surespot delete test", () ->
   describe 'delete all of a user\'s messages', ->
     it 'should succeed', (done) ->
       request.del
-        jar: jar1
+        jar: jar0
         url: baseUri + "/messages/test1/utai/6"
         (err, res, body) ->
           if err
@@ -216,7 +216,7 @@ describe "surespot delete test", () ->
 
     it 'the user should not have any messages left', (done) ->
       request.get
-        jar: jar1
+        jar: jar0
         url: baseUri + "/messages/test1/before/7"
         (err, res, body) ->
           if err
@@ -227,7 +227,7 @@ describe "surespot delete test", () ->
             data.length.should.equal 0
 
             request.get
-              jar: jar1
+              jar: jar0
               url: baseUri + "/messagedata/test1/0/-1"
               (err, res, body) ->
                 if err
@@ -241,7 +241,7 @@ describe "surespot delete test", () ->
 
     it 'the other user should have 3 of his messages left', (done) ->
       request.get
-        jar: jar2
+        jar: jar1
         url: baseUri + "/messages/test0/before/7"
         (err, res, body) ->
           if err
@@ -252,7 +252,7 @@ describe "surespot delete test", () ->
             data.length.should.equal 3
 
             request.get
-              jar: jar2
+              jar: jar1
               url: baseUri + "/messagedata/test0/0/-1"
               (err, res, body) ->
                 if err
@@ -270,7 +270,7 @@ describe "surespot delete test", () ->
 
     it 'the other user should be able to delete his messages', (done) ->
       request.del
-        jar: jar2
+        jar: jar1
         url: baseUri + "/messages/test0/utai/6"
         (err, res, body) ->
           if err
@@ -282,7 +282,7 @@ describe "surespot delete test", () ->
 
     it 'the other user should not have any messages left', (done) ->
       request.get
-        jar: jar2
+        jar: jar1
         url: baseUri + "/messages/test0/before/7"
         (err, res, body) ->
           if err
@@ -293,7 +293,7 @@ describe "surespot delete test", () ->
             data.length.should.equal 0
 
             request.get
-              jar: jar2
+              jar: jar1
               url: baseUri + "/messagedata/test0/0/-1"
               (err, res, body) ->
                 if err
@@ -313,7 +313,7 @@ describe "surespot delete test", () ->
 
     it 'should delete a user successfully', (done) ->
       request.del
-        jar: jar1
+        jar: jar0
         url: baseUri + "/friends/test1"
         (err, res, body) ->
           if err
@@ -325,7 +325,7 @@ describe "surespot delete test", () ->
 
     it 'should return 403 for message get by deleting user', (done) ->
       request.get
-        jar: jar1
+        jar: jar0
         url: baseUri + "/messages/test1/before/13"
         (err, res, body) ->
           if err
@@ -336,7 +336,7 @@ describe "surespot delete test", () ->
 
     it 'the deleted user should have 3 of his messages left', (done) ->
       request.get
-        jar: jar2
+        jar: jar1
         url: baseUri + "/messages/test0/before/13"
         (err, res, body) ->
           if err
@@ -347,7 +347,7 @@ describe "surespot delete test", () ->
             data.length.should.equal 3
 
             request.get
-              jar: jar2
+              jar: jar1
               url: baseUri + "/messagedata/test0/0/-1"
               (err, res, body) ->
                 if err
@@ -365,7 +365,7 @@ describe "surespot delete test", () ->
 
     it 'the delete flag should be set on the deleting user for the deleted user', (done) ->
       request.get
-        jar: jar2
+        jar: jar1
         url: baseUri + "/friends"
         (err, res, body) ->
           if err
@@ -380,14 +380,14 @@ describe "surespot delete test", () ->
 
     it 'the delete flag should persist on invite from deleting user', (done) ->
       request.post
-        jar: jar1
+        jar: jar0
         url: baseUri + "/invite/test1"
         (err, res, body) ->
           if err
             done err
           else
             request.get
-              jar: jar2
+              jar: jar1
               url: baseUri + "/friends"
               (err, res, body) ->
                 if err
@@ -410,14 +410,14 @@ describe "surespot delete test", () ->
 
     it 'accepting the invite should remove the delete flag', (done) ->
       request.post
-        jar: jar2
+        jar: jar1
         url: baseUri + "/invites/test0/accept"
         (err, res, body) ->
           if err
             done err
           else
             request.get
-              jar: jar2
+              jar: jar1
               url: baseUri + "/friends"
               (err, res, body) ->
                 if err
@@ -433,7 +433,7 @@ describe "surespot delete test", () ->
 
     it 'should delete the user successfully', (done) ->
       request.del
-        jar: jar2
+        jar: jar1
         url: baseUri + "/friends/test0"
         (err, res, body) ->
           if err
@@ -445,7 +445,7 @@ describe "surespot delete test", () ->
 
     it 'should return 403 for message get by deleting user', (done) ->
       request.get
-        jar: jar2
+        jar: jar1
         url: baseUri + "/messages/test0/before/13"
         (err, res, body) ->
           if err
