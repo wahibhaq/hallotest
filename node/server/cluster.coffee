@@ -522,7 +522,13 @@ else
         callback newId
 
 
-  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id) ->
+  MessageError = (id, status) ->
+    messageError = {}
+    messageError.id = id
+    messageError.status = status
+    return messageError
+
+  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, callback) ->
     logger.debug "new message"
     message = {}
     message.to = to
@@ -537,8 +543,8 @@ else
 
 
     #INCR message id
-    getNextMessageId room, id, (id)->
-      return unless id?
+    getNextMessageId room, id, (id) ->
+      return callback new MessageError(iv, 500) unless id?
       message.id = id
 
       logger.debug "sending message, id:  #{id}, iv: #{iv}, data: #{data}, to user: #{to}"
@@ -548,51 +554,66 @@ else
       rc.zadd "messages:#{room}", id, newMessage, (err, addcount) ->
         if err?
           logger.error ("ERROR: Socket.io onmessage, " + err)
-          return
+          return callback new MessageError(iv, 500)
 
         #if this is the first message, add the "room" to the user's list of rooms
-        if (id == 1)
-          rc.sadd "conversations:" + from, room, (err, data) ->
+
+        sendGcm = (gcmCallback) ->
+          #send gcm message
+          userKey = "users:" + to
+          rc.hget userKey, "gcmId", (err, gcm_id) ->
             if err?
               logger.error ("ERROR: Socket.io onmessage, " + err)
-              return
+              gcmCallback(err)
 
-            rc.sadd "conversations:" + to, room, (err, data) ->
-              if err
-                logger.error ("ERROR: Socket.io onmessage, " + err)
-                return
+            if gcm_id?.length > 0
+              logger.debug "sending gcm message"
+              gcmmessage = new gcm.Message()
+              sender = new gcm.Sender("#{googleApiKey}")
+              gcmmessage.addData("type", "message")
+              gcmmessage.addData("to", message.to)
+              gcmmessage.addData("sentfrom", message.from)
+              #todo add data? (won't be large when image is a url)
+              # gcmmessage.addData("data", message.data)
 
-        sio.sockets.to(to).emit "message", newMessage
-        sio.sockets.to(from).emit "message", newMessage
+              gcmmessage.addData("mimeType", message.mimeType)
+              gcmmessage.delayWhileIdle = true
+              gcmmessage.timeToLive = 3
+              gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
+              regIds = [gcm_id]
+
+              sender.send gcmmessage, regIds, 4, (result) ->
+                logger.debug "sendGcm result: #{result}"
+                gcmCallback()
+            else
+              logger.debug "no gcm id for #{to}"
+              gcmCallback()
 
 
-        #send gcm message
-        userKey = "users:" + to
-        rc.hget userKey, "gcmId", (err, gcm_id) ->
-          if err?
-            logger.error ("ERROR: Socket.io onmessage, " + err)
-            return
+        sendGcm (err) ->
+          return callback new MessageError(iv, 500) if err?
 
-          if gcm_id?.length > 0
-            logger.debug "sending gcm message"
-            gcmmessage = new gcm.Message()
-            sender = new gcm.Sender("#{googleApiKey}")
-            gcmmessage.addData("type", "message")
-            gcmmessage.addData("to", message.to)
-            gcmmessage.addData("sentfrom", message.from)
-            #todo add data? (won't be large when image is a url)
-            # gcmmessage.addData("data", message.data)
+          createConversations = (ccCallback) ->
+            if id is 1
+              multi = rc.multi()
+              multi.sadd "conversations:" + from, room
+              multi.sadd "conversations:" + to, room
+              multi.exec (err, results) ->
+                return ccCallback err if err?
+                ccCallback()
 
-            gcmmessage.addData("mimeType", message.mimeType)
-            gcmmessage.delayWhileIdle = true
-            gcmmessage.timeToLive = 3
-            gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
-            regIds = [gcm_id]
+          createConversations (err) ->
+            if err?
+              logger.error ("ERROR: Socket.io onmessage, " + err)
+              return callback new MessageError(iv, 500)
 
-            sender.send gcmmessage, regIds, 4, (result) ->
-              logger.debug "sendGcm result: #{result}"
-          else
-            logger.debug "no gcm id for #{to}"
+            sio.sockets.to(to).emit "message", newMessage
+            sio.sockets.to(from).emit "message", newMessage
+
+            callback()
+
+
+
 
   createAndSendMessageControlMessage = (from, to, room, action, data, moredata, callback) ->
     message = {}
@@ -659,7 +680,7 @@ else
         , callback
 
 
-  handleMessage = (user, data) ->
+  handleMessage = (user, data, callback) ->
     #user = socket.handshake.session.passport.user
 
     #todo check from and to exist and are friends
@@ -680,18 +701,19 @@ else
     return unless iv?
 
     #if this message isn't from the logged in user we have problems
-    return if user isnt from #then socket.disconnect()
+    return callback new MessageError(iv, 403) unless user is from
+
+
     userExists from, (err, exists) ->
-      return if err?
+      return callback new MessageError(iv, 500) if err?
+      return callback new MessageError(iv, 404) if not exists
+
       if exists
         #if they're not friends with us or we're not friends with them we have a problem
         # todo tell client not to reconnect when this happens...otherwise infinite connect loop for now we'll just do nothing
         isFriend user, to, (err, aFriend) ->
-          return if err?
-          #return socket.disconnect() if not aFriend
-          #logger.debug "notafriend"
-          return if not aFriend
-
+          return callback new MessageError(iv, 500) if err?
+          return callback new MessageError(iv, 403) if not aFriend
 
           cipherdata = message.data
           resendId = message.resendId
@@ -700,12 +722,14 @@ else
 
           #check for dupes if message has been resent
           checkForDuplicateMessage resendId, user, room, message, (err, found) ->
+            return callback new MessageError(iv, 500) if err?
             if found
               logger.debug "found duplicate message, not adding to db"
               sio.sockets.to(to).emit "message", found
               sio.sockets.to(from).emit "message", found
+              callback()
             else
-              createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType
+              createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, callback
 
 
   room = sio.on "connection", (socket) ->
@@ -716,15 +740,13 @@ else
     logger.debug "user #{user} joining socket.io room"
     socket.join user
 
-#    socket.on "control", (data) ->
-#      handleControlMessage(user, data)
-
     socket.on "message", (data) ->
-      handleMessage(user, data)
+      handleMessage user, data, (err) ->
+        socket.emit "messageError", err if err?
 
 
   #delete messages
-  app.delete "/messages/:username/before/:id", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, (req, res, next) ->
+  app.delete "/messages/:username/utai/:id", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, (req, res, next) ->
     messageId = req.params.id
     return next new Error 'id required' unless messageId?
 
@@ -883,8 +905,10 @@ else
         out = fs.createWriteStream filename
         ins.pipe out
         ins.on "end", ->
-          createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, relUri, "image/", id
+
+        createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, relUri, "image/", id, (err) ->
           fs.unlinkSync req.files.image.path
+          return res.send err.status if err?
           res.send 202, { 'Location': relUri }
 
   oneYear = 31557600000
@@ -982,12 +1006,12 @@ else
 
 
             #get last x messages
-  app.get "/messages/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
-    #return last x messages
-    getMessages req.user.username, getRoomName(req.user.username, req.params.username), 30, (err, data) ->
-      #    rc.zrange "messages:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
-      return next err if err?
-      res.send data
+#  app.get "/messages/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
+#    #return last x messages
+#    getMessages req.user.username, getRoomName(req.user.username, req.params.username), 30, (err, data) ->
+#      #    rc.zrange "messages:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
+#      return next err if err?
+#      res.send data
 
   #get remote messages before id
   app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
@@ -1622,7 +1646,7 @@ else
               return next err if err?
               #if they have been deleted and we are the last person to delete them
               #remove the final pieces of data
-              rc.sismembers "deleted", theirUsername, (err, isDeleted) ->
+              rc.sismember "deleted", theirUsername, (err, isDeleted) ->
                 return next err if err?
 
                 deleteLastUserScraps = (callback) ->

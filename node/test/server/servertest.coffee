@@ -392,10 +392,10 @@ describe "surespot server", () ->
               res.statusCode.should.equal 403
               done()
 
-  describe "getting other user's last 30 messages", ->
+  describe "getting other user's message data", ->
     it "should not be allowed", (done) ->
       http.get
-        url: baseUri + "/messages/test0"
+        url: baseUri + "/messagedata/test0/0/0"
         (err, res, body) ->
           if err
             done err

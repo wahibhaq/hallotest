@@ -153,6 +153,16 @@ describe "surespot chat test", () ->
 #    client.send JSON.stringify jsonMessage
 
 
+  it 'should not be able to send message to non-friend', (done) ->
+    client.once 'messageError', (data) ->
+      data.id.should.equal jsonMessage.iv
+      data.status.should.equal 403
+      done()
+
+
+    client.send JSON.stringify(jsonMessage)
+
+
   it 'invite user should emit invite and invited user control messages', (done) ->
     clientReceived = false
     client1Received = false
@@ -298,6 +308,7 @@ describe "surespot chat test", () ->
         if err
           done err
         else
+          res.statusCode.should.equal 204
           receivedResponse = true
           if receivedControl
             done()
@@ -347,6 +358,7 @@ describe "surespot chat test", () ->
         if err
           done err
         else
+          res.statusCode.should.equal 204
           receivedResponse = true
           if receivedControl
             done()
