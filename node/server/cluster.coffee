@@ -225,10 +225,13 @@ else
     next()
 
   userExists = (username, fn) ->
-    userKey = "users:" + username
-    rc.hlen userKey, (err, hlen) ->
-      return fn(new Error("[userExists] failed for user: " + username)) if err
-      fn null, hlen > 0
+    rc.sismember "users", username, (err, isMember) ->
+      return fn err if err?
+      return fn null, true if isMember
+      rc.sismember "deleted", username, (err, isMember) ->
+        return fn err if err?
+        return fn null, true if isMember
+        fn null, false
 
 
   checkUser = (username) ->
@@ -814,6 +817,32 @@ else
           res.send 204
 
 
+  app.post "/deletetoken", setNoCache, (req, res, next) ->
+    return res.send 403 unless req.body?.username?
+    return res.send 403 unless req.body?.authSig?
+    return res.send 403 unless req.body?.password?
+
+    username = req.body.username
+    password = req.body.password
+    authSig = req.body.authSig
+    validateUser username, password, authSig, null, (err, status, user) ->
+      return next err if err?
+      return res.send 403 unless user?
+
+      #the user wants to update their key so we will generate a token that the user signs to make sure they're not using a replay attack of some kind
+      #get the current version
+      rc.get "keyversion:#{username}", (err, currkv) ->
+        return next err if err?
+
+        #inc key version
+        kv = parseInt(currkv) + 1
+        crypto.randomBytes 32, (err, buf) ->
+          return next err if err?
+          token = buf.toString('base64')
+          rc.set "deletetoken:#{username}", token, (err, result) ->
+            return next err if err?
+            res.send {keyversion: kv, token: token}
+
   app.put "/messages/:username/:id/shareable", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
     messageId = req.params.id
     shareable = req.body.shareable
@@ -1114,7 +1143,7 @@ else
     password = req.body.password
     authSig = req.body.authSig
     validateUser username, password, authSig, null, (err, status, user) ->
-      return done(err) if err?
+      return next err if err?
       return res.send 403 unless user?
 
       #the user wants to update their key so we will generate a token that the user signs to make sure they're not using a replay attack of some kind
@@ -1155,6 +1184,7 @@ else
       #todo transaction
       #make sure the tokens match
       rc.get "keytoken:#{username}", (err, rtoken) ->
+        return next new Error 'no keytoken exists' unless rtoken?
         newKeys = {}
         newKeys.dhPub = req.body.dhPub
         newKeys.dsaPub = req.body.dsaPub
@@ -1167,8 +1197,8 @@ else
         #validate the signature against the token
 
         getLatestKeys username, (err, keys) ->
-          return done err if err?
-          return done new Error "no keys exist for user #{username}" unless keys?
+          return next err if err?
+          return next new Error "no keys exist for user #{username}" unless keys?
 
           #verified = crypto.createVerify('sha256').update(token).update(new Buffer(password)).verify(keys.dsaPub, new Buffer(req.body.tokenSig, 'base64'))
 
@@ -1177,7 +1207,7 @@ else
 
           authSig = req.body.authSig
           validateUser username, password, authSig, null, (err, status, user) ->
-            return done(err) if err?
+            return next err if err?
             return res.send 403 unless user?
 
             #delete the token of which there should only be one
@@ -1428,32 +1458,126 @@ else
 
   app.get "/friends", ensureAuthenticated, setNoCache, getFriends
 
+
+
+
+  app.post "/users/delete", (req, res, next) ->
+    logger.debug "/users/delete"
+    return res.send 403 unless req.body?.username?
+    return res.send 403 unless req.body?.authSig?
+    return res.send 403 unless req.body?.password?
+    return next new Error 'key version required' unless req.body?.keyVersion?
+    return next new Error 'token signature required' unless req.body?.tokenSig?
+
+
+    #make sure the key versions match
+    username = req.body.username
+
+    kv = req.body.keyVersion
+    rc.get "keyversion:#{username}", (err, storedkv) ->
+      return next err if err?
+
+      storedkv++
+      return next new Error 'key versions do not match' unless storedkv is parseInt(kv)
+
+      #todo transaction
+      #make sure the tokens match
+      rc.get "deletetoken:#{username}", (err, rtoken) ->
+        return next new Error 'no delete token' unless rtoken?
+        newKeys = {}
+        newKeys.dhPub = req.body.dhPub
+        newKeys.dsaPub = req.body.dsaPub
+        logger.debug "received token signature: " + req.body.tokenSig
+        logger.debug "received auth signature: " + req.body.authSig
+        logger.debug "token: " + rtoken
+
+        password = req.body.password
+
+        #validate the signature against the token
+
+        getKeys username, kv, (err, keys) ->
+          return next err if err?
+          return next new Error "no keys exist for user #{username}" unless keys?
+
+          #verified = crypto.createVerify('sha256').update(token).update(new Buffer(password)).verify(keys.dsaPub, new Buffer(req.body.tokenSig, 'base64'))
+
+          verified = verifySignature new Buffer(rtoken, 'base64'), new Buffer(password), req.body.tokenSig, keys.dsaPub
+          return res.send 403 unless verified
+
+          authSig = req.body.authSig
+          validateUser username, password, authSig, null, (err, status, user) ->
+            return next(err) if err?
+            return res.send 403 unless user?
+
+            #delete the token of which there should only be one
+            rc.del "deletetoken:#{username}", (err, rdel) ->
+              return next err if err?
+              return res.send 404 unless rdel is 1
+
+              #copy data from user's list of friends to list of deleted users friends
+              rc.smembers "friends:#{username}", (err, friends) ->
+                return next err if err?
+                rc.sadd "deleted:#{username}", friends, (err, nadded) ->
+                  return next err if err?
+
+                  multi = rc.multi()
+                  #remove them from the global set of users
+                  multi.srem "users", username
+
+                  #add them to the global set of deleted users
+                  multi.add "deleted", username
+
+                  #add user to each friend's set of deleted users
+                  async.parallel(
+                    friends,
+                    (friend, callback) ->
+                      deleteUser username, friend, multi, (err, results) ->
+                        return callback err if err?
+                        #tell (todo) other connections logged in as us that we deleted someone
+                        createAndSendUserControlMessage username, "delete", friend, username, (err) ->
+                          return callback err if err?
+                          #tell them we've been deleted
+                          createAndSendUserControlMessage friend, "delete", username, username, (err) ->
+                            return callback err if err?
+                            callback()
+                    (err) ->
+                      return next err if err?
+                      #send delete messages
+                      multi.exec (err, replies) ->
+                        return next err if err?
+                        res.send 201)
+
+
   app.delete "/friends/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeletedOrInvited, (req, res, next) ->
     username = req.user.username
     theirUsername = req.params.username
-    room = getRoomName username, theirUsername
+
+    multi = rc.multi()
+    deleteUser username, theirUsername, multi, (err) ->
+      return next err if err?
+      multi.exec (err, results) ->
+        return next err if err?
+        #tell (todo) other connections logged in as us that we deleted someone
+        createAndSendUserControlMessage username, "delete", theirUsername, username, (err) ->
+          return next err if err?
+          #tell them we've been deleted
+          createAndSendUserControlMessage theirUsername, "delete", username, username, (err) ->
+            return next err if err?
+            res.send 204
 
 
 
+  deleteUser = (username, theirUsername, multi, next) ->
 
-    #if i invited him
-
+    #check if they've only been invited
     rc.sismember "invited:#{username}", theirUsername, (err, isInvited) ->
       return next err if err?
       if isInvited
         deleteInvites theirUsername, username, (err) ->
           return next err if err?
-
-          #if all we've done is invite them
-          createAndSendUserControlMessage username, "rescind", theirUsername, null, (err) ->
-            return next err if err?
-            #tell them we've been deleted
-            createAndSendUserControlMessage theirUsername, "rescind", username, null, (err) ->
-              return next err if err?
-              res.send 204
+          next()
       else
-        multi = rc.multi()
-
+        room = getRoomName username, theirUsername
         #delete the set that held message ids of theirs that we deleted
         multi.del "deleted:#{username}:#{room}"
 
@@ -1469,8 +1593,10 @@ else
           #if we are deleting them and they haven't deleted us already
           if not theyHaveDeletedMe
             #delete our messages with the other user
+            #get the latest id
             rc.get "#{room}:id", (err, id) ->
 
+              #handle no id
               deleteMessages = (messageId, callback) ->
                 if messageId?
                   deleteMyMessagesBeforeId username, theirUsername, messageId, false, (err) ->
@@ -1487,36 +1613,50 @@ else
 
                 #add me to their set of deleted users
                 multi.sadd "users:deleted:#{theirUsername}", username
-                multi.exec (err, results) ->
-                  return next err if err?
-                  #tell (todo) other connections logged in as us that we deleted someone
-                  createAndSendUserControlMessage username, "delete", theirUsername, username, (err) ->
-                    return next err if err?
-                    #tell them we've been deleted
-                    createAndSendUserControlMessage theirUsername, "delete", username, username, (err) ->
-                      return next err if err?
-                      res.send 204
+                next()
 
           #they've already deleted me
           else
-            #delete control message data
-            multi.del "control:message:#{room}"
-            multi.del "control:message:#{room}:id"
-
-            #remove them from deleted set
-            multi.srem "users:deleted:#{username}", theirUsername
-
-            #delete message data
-            multi.del "#{room}:id"
-            multi.del "messages:#{room}"
-
-            multi.exec (err, results) ->
+            #remove them from their deleted set (if they deleted their identity)
+            rc.srem "deleted:#{theirUsername}", username, (err, rCount) ->
               return next err if err?
-
-              #tell (todo) other connections logged in as us that we deleted someone
-              createAndSendUserControlMessage username, "delete", theirUsername, username, (err) ->
+              #if they have been deleted and we are the last person to delete them
+              #remove the final pieces of data
+              rc.sismembers "deleted", theirUsername, (err, isDeleted) ->
                 return next err if err?
-                res.send 204
+
+                deleteLastUserScraps = (callback) ->
+
+                  if isDeleted
+                    rc.scard "deleted:#{theirUsername}", (err, card) ->
+                      callback err if err?
+                      if card is 0
+                        #cleanup stuff
+                        multi.srem "deleted", theirUsername
+                        multi.del "keys:#{username}"
+                        multi.del "keyversion:#{username}"
+                        callback()
+                      else
+                        callback()
+                  else
+                    callback()
+
+                deleteLastUserScraps (err) ->
+                  return next err if err?
+
+
+                  #delete control message data
+                  multi.del "control:message:#{room}"
+                  multi.del "control:message:#{room}:id"
+
+                  #remove them from our deleted set
+                  multi.srem "users:deleted:#{username}", theirUsername
+
+
+                  #delete message data
+                  multi.del "#{room}:id"
+                  multi.del "messages:#{room}"
+                  next()
 
 
   app.post "/logout", ensureAuthenticated, (req, res) ->
@@ -1531,10 +1671,13 @@ else
     rc.get "keyversion:#{username}", (err, version) ->
       return callback err if err?
       return callback new Error 'no keys exist for user: #{username}' unless version?
+      getKeys username, version, callback
 
-      rc.hgetall "keys:#{username}:#{version}", (err, keys) ->
-        return callback err if err?
-        callback null, keys
+  getKeys = (username, version, callback) ->
+    rc.hgetall "keys:#{username}:#{version}", (err, keys) ->
+      return callback err if err?
+      callback null, keys
+
 
   verifySignature = (b1, b2, sigString, pubKey) ->
     #get the signature

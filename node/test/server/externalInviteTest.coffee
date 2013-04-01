@@ -185,8 +185,7 @@ describe "surespot chat test", () ->
           else
             res.statusCode.should.equal 200
             messageData = JSON.parse(body)
-            messageData.friends[0].name.should.equal 'test1'
-            messageData.friends[0].flags.should.equal 32
+            messageData.friends['test1'].should.equal 32
             done()
 
     it 'should have created an invite user control message', (done) ->
@@ -207,7 +206,6 @@ describe "surespot chat test", () ->
             receivedControlMessage.action.should.equal "invite"
             receivedControlMessage.data.should.equal "test1"
             receivedControlMessage.id.should.equal 1
-            should.not.exist receivedControlMessage.localid
             should.not.exist receivedControlMessage.moredata
             should.not.exist receivedControlMessage.from
             done()
@@ -257,8 +255,7 @@ describe "surespot chat test", () ->
           else
             res.statusCode.should.equal 200
             messageData = JSON.parse(body)
-            messageData.friends[0].name.should.equal 'test3'
-            messageData.friends[0].flags.should.equal 32
+            messageData.friends['test3'].should.equal 32
             done()
 
     it 'should have created an invite user control message', (done) ->
