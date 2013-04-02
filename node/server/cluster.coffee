@@ -605,6 +605,8 @@ else
               multi.exec (err, results) ->
                 return ccCallback err if err?
                 ccCallback()
+            else
+              ccCallback()
 
           createConversations (err) ->
             if err?

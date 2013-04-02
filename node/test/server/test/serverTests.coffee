@@ -441,7 +441,7 @@ describe "surespot server", () ->
             done()
 
         form = r.form()
-        form.append "image", fs.createReadStream "testImage"
+        form.append "image", fs.createReadStream "test/testImage"
     #todo set filename explicitly
 
     it "should return the same image when location url requested", (done) ->
@@ -489,7 +489,7 @@ describe "surespot server", () ->
             done()
 
         form = r.form()
-        form.append "image", fs.createReadStream "testImage"
+        form.append "image", fs.createReadStream "test/testImage"
 
 
   #todo set filename explicitly
