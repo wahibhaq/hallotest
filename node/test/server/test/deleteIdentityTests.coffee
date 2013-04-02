@@ -337,7 +337,7 @@ describe "surespot delete identity test", () ->
   it 'should not be able to send message to someone who has deleted you', (done) ->
     clients[1].once 'messageError', (data) ->
       data.id.should.equal jsonMessage.iv
-      data.status.should.equal 403
+      data.status.should.equal 404
       done()
 
 
