@@ -713,31 +713,33 @@ else
 
 
     userExists from, (err, exists) ->
-      return callback new MessageError(iv, 500) if err?
+#      return callback new MessageError(iv, 500) if err?
       return callback new MessageError(iv, 404) if not exists
+      userExists to, (err, exists) ->
+        return callback new MessageError(iv, 500) if err?
+        return callback new MessageError(iv, 404) if not exists
 
-      if exists
-        #if they're not friends with us or we're not friends with them we have a problem
-        # todo tell client not to reconnect when this happens...otherwise infinite connect loop for now we'll just do nothing
-        isFriend user, to, (err, aFriend) ->
-          return callback new MessageError(iv, 500) if err?
-          return callback new MessageError(iv, 403) if not aFriend
-
-          cipherdata = message.data
-          resendId = message.resendId
-          mimeType = message.mimeType
-          room = getRoomName(from, to)
-
-          #check for dupes if message has been resent
-          checkForDuplicateMessage resendId, user, room, message, (err, found) ->
+        if exists
+          #if they're not friends with us or we're not friends with them we have a problem
+          isFriend user, to, (err, aFriend) ->
             return callback new MessageError(iv, 500) if err?
-            if found
-              logger.debug "found duplicate message, not adding to db"
-              sio.sockets.to(to).emit "message", found
-              sio.sockets.to(from).emit "message", found
-              callback()
-            else
-              createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, callback
+            return callback new MessageError(iv, 403) if not aFriend
+
+            cipherdata = message.data
+            resendId = message.resendId
+            mimeType = message.mimeType
+            room = getRoomName(from, to)
+
+            #check for dupes if message has been resent
+            checkForDuplicateMessage resendId, user, room, message, (err, found) ->
+              return callback new MessageError(iv, 500) if err?
+              if found
+                logger.debug "found duplicate message, not adding to db"
+                sio.sockets.to(to).emit "message", found
+                sio.sockets.to(from).emit "message", found
+                callback()
+              else
+                createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, callback
 
 
   sio.on "connection", (socket) ->
@@ -885,10 +887,12 @@ else
       #update message data
       removeMessage dMessage.to, room, messageId, (err, count) ->
         return next err if err?
-        dMessage.shareable = shareable is 'true'
+
+        bShareable = shareable is 'true'
+        dMessage.shareable = bShareable
         rc.zadd "messages:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
           return next err if err?
-          createAndSendMessageControlMessage username, otherUser, room, (if shareable then "shareable" else "notshareable"), room, messageId, (err) ->
+          createAndSendMessageControlMessage username, otherUser, room, (if bShareable then "shareable" else "notshareable"), room, messageId, (err) ->
             return next err if err?
             res.send 204
 
