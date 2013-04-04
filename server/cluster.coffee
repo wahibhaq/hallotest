@@ -577,8 +577,10 @@ else
             return callback err if err?
             #TODO per user threshold based on pay status
             #delete the oldest message
-            if card > MESSAGES_PER_USER
-              rc.zrange userMessagesKey,  0, 0, (err, messagePointer) ->
+            deleteCount = card - MESSAGES_PER_USER
+
+            if deleteCount > 0
+              rc.zrange userMessagesKey,  0, deleteCount, (err, messagePointer) ->
                 return callback err if err?
                 #delete message
                 messageData = getMessagePointerData from, messagePointer[0]
@@ -1285,8 +1287,6 @@ else
           return next err if err?
           return next new Error "no keys exist for user #{username}" unless keys?
 
-          #verified = crypto.createVerify('sha256').update(token).update(new Buffer(password)).verify(keys.dsaPub, new Buffer(req.body.tokenSig, 'base64'))
-
           verified = verifySignature new Buffer(rtoken, 'base64'), new Buffer(password), req.body.tokenSig, keys.dsaPub
           return res.send 403 unless verified
 
@@ -1542,9 +1542,6 @@ else
               res.send sFriendState
 
   app.get "/friends", ensureAuthenticated, setNoCache, getFriends
-
-
-
 
   app.post "/users/delete", (req, res, next) ->
     logger.debug "/users/delete"
