@@ -20,7 +20,7 @@ shortid = require 'shortid'
 _ = require 'underscore'
 querystring = require 'querystring'
 request = require 'request'
-MESSAGES_PER_USER = 5
+MESSAGES_PER_USER = 100
 
 logger.remove logger.transports.Console
 logger.setLevels logger.config.syslog.levels
@@ -926,6 +926,27 @@ else
           return next err if err?
           res.send token
 
+
+
+  app.post "/passwordtoken", setNoCache, (req, res, next) ->
+    return res.send 403 unless req.body?.username?
+    return res.send 403 unless req.body?.authSig?
+    return res.send 403 unless req.body?.password?
+
+    username = req.body.username
+    password = req.body.password
+    authSig = req.body.authSig
+    validateUser username, password, authSig, null, (err, status, user) ->
+      return next err if err?
+      return res.send 403 unless user?
+
+      crypto.randomBytes 32, (err, buf) ->
+        return next err if err?
+        token = buf.toString('base64')
+        rc.set "passwordtoken:#{username}", token, (err, result) ->
+          return next err if err?
+          res.send token
+
   app.put "/messages/:username/:id/shareable", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
     messageId = req.params.id
     shareable = req.body.shareable
@@ -1633,6 +1654,58 @@ else
                       createAndSendUserControlMessage username, "revoke", username, parseInt(kv) + 1, (err) ->
                         return next err if err?
                         res.send 204)
+
+
+  app.put "/users/password", (req, res, next) ->
+    logger.debug "/users/password"
+    return res.send 403 unless req.body?.username?
+    return res.send 403 unless req.body?.authSig?
+    return res.send 403 unless req.body?.password?
+    return next new Error 'newPassword required' unless req.body?.newPassword?
+    return next new Error 'keyVersion required' unless req.body?.keyVersion?
+    return next new Error 'tokenSig required' unless req.body?.tokenSig?
+
+
+    #make sure the key versions match
+    username = req.body.username
+
+    kv = req.body.keyVersion
+    logger.debug "signed with keyversion: " + kv
+    #todo transaction
+    #make sure the tokens match
+    rc.get "passwordtoken:#{username}", (err, rtoken) ->
+      return next new Error 'no password token' unless rtoken?
+      logger.debug "token: " + rtoken
+
+      password = req.body.password
+      newPassword = req.body.newPassword
+      #validate the signature against the token
+
+      getKeys username, kv, (err, keys) ->
+        return next err if err?
+        return next new Error "no keys exist for user #{username}" unless keys?
+
+        verified = verifySignature new Buffer(rtoken, 'base64'), new Buffer(newPassword), req.body.tokenSig, keys.dsaPub
+        return res.send 403 unless verified
+
+        authSig = req.body.authSig
+        validateUser username, password, authSig, null, (err, status, user) ->
+          return next(err) if err?
+          return res.send 403 unless user?
+
+          #delete the token of which there should only be one
+          rc.del "passwordtoken:#{username}", (err, rdel) ->
+            return next err if err?
+            return res.send 404 unless rdel is 1
+
+            bcrypt.genSalt 10, 32, (err, salt) ->
+              return next err if err?
+
+              bcrypt.hash newPassword, salt, (err, hashedPassword) ->
+                return next err if err?
+                rc.hset "users:#{username}", "password", hashedPassword, (err, set) ->
+                  return next err if err?
+                  res.send 204
 
 
   app.delete "/friends/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeletedOrInvited, (req, res, next) ->
