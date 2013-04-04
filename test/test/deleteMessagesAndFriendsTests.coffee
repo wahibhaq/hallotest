@@ -155,7 +155,7 @@ sendThreeMessagesFromEachUser = () ->
   jsonMessage.iv = 5
   client1.send JSON.stringify(jsonMessage)
 
-describe "surespot delete test", () ->
+describe "delete messages and friends test", () ->
   keys = undefined
   before (done) ->
     createKeys 2, (err, keyss) ->
@@ -205,7 +205,7 @@ describe "surespot delete test", () ->
     it 'should succeed', (done) ->
       request.del
         jar: jar0
-        url: baseUri + "/messages/test1/utai/6"
+        url: baseUri + "/messages/test1"
         (err, res, body) ->
           if err
             done err
@@ -271,7 +271,7 @@ describe "surespot delete test", () ->
     it 'the other user should be able to delete his messages', (done) ->
       request.del
         jar: jar1
-        url: baseUri + "/messages/test0/utai/6"
+        url: baseUri + "/messages/test0"
         (err, res, body) ->
           if err
             done err

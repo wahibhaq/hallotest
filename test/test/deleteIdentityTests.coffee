@@ -155,7 +155,7 @@ sendMessages = (clientNum, to, number, callback) ->
       callback null)
 
 
-describe "surespot delete identity test", () ->
+describe "delete identity tests", () ->
   keys = undefined
   before (done) ->
     createKeys 3, (err, keyss) ->
