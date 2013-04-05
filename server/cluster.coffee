@@ -1512,14 +1512,18 @@ else
           when 'ignore'
             createAndSendUserControlMessage friendname, 'ignore', username, null, (err) ->
               return next err if err?
-              res.send 204
+              createAndSendUserControlMessage username, 'ignore', username, null, (err) ->
+                return next err if err?
+                res.send 204
 
           when 'block'
             rc.sadd "blocked:#{username}", friendname, (err, data) ->
               return next err if err?
               createAndSendUserControlMessage friendname, 'ignore', username, null, (err) ->
                 return next err if err?
-                res.send 204
+                createAndSendUserControlMessage username, 'ignore', username, null, (err) ->
+                  return next err if err?
+                  res.send 204
 
           else return next new Error 'invalid action'
 
