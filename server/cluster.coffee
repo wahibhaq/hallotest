@@ -1139,11 +1139,31 @@ else
       return next err if err?
       res.send exists
 
-  handleAutoInviteUser = (username, autoInviteUser, callback) ->
-      #send invite
-      inviteUser username, autoInviteUser, (err, inviteSent) ->
-        return callback err if err?
+  handleReferrers = (username, referrers, callback) ->
+    return callback() if referrers.length is 0
+    usersToInvite = []
+    multi = rc.multi()
+    async.each(
+      referrers,
+      (referrer, callback) ->
+        referralUserName = referrer.utm_content
+        usersToInvite.push referralUserName
+        multi.sismember "users", referralUserName
         callback()
+      (err) ->
+        return callback err if err?
+
+        multi.exec (err, results) ->
+          return callback err if err?
+          _.each(
+            results,
+            (exists, index, list) ->
+              if exists
+                #send invite
+                inviteUser username, usersToInvite[index], (err, inviteSent) ->
+                  logger.error err if err?
+          )
+          callback())
 
 
   createNewUser = (req, res, next) ->
@@ -1166,25 +1186,34 @@ else
         user.username = username
 
         keys = {}
-        if req.body.dhPub?
+        if req.body?.dhPub?
           keys.dhPub = req.body.dhPub
         else
           return next new Error('dh public key required')
 
-        if req.body.dsaPub?
+        if req.body?.dsaPub?
           keys.dsaPub = req.body.dsaPub
         else
           return next new Error('dsa public key required')
 
         return next new Error('auth signature required') unless req.body?.authSig?
 
-        if req.body.gcmId?
+        if req.body?.gcmId?
           user.gcmId = req.body.gcmId
 
-        autoInviteUser = req.body.autoInviteUser
+
+        referrers = undefined
+
+        if req.body?.referrers?
+          try
+            referrers = JSON.parse(req.body.referrers)
+          catch error
+            logger.error error
+            return next error
+
 
         logger.debug "gcmID: #{user.gcmId}"
-        logger.debug "autoInviteUser: #{autoInviteUser}"
+        logger.debug "referrers: #{referrers}"
 
         bcrypt.genSalt 10, 32, (err, salt) ->
           return next err if err?
@@ -1212,10 +1241,8 @@ else
                 logger.debug "created user: #{username}"
                 req.login user, ->
                   req.user = user
-                  if autoInviteUser?
-                    handleAutoInviteUser username, autoInviteUser, (err) ->
-                      return next err if err?
-                      next()
+                  if referrers
+                    handleReferrers username, referrers, next
                   else
                     next()
 
@@ -1226,21 +1253,21 @@ else
 
   app.post "/login", passport.authenticate("local"), (req, res, next) ->
     username = req.user.username
-    autoInviteUser = req.body.autoInviteUser
-    logger.debug "/login post, user #{username}, autoInviteUser: #{autoInviteUser}"
-
-    if autoInviteUser?
-      userExists autoInviteUser, (err, exists) ->
-        return next err if err?
-        if exists
-          handleAutoInviteUser username, autoInviteUser, (err) ->
-            return next err if err?
-            "#{username} auto invited user"
-            res.send 204
-        else
+    logger.debug "/login post, user #{username}, referrers: #{req.body.referrers}"
+    if req.body?.referrers?
+      try
+        referrers = JSON.parse(req.body.referrers)
+        handleReferrers username, referrers, (err) ->
+          return next err if err?
           res.send 204
+
+      catch error
+        return next error
     else
       res.send 204
+
+
+
 
   app.post "/keytoken", setNoCache, (req, res, next) ->
     return res.send 403 unless req.body?.username?

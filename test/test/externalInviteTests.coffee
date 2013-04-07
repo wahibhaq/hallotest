@@ -65,7 +65,7 @@ cleanup = (done) ->
       done()
 
 
-login = (username, password, jar, authSig, autoInviteUser, done, callback) ->
+login = (username, password, jar, authSig, referrers, done, callback) ->
   request.post
     url: baseUri + "/login"
     jar: jar
@@ -73,7 +73,7 @@ login = (username, password, jar, authSig, autoInviteUser, done, callback) ->
       username: username
       password: password
       authSig: authSig
-      autoInviteUser: autoInviteUser
+      referrers: referrers
     (err, res, body) ->
       if err
         done err
@@ -81,7 +81,7 @@ login = (username, password, jar, authSig, autoInviteUser, done, callback) ->
         cookie = jar.get({ url: baseUri }).map((c) -> c.name + "=" + c.value).join("; ")
         callback res, body, cookie
 
-signup = (username, password, jar, dhPub, dsaPub, authSig, autoInviteUser, done, callback) ->
+signup = (username, password, jar, dhPub, dsaPub, authSig, referrers, done, callback) ->
   request.post
     url: baseUri + "/users"
     jar: jar
@@ -91,7 +91,7 @@ signup = (username, password, jar, dhPub, dsaPub, authSig, autoInviteUser, done,
       dhPub: dhPub
       dsaPub: dsaPub
       authSig: authSig
-      autoInviteUser: autoInviteUser
+      referrers: referrers
     (err, res, body) ->
       if err
         done err
@@ -138,7 +138,7 @@ createKeys = (number, done) ->
       done null, results
 
 
-describe "surespot chat test", () ->
+describe "external invite tests", () ->
   keys = undefined
   before (done) ->
     createKeys 3, (err, keyss) ->
@@ -157,7 +157,7 @@ describe "surespot chat test", () ->
       client = io.connect baseUri, { 'force new connection': true}, cookie
       client.once 'connect', ->
         jar2 = request.jar()
-        signup 'test1', 'test1', jar2, keys[1].ecdh.pem_pub, keys[1].ecdsa.pem_pub, keys[1].sig, "test0", done , (res, body, cookie) ->
+        signup 'test1', 'test1', jar2, keys[1].ecdh.pem_pub, keys[1].ecdsa.pem_pub, keys[1].sig, JSON.stringify([{ utm_content: "test0"}]), done , (res, body, cookie) ->
           receivedSignupResponse = true
           done() if gotControlMessage
 
@@ -227,7 +227,7 @@ describe "surespot chat test", () ->
               if err
                 done err
               else
-                login "test3", "test3", jar4, keys[3].sig, "test2", done, (res, body) ->
+                login "test3", "test3", jar4, keys[3].sig, JSON.stringify([{ utm_content: "test2"}]), done, (res, body) ->
                   receivedSignupResponse = true
                   done() if gotControlMessage
 
