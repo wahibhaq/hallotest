@@ -841,7 +841,7 @@ else
         (item, callback) ->
           oMessage = undefined
           try
-            JSON.parse(item)
+            oMessage = JSON.parse(item)
           catch error
             return callback false
 
