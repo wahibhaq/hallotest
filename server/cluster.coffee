@@ -352,7 +352,13 @@ else
     rc.zrangebyscore "messages:" + room, id, id, (err, data) ->
       return fn err if err?
       if data.length is 1
-        fn null, JSON.parse(data[0])
+        message = undefined
+        try
+          message = JSON.parse(data[0])
+        catch error
+          return fn error
+
+        fn null,message
       else
         fn null, null
 
@@ -435,7 +441,12 @@ else
         getMessagesAfterId username, room, resendId, (err, data) ->
           return callback err if err
           found = _.find data, (checkMessageJSON) ->
-            checkMessage = JSON.parse(checkMessageJSON)
+            checkMessage = undefined
+            try
+              checkMessage = JSON.parse(checkMessageJSON)
+            catch error
+              return callback error
+
             if checkMessage.id? and message.id?
               logger.debug "comparing ids"
               checkMessage.id == message.id
@@ -449,7 +460,11 @@ else
         getMessages username, room, 30, (err, data) ->
           return callback err if err
           found = _.find data, (checkMessageJSON) ->
-            checkMessage = JSON.parse(checkMessageJSON)
+            try
+              checkMessage = JSON.parse(checkMessageJSON)
+            catch error
+              return callback error
+
             if checkMessage.id? and message.id?
               logger.debug "comparing ids"
               checkMessage.id == message.id
@@ -486,11 +501,11 @@ else
       getControlMessagesAfterId room, resendId, (err, data) ->
         return callback err if err
         found = _.find data, (checkMessageJSON) ->
-          checkMessage = JSON.parse(checkMessageJSON)
-#          checkMessage.type is message.type
-#          checkMessage.action is message.action
-#          checkMessage.data is message.data
-#          checkMessage.moredata is message.data
+          checkMessage = undefined
+          try
+            checkMessage = JSON.parse(checkMessageJSON)
+          catch error
+            return callback error
 
           checkMessage.from is message.from
           checkMessage.localid is message.localid
@@ -824,7 +839,12 @@ else
       async.filter(
         messages
         (item, callback) ->
-          oMessage = JSON.parse(item)
+          oMessage = undefined
+          try
+            JSON.parse(item)
+          catch error
+            return callback false
+
           if oMessage.from is username
             ourMessageIds.push oMessage.id
             multi.zrem "messages:#{username}", "messages:#{room}:#{oMessage.id}"
@@ -1034,24 +1054,6 @@ else
           callback null, conversationIds
       else
         callback null, null
-
-
-
-
-
-  #not sure what to do here...sending a GET with body is frowned upon from a REST standpoint
-  #sending a get with the client's latest message ids in the querystring doesn't feel right as it leaks data (more easily)
-  #so we are left with using a post with body even though nothing is being modified
-  app.post "/messageids", ensureAuthenticated, setNoCache, (req, res, next) ->
-    messageIds = null
-    if req.body?.messageIds?
-      logger.debug "/messageids: #{req.body.messageIds}"
-      messageIds = JSON.parse(req.body.messageIds)
-
-    #compare latest conversation ids against that which we received and then return new messages for conversations # that have them
-    getConversationIds req.user.username, (err, conversationIds) ->
-      return next err if err?
-      res.send conversationIds
 
   app.get "/latestids/:userControlId", ensureAuthenticated, setNoCache, (req, res, next) ->
     userControlId = req.params.userControlId
@@ -1882,7 +1884,14 @@ else
   getKeys = (username, version, callback) ->
     rc.hget "keys:#{username}", version, (err, keys) ->
       return callback err if err?
-      callback null, JSON.parse(keys)
+
+      jkeys = undefined
+      try
+        jkeys = JSON.parse(keys)
+      catch error
+        return callback error
+
+      callback null, jkeys
 
 
   verifySignature = (b1, b2, sigString, pubKey) ->
