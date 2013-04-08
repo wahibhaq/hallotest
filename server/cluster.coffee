@@ -148,6 +148,7 @@ else
     createRedisClient ((err, c) -> sub = c), database
     createRedisClient ((err, c) -> client = c), database
 
+    app.use express.compress()
     app.use express["static"](__dirname + "/../assets")
     app.use express.cookieParser()
     app.use express.bodyParser()
@@ -580,6 +581,7 @@ else
             deleteCount = card - MESSAGES_PER_USER
 
             if deleteCount > 0
+
               rc.zrange userMessagesKey,  0, deleteCount, (err, messagePointer) ->
                 return callback err if err?
                 #delete message
