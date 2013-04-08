@@ -730,22 +730,28 @@ else
   handleMessage = (user, data, callback) ->
     #user = socket.handshake.session.passport.user
 
+    message = undefined
     #todo check from and to exist and are friends
-    message = JSON.parse(data)
+    try
+      message = JSON.parse(data)
+    catch error
+      return callback new MessageError(data, 500)
+
 
     # message.user = user
     logger.debug "received message from user #{user}"
 
-    to = message.to
-    return unless to?
-    from = message.from
-    return unless from?
-    toVersion = message.toVersion
-    return unless toVersion?
-    fromVersion = message.fromVersion
-    return unless fromVersion?
     iv = message.iv
-    return unless iv?
+    return callback new MessageError(data, 500) unless iv?
+    to = message.to
+    return callback new MessageError(iv, 500) unless to?
+    from = message.from
+    return callback new MessageError(iv, 500) unless from?
+    toVersion = message.toVersion
+    return callback new MessageError(iv, 500) unless toVersion?
+    fromVersion = message.fromVersion
+    return callback new MessageError(iv, 500) unless fromVersion?
+
 
     #if this message isn't from the logged in user we have problems
     return callback new MessageError(iv, 403) unless user is from
