@@ -1455,13 +1455,11 @@ else
                 createFriendShip username, friendname, (err) ->
                   return next err if err?
 
-                  createAndSendUserControlMessage username, "accept", friendname, null, (err) ->
+                  createAndSendUserControlMessage username, "added", friendname, null, (err) ->
                     return next err if err?
                     sendInviteResponseGcm username, friendname, 'accept', (result) ->
-                      createAndSendUserControlMessage friendname, "accept", username, null, (err) ->
+                      createAndSendUserControlMessage friendname, "added", username, null, (err) ->
                         return next err if err?
-                        #sio.sockets.to(friendname).emit "inviteResponse", JSON.stringify { user: username, response: 'accept' }
-                        #sio.sockets.to(username).emit "inviteResponse", JSON.stringify { user: friendname, response: 'accept' }
                         sendInviteResponseGcm friendname, username, 'accept', (result) ->
                           res.send 204
             else
