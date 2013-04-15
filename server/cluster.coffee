@@ -21,6 +21,8 @@ _ = require 'underscore'
 querystring = require 'querystring'
 request = require 'request'
 MESSAGES_PER_USER = 100
+USERNAME_LENGTH = 20
+
 
 logger.remove logger.transports.Console
 logger.setLevels logger.config.syslog.levels
@@ -243,7 +245,7 @@ else
 
 
   checkUser = (username) ->
-    return username?.length > 0 and username?.length  <= 24
+    return username?.length > 0 and username?.length  <= USERNAME_LENGTH
 
 
   checkPassword = (password) ->

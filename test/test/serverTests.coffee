@@ -136,7 +136,7 @@ describe "surespot server", () ->
 
   describe "create user", () ->
     it "should respond with 403 if username invalid", (done) ->
-      signup "test0tnh90ou8uronteuhtnohutnohnhonthuntohunthnthtnoehntohu", "test0", keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body) ->
+      signup "012345678901234567890", "test0", keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body) ->
         res.statusCode.should.equal 403
         done()
 
