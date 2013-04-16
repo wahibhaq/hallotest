@@ -26,9 +26,10 @@ USERNAME_LENGTH = 20
 
 logger.remove logger.transports.Console
 logger.setLevels logger.config.syslog.levels
+logger.exitOnError = false
 
 transports = []
-transports.push new (logger.transports.File)({ dirname: 'logs', filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'debug' })
+transports.push new (logger.transports.File)({ dirname: 'logs', filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'debug', handleExceptions: true })
 #always use file transport
 logger.add transports[0], null, true
 
@@ -39,14 +40,13 @@ socketPort = process.env.SOCKET
 dev = process.env.NODE_ENV != "linode"
 
 if dev
-  transports.push new (logger.transports.Console)({colorize: true, timestamp: true, level: 'debug' })
+  transports.push new (logger.transports.Console)({colorize: true, timestamp: true, level: 'debug', handleExceptions: true })
   logger.add transports[1], null, true
   numCPUs = 1
 
 logger.debug "process.env.NODE_ENV: " + process.env.NODE_ENV
 logger.debug "process.env.NODE_SSL: " + process.env.NODE_SSL
 logger.debug "__dirname: #{__dirname}"
-
 
 if (cluster.isMaster && !dev)
   # Fork workers.
@@ -68,8 +68,8 @@ else
   logger.info "database: #{database}"
   logger.info "socket: #{socketPort}"
 
-  process.on "uncaughtException", uncaught = (err) ->
-    logger.error "Uncaught Exception: " + err
+  #process.on "uncaughtException", uncaught = (err) ->
+   # logger.error "Uncaught Exception: " + err
 
   sio = undefined
   sessionStore = undefined
@@ -151,7 +151,7 @@ else
     createRedisClient ((err, c) -> client = c), database
 
     app.use express.compress()
-    app.use express["static"](__dirname + "/../assets")
+    #app.use express["static"](__dirname + "/../assets")
     app.use express.cookieParser()
     app.use express.bodyParser()
     app.use express.session(
@@ -165,14 +165,10 @@ else
     })
     app.use app.router
 
-    app.use(expressWinston.errorLogger({
-    transports: transports
-    }))
-    app.use(express.errorHandler({
-    showMessage: true,
-    showStack: true,
-    dumpExceptions: true
-    }))
+    app.use (err, req, res, next) ->
+      exceptionMeta = logger.exception.getAllInfo(err);
+      logger.log 'error', "middlewareError", exceptionMeta
+      res.send err.status or 500
 
 
   http.globalAgent.maxSockets = Infinity;
@@ -1277,9 +1273,6 @@ else
         return next error
     else
       res.send 204
-
-
-
 
   app.post "/keytoken", setNoCache, (req, res, next) ->
     return res.send 403 unless req.body?.username?
