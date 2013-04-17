@@ -21,7 +21,6 @@ cookie3 = undefined
 
 cleanup = (done) ->
   keys = [
-    "users",
     "users:test0",
     "users:test1",
     "users:test2",
@@ -58,7 +57,12 @@ cleanup = (done) ->
     "control:user:test1:id",
     "control:user:test0:id",
     "control:user:test2:id"]
-  rc.del keys, (err, data) ->
+
+  multi = rc.multi()
+
+  multi.del keys
+  multi.srem "users", "test0", "test1", "test2", "test3"
+  multi.exec (err, results) ->
     if err
       done err
     else

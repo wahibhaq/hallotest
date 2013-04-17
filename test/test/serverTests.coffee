@@ -13,7 +13,6 @@ baseUri = "https://localhost:" + port
 
 cleanup = (done) ->
   keys = [
-    "users",
     "users:test0",
     "users:test1",
     "users:test2",
@@ -24,6 +23,7 @@ cleanup = (done) ->
     "invites:test1",
     "invited:test1",
     "test0:test1:id",
+    "messages:test0",
     "messages:test0:test1",
     "conversations:test1",
     "conversations:test0",
@@ -39,7 +39,11 @@ cleanup = (done) ->
     "control:user:test0:id",
     "control:user:test1"
     "control:user:test1:id"]
-  rc.del keys, (err, data) ->
+  multi = rc.multi()
+
+  multi.del keys
+  multi.srem "users", "test0", "test1", "test2"
+  multi.exec (err, results) ->
     if err
       done err
     else
@@ -135,21 +139,21 @@ describe "surespot server", () ->
       cleanup done
 
   describe "create user", () ->
-    it "should respond with 403 if username invalid", (done) ->
+    it "should respond with 400 if username invalid", (done) ->
       signup "012345678901234567890", "test0", keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body) ->
-        res.statusCode.should.equal 403
+        res.statusCode.should.equal 400
         done()
 
-    it "should respond with 403 if username empty", (done) ->
+    it "should respond with 400 if username empty", (done) ->
       signup '', "test0", keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body) ->
-        res.statusCode.should.equal 403
+        res.statusCode.should.equal 400
         done()
 
-    it "should respond with 403 if password too long", (done) ->
+    it "should respond with 400 if password too long", (done) ->
       random = crypto.randomBytes 1025
       pw = random.toString('hex')
       signup "test0", pw, keys[0].ecdh.pem_pub, keys[0].ecdsa.pem_pub, keys[0].sig, done, (res, body) ->
-        res.statusCode.should.equal 403
+        res.statusCode.should.equal 400
         done()
 
 

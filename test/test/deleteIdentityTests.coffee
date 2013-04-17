@@ -35,12 +35,11 @@ cleanup = (done) ->
     multi.del "invites:test#{i}"
     multi.del "invited:test#{i}"
     multi.del "conversations:test#{i}"
+    multi.srem "users", "test#{i}"
 
   for i in [0..2]
     buildKeys i
 
-  multi.del("users")
-  multi.del("deleted")
   multi.del("deleted:test0")
   multi.del("test0:test1:id")
   multi.del("test0:test2:id")
@@ -48,6 +47,7 @@ cleanup = (done) ->
   multi.del("messages:test0:test2")
   multi.del("control:message:test0:test1")
   multi.del("control:message:test0:test2")
+
 
   multi.exec (err, blah) ->
     return done err if err?

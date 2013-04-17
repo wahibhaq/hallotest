@@ -39,9 +39,12 @@ cleanup = (done) ->
     "control:user:test0",
     "control:user:test1",
     "control:user:test0:id",
-    "control:user:test1:id"
-    "users"]
-  rc.del keys, (err, data) ->
+    "control:user:test1:id"]
+
+  multi = rc.multi()
+  multi.del keys
+  multi.srem "users", "test0", "test1"
+  multi.exec (err, results) ->
     if err
       done err
     else

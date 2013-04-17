@@ -43,9 +43,12 @@ cleanup = (done) ->
     "control:user:test0:id",
     "control:user:test1:id",
     "users:deleted:test0",
-    "users:deleted:test1"
-    "users"]
-  rc.del keys, (err, data) ->
+    "users:deleted:test1"]
+  multi = rc.multi()
+
+  multi.del keys
+  multi.srem "users", "test0", "test1"
+  multi.exec (err, results) ->
     if err
       done err
     else
@@ -81,6 +84,7 @@ signup = (username, password, jar, dhPub, dsaPub, authSig, done, callback) ->
       if err
         done err
       else
+        res.statusCode.should.equal 201
         cookie = jar.get({ url: baseUri }).map((c) -> c.name + "=" + c.value).join("; ")
         callback res, body, cookie
 

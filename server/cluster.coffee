@@ -253,7 +253,7 @@ else
     password = req.body.password
 
     if !checkUser(username) or !checkPassword(password)
-      res.send 403
+      res.send 400
     else
       next()
 
@@ -755,15 +755,15 @@ else
     logger.debug "received message from user #{user}"
 
     iv = message.iv
-    return callback new MessageError(data, 500) unless iv?
+    return callback new MessageError(data, 400) unless iv?
     to = message.to
-    return callback new MessageError(iv, 500) unless to?
+    return callback new MessageError(iv, 400) unless to?
     from = message.from
-    return callback new MessageError(iv, 500) unless from?
+    return callback new MessageError(iv, 400) unless from?
     toVersion = message.toVersion
-    return callback new MessageError(iv, 500) unless toVersion?
+    return callback new MessageError(iv, 400) unless toVersion?
     fromVersion = message.fromVersion
-    return callback new MessageError(iv, 500) unless fromVersion?
+    return callback new MessageError(iv, 400) unless fromVersion?
 
 
     #if this message isn't from the logged in user we have problems
@@ -934,9 +934,9 @@ else
       res.send (if deleted then 204 else 404)
 
   app.post "/deletetoken", setNoCache, (req, res, next) ->
-    return res.send 403 unless req.body?.username?
-    return res.send 403 unless req.body?.authSig?
-    return res.send 403 unless req.body?.password?
+    return res.send 400 unless req.body?.username?
+    return res.send 400 unless req.body?.authSig?
+    return res.send 400 unless req.body?.password?
 
     username = req.body.username
     password = req.body.password
@@ -955,9 +955,9 @@ else
 
 
   app.post "/passwordtoken", setNoCache, (req, res, next) ->
-    return res.send 403 unless req.body?.username?
-    return res.send 403 unless req.body?.authSig?
-    return res.send 403 unless req.body?.password?
+    return res.send 400 unless req.body?.username?
+    return res.send 400 unless req.body?.authSig?
+    return res.send 400 unless req.body?.password?
 
     username = req.body.username
     password = req.body.password
@@ -1275,9 +1275,9 @@ else
       res.send 204
 
   app.post "/keytoken", setNoCache, (req, res, next) ->
-    return res.send 403 unless req.body?.username?
-    return res.send 403 unless req.body?.authSig?
-    return res.send 403 unless req.body?.password?
+    return res.send 400 unless req.body?.username?
+    return res.send 400 unless req.body?.authSig?
+    return res.send 400 unless req.body?.password?
 
     username = req.body.username
     password = req.body.password
@@ -1302,9 +1302,9 @@ else
 
   app.post "/keys", (req, res, next) ->
     logger.debug "/keys"
-    return res.send 403 unless req.body?.username?
-    return res.send 403 unless req.body?.authSig?
-    return res.send 403 unless req.body?.password?
+    return res.send 400 unless req.body?.username?
+    return res.send 400 unless req.body?.authSig?
+    return res.send 400 unless req.body?.password?
     return next new Error('dh public key required') unless req.body?.dhPub?
     return next new Error('dsa public key required') unless req.body?.dsaPub?
     return next new Error 'key version required' unless req.body?.keyVersion?
@@ -1600,9 +1600,9 @@ else
 
   app.post "/users/delete", (req, res, next) ->
     logger.debug "/users/delete"
-    return res.send 403 unless req.body?.username?
-    return res.send 403 unless req.body?.authSig?
-    return res.send 403 unless req.body?.password?
+    return res.send 400 unless req.body?.username?
+    return res.send 400 unless req.body?.authSig?
+    return res.send 400 unless req.body?.password?
     return next new Error 'key version required' unless req.body?.keyVersion?
     return next new Error 'token signature required' unless req.body?.tokenSig?
 
@@ -1692,9 +1692,9 @@ else
 
   app.put "/users/password", (req, res, next) ->
     logger.debug "/users/password"
-    return res.send 403 unless req.body?.username?
-    return res.send 403 unless req.body?.authSig?
-    return res.send 403 unless req.body?.password?
+    return res.send 400 unless req.body?.username?
+    return res.send 400 unless req.body?.authSig?
+    return res.send 400 unless req.body?.password?
     return next new Error 'newPassword required' unless req.body?.newPassword?
     return next new Error 'keyVersion required' unless req.body?.keyVersion?
     return next new Error 'tokenSig required' unless req.body?.tokenSig?
