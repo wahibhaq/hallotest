@@ -901,8 +901,7 @@ else
 
             #delete the file if it's a file
             if dMessage.mimeType is "image/"
-              newPath = __dirname + "/static" + dMessage.data
-              fs.unlink(newPath)
+              deleteImage dMessage.data
 
             callback()
         else
@@ -927,6 +926,14 @@ else
               callback null, true
           else
             callback null, true
+
+  deleteImage = (uri) ->
+    splits = uri.split('/')
+    path = splits[splits.length - 1]
+    rackspace.removeFile "surespotImages", path, (err) ->
+      logger.error "could not remove file: #{path}, error: #{err}" if err?
+
+
 
 
   #delete single message
@@ -954,7 +961,7 @@ else
       return next err if err?
       return res.send 403 unless user?
 
-      generateRandomBytes (err, token) ->
+      generateRandomBytes 'base64', (err, token) ->
         return next err if err?
         rc.set "deletetoken:#{username}", token, (err, result) ->
           return next err if err?
@@ -974,7 +981,7 @@ else
       return next err if err?
       return res.send 403 unless user?
 
-      generateRandomBytes (err, token) ->
+      generateRandomBytes 'base64', (err, token) ->
         return next err if err?
         rc.set "passwordtoken:#{username}", token, (err, result) ->
           return next err if err?
@@ -1012,7 +1019,7 @@ else
     getNextMessageId room, null, (id) ->
       return unless id?
 
-      generateRandomBytes (err, bytes) ->
+      generateRandomBytes 'hex', (err, bytes) ->
         return next err if err?
         path = bytes
 
@@ -1276,7 +1283,7 @@ else
 
         #inc key version
         kv = parseInt(currkv) + 1
-        generateRandomBytes (err, token) ->
+        generateRandomBytes 'base64',(err, token) ->
           return next err if err?
           rc.set "keytoken:#{username}", token, (err, result) ->
             return next err if err?
@@ -1848,9 +1855,9 @@ else
     req.logout()
     res.send 204
 
-  generateRandomBytes = (callback) ->
+  generateRandomBytes = (encoding, callback) ->
     rc.incr "uniqueKeySeed", (err, seed) ->
-      hash = crypto.createHash("sha1").update('' + seed).digest('hex')
+      hash = crypto.createHash("sha1").update('' + seed).digest(encoding)
       callback null, hash
 
   comparePassword = (password, dbpassword, callback) ->
