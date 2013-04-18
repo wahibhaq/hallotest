@@ -1,5 +1,5 @@
 cluster = require('cluster')
-http = require('http')
+https = require('https')
 numCPUs = require('os').cpus().length
 cookie = require("cookie")
 express = require("express")
@@ -7,7 +7,6 @@ passport = require("passport")
 LocalStrategy = require("passport-local").Strategy
 crypto = require 'crypto'
 RedisStore = require("connect-redis")(express)
-path = require 'path'
 util = require("util")
 gcm = require("node-gcm")
 fs = require("fs")
@@ -16,11 +15,11 @@ mkdirp = require("mkdirp")
 expressWinston = require "express-winston"
 logger = require("winston")
 async = require 'async'
-shortid = require 'shortid'
 _ = require 'underscore'
 querystring = require 'querystring'
 request = require 'request'
 pkgcloud = require 'pkgcloud'
+utils = require('connect/lib/utils')
 
 
 MESSAGES_PER_USER = 100
@@ -36,22 +35,18 @@ transports.push new (logger.transports.File)({ dirname: 'logs', filename: 'serve
 #always use file transport
 logger.add transports[0], null, true
 
+database = process.env.NODE_DB ? 0
+socketPort = process.env.SOCKET ? 443
+env = process.env.NODE_ENV ? 'Local' # one of "Local","Stage", "Prod"
 
-nossl = process.env.NODE_NOSSL is "true"
-database = process.env.NODE_DB
-socketPort = process.env.SOCKET
-dev = process.env.NODE_ENV != "linode"
-
-if dev
+if env is 'Local'
   transports.push new (logger.transports.Console)({colorize: true, timestamp: true, level: 'debug', handleExceptions: true })
   logger.add transports[1], null, true
   numCPUs = 1
 
-logger.debug "process.env.NODE_ENV: " + process.env.NODE_ENV
-logger.debug "process.env.NODE_SSL: " + process.env.NODE_SSL
 logger.debug "__dirname: #{__dirname}"
 
-if (cluster.isMaster && !dev)
+if (cluster.isMaster && env isnt 'Local')
   # Fork workers.
   for i in [0..1 - numCPUs]
     cluster.fork();
@@ -63,11 +58,7 @@ if (cluster.isMaster && !dev)
     logger.debug 'worker ' + worker.process.pid + ' died'
 
 else
-
-  database = 0 unless database?
-  socketPort = 443 unless socketPort?
-
-  logger.info "dev: #{dev}"
+  logger.info "env: #{env}"
   logger.info "database: #{database}"
   logger.info "socket: #{socketPort}"
 
@@ -86,7 +77,11 @@ else
   connectionCount = 0
   googleApiKey = 'AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ'
   rackspaceApiKey = "6c20021990a1fd28f0afa8f0c793599a"
-  rackspaceCdnBaseUrl = "https://c24fde4b93d21c89dc0e-e429e41837f7a4011051bd4ebfe56f4e.ssl.cf1.rackcdn.com:443"
+  rackspaceCdnBaseUrlLocal = "https://19be2df346b051f6d1c9-bc27bdc385cad6381ae24d242305422a.ssl.cf1.rackcdn.com"
+  rackspaceCdnBaseUrlStage = "https://b8bd94a94939231436ca-1a5c42003e29f66e4992dc05d6c9ef5c.ssl.cf1.rackcdn.com"
+  rackspaceCdnBaseUrlProd =  "https://92e4d74ce2d4cdc1c4aa-5c12bd92c930cddf5a9d06a5e7413967.ssl.cf1.rackcdn.com"
+
+  rackspaceCdnBaseUrl = eval("rackspaceCdnBaseUrl#{env}")
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: 'adam2fours', apiKey: rackspaceApiKey}
 
 
@@ -112,19 +107,19 @@ else
 
   serverPrivateKey = undefined
 
-  if not dev
-    ssloptions = {
-    key: fs.readFileSync('ssl/surespot.key'),
-    cert: fs.readFileSync('ssl/www_surespot_me.crt'),
-    ca: fs.readFileSync('ssl/PositiveSSLCA2.crt')
-    }
-    serverPrivateKey = fs.readFileSync('ecprod/priv.pem')
-  else
-    ssloptions = {
-    key: fs.readFileSync('ssllocal/local.key'),
-    cert: fs.readFileSync('ssllocal/local.crt')
-    }
-    serverPrivateKey = fs.readFileSync('ecdev/priv.pem')
+
+
+  ssloptions = {
+  key: fs.readFileSync("ssl#{env}/surespot.key"),
+  cert: fs.readFileSync("ssl#{env}/surespot.crt")
+  }
+
+  peerCertPath = "ssl#{env}/PositiveSSLCA2.crt"
+  if fs.existsSync(peerCertPath)
+    ssloptions["ca"] = fs.readFileSync(peerCertPath)
+
+  serverPrivateKey = fs.readFileSync("ec#{env}/priv.pem")
+  sessionSecret = "your mama"
 
   # create EC keys like so
   # priv key
@@ -137,18 +132,8 @@ else
 
 
 
-  #serverPublicKey = fs.readFileSync('ec/pub.pem')
-
-
-  if nossl
-    app = module.exports = express.createServer()
-  else
-    app = module.exports = express.createServer ssloptions
-
-
+  app = express()
   app.configure ->
-    if nossl
-      socketPort = 3000
     sessionStore = new RedisStore({db: database})
     createRedisClient ((err, c) -> rc = c), database
     createRedisClient ((err, c) -> rcs = c), database
@@ -160,8 +145,10 @@ else
     #app.use express["static"](__dirname + "/../assets")
     app.use express.cookieParser()
     app.use express.bodyParser()
+    #app.use express.json()
+    #app.use express.urlencoded()
     app.use express.session(
-      secret: "your mama"
+      secret: sessionSecret
       store: sessionStore
     )
     app.use passport.initialize()
@@ -178,10 +165,11 @@ else
 
   oneYear = 31536000000
 
-  http.globalAgent.maxSockets = Infinity;
+  https.globalAgent.maxSockets = Infinity;
 
-  app.listen socketPort, null
-  sio = require("socket.io").listen app
+  server = https.createServer ssloptions, app
+  server.listen socketPort
+  sio = require("socket.io").listen server
 
 
   #winston up some socket.io
@@ -201,7 +189,7 @@ else
     logger.debug 'socket.io auth'
     if req.headers.cookie
       parsedCookie = cookie.parse(req.headers.cookie)
-      req.sessionID = parsedCookie["connect.sid"]
+      req.sessionID = utils.parseSignedCookie(parsedCookie["connect.sid"], sessionSecret)
       sessionStore.get req.sessionID, (err, session) ->
         if err or not session
           accept null, false
@@ -941,7 +929,7 @@ else
       rackspace.removeFile "surespotImages", path, (err) ->
         logger.debug "removed file from cloud: #{path}"
         logger.error "could not remove file from cloud: #{path}, error: #{err}" if err?
-        
+
     removeFile path
 
 
@@ -1034,12 +1022,13 @@ else
         return next err if err?
         path = bytes
 
-        rackspace.upload {container:'surespotImages', remote: path, local: req.files.image.path}, (err) ->
+        rackspace.upload {container:"surespotImages#{env}", remote: path, local: req.files.image.path}, (err) ->
           return next err if err?
           uri = rackspaceCdnBaseUrl + "/#{path}"
           createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, uri, "image/", id, (err) ->
             return next err if err?
-            res.send 202, { 'Location': uri }
+            res.setHeader 'Location', uri
+            res.send 202
 
   getConversationIds = (username, callback) ->
     rc.smembers "conversations:" + username, (err, conversations) ->
@@ -1128,12 +1117,6 @@ else
         sData = JSON.stringify(data)
         logger.debug "sending: #{sData}"
         res.send sData
-
-  #app.get "/test", (req, res) ->
-  # res.sendfile path.normalize __dirname + "/../assets/html/test.html"
-
-  #app.get "/", (req, res) ->
-  # res.sendfile path.normalize __dirname + "/../assets/html/layout.html"
 
   #todo figure out caching
   app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, getPublicKeys

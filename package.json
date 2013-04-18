@@ -4,7 +4,6 @@
   "node": "0.8.1",
   "private": true,
   "dependencies": {
-    "express": "~2.5.11",
     "jade": "~0.27.7",
     "connect-redis": "~1.4.5",
     "bcrypt": "~0.7.3",
@@ -30,7 +29,8 @@
     "dcrypt": "0.0.2",
     "validator": "~0.4.25",
     "forever": "~0.10.0",
-    "pkgcloud": "~0.6.12"
+    "pkgcloud": "~0.6.12",
+    "express": "~3.2.0"
   },
   "subdomain": "2fours.com",
   "scripts": {
