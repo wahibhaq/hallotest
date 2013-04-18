@@ -82,6 +82,7 @@ else
   rackspaceCdnBaseUrlProd =  "https://92e4d74ce2d4cdc1c4aa-5c12bd92c930cddf5a9d06a5e7413967.ssl.cf1.rackcdn.com"
 
   rackspaceCdnBaseUrl = eval("rackspaceCdnBaseUrl#{env}")
+  rackspaceImageContainer = "surespotImages#{env}"
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: 'adam2fours', apiKey: rackspaceApiKey}
 
 
@@ -926,10 +927,9 @@ else
     logger.debug "removing file from cloud: #{path}"
 
     removeFile = (path) ->
-      rackspace.removeFile "surespotImages", path, (err) ->
+      rackspace.removeFile rackspaceImageContainer, path, (err) ->
+        return logger.error "could not remove file from cloud: #{path}, error: #{err}" if err?
         logger.debug "removed file from cloud: #{path}"
-        logger.error "could not remove file from cloud: #{path}, error: #{err}" if err?
-
     removeFile path
 
 
@@ -1022,7 +1022,7 @@ else
         return next err if err?
         path = bytes
 
-        rackspace.upload {container:"surespotImages#{env}", remote: path, local: req.files.image.path}, (err) ->
+        rackspace.upload {container: rackspaceImageContainer, remote: path, local: req.files.image.path}, (err) ->
           return next err if err?
           uri = rackspaceCdnBaseUrl + "/#{path}"
           createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, uri, "image/", id, (err) ->
