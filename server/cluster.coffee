@@ -855,6 +855,11 @@ else
           if oMessage.from is username
             ourMessageIds.push oMessage.id
             multi.zrem "messages:#{username}", "messages:#{room}:#{oMessage.id}"
+
+            #delete image from rackspace
+            if oMessage.mimeType is 'image/'
+              deleteImage oMessage.data
+
             callback true
           else
             theirMessageIds.push oMessage.id
@@ -930,8 +935,14 @@ else
   deleteImage = (uri) ->
     splits = uri.split('/')
     path = splits[splits.length - 1]
-    rackspace.removeFile "surespotImages", path, (err) ->
-      logger.error "could not remove file: #{path}, error: #{err}" if err?
+    logger.debug "removing file from cloud: #{path}"
+
+    removeFile = (path) ->
+      rackspace.removeFile "surespotImages", path, (err) ->
+        logger.debug "removed file from cloud: #{path}"
+        logger.error "could not remove file from cloud: #{path}, error: #{err}" if err?
+        
+    removeFile path
 
 
 
