@@ -86,7 +86,7 @@ else
   connectionCount = 0
   googleApiKey = 'AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ'
   rackspaceApiKey = "6c20021990a1fd28f0afa8f0c793599a"
-  rackspaceCdnBaseUrl = "https://c24fde4b93d21c89dc0e-e429e41837f7a4011051bd4ebfe56f4e.ssl.cf1.rackcdn.com"
+  rackspaceCdnBaseUrl = "https://c24fde4b93d21c89dc0e-e429e41837f7a4011051bd4ebfe56f4e.ssl.cf1.rackcdn.com:443"
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: 'adam2fours', apiKey: rackspaceApiKey}
 
 
