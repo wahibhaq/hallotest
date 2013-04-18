@@ -176,6 +176,7 @@ else
       logger.log 'error', "middlewareError", exceptionMeta
       res.send err.status or 500
 
+  oneYear = 31536000000
 
   http.globalAgent.maxSockets = Infinity;
 
@@ -1022,131 +1023,6 @@ else
             return next err if err?
             res.send 202, { 'Location': uri }
 
-
-  app.post "/images/:token/:fromversion/:username/:toversion", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
-
-    #see if we have a matching image token
-    rc.hget  "csUrlTokens:#{res.user.username}", req.params.token, (err, url) ->
-      return next err if err?
-      return res.send 404 unless url?
-      #BURN THE token
-      rc.hdel "csUrlTokens:#{res.user.username}", req.params.token, (err, del) ->
-        return next err if err?
-
-          #create a message and send it to chat recipients
-        room = getRoomName req.user.username, req.params.username
-        getNextMessageId room, null, (id) ->
-          return unless id?
-          #todo env var for base location
-          createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, url, "image/", id, (err) ->
-            return res.send err.status if err?
-            res.send 204
-
-  oneYear = 31557600000
-  staticMiddleware = express["static"](__dirname + "/static", { maxAge: oneYear})
-
-  app.get "/images/:room/:id", ensureAuthenticated, (req, res, next) ->
-    username = req.user.username
-    room = req.params.room
-    users = room.split ":"
-    if users.length != 2
-      return next new Error "Invalid room name."
-
-    otherUser = getOtherUser room, username
-    isFriend username, otherUser, (err, result) ->
-      return res.send 403 if not result
-
-      #req.url = "/images/" + req.params.room + "/" + req.params.id
-      #authenticate but use static so we can use http caching
-      staticMiddleware req, res, next
-
-
-  #get cloud upload temp url
-  app.get "/uploadurltoken", ensureAuthenticated, (req, res, next) ->
-    generateRandomBytes (err, key) ->
-      return next err if err?
-      csSetMetadataKey key, (err) ->
-        return next err if err?
-        createCsTempPutURL req.user.username, key, (err, urlData) ->
-          return next err if err?
-          res.send urlData
-
-
-  csAuthHost = "identity.api.rackspacecloud.com"
-  csAuthUrl = "https://#{csAuthHost}/v1.0"
-
-  csMetaDataKeyHost = "storage.clouddrive.com"
-  csToken = undefined
-
-  csSetMetadataKey = (key, callback) ->
-    ensureCsAuth = (callback) ->
-      if not csToken?
-        csAuth callback
-      else
-        callback()
-
-    ensureCsAuth (err) ->
-      return callback err if err?
-
-      postMetaKey = (callback) ->
-
-
-
-        request.post
-          url: csToken.csStorageUrl
-          headers:
-            'HOST': csMetaDataKeyHost
-            'X-AUTH-TOKEN': csToken.csAuthToken
-            'X-Account-Meta-Temp-Url-Key': key
-          (err, res, body) ->
-            return callback err if err?
-            if res.statusCode isnt 204
-              csAuth (err) ->
-                return callback err if err?
-                postMetaKey callback
-            else
-              callback()
-
-      postMetaKey callback
-
-  createCsTempPutURL = (username, key, callback) ->
-
-    generateRandomBytes (err, token) ->
-      return callback err if err?
-
-      [baseUrl, objectPath] = csToken.csStorageUrl.split '/v1/'
-      method = "PUT"
-      expires = '' + (Date.now() + 300)
-
-      path = encodeURIComponent token
-      objectPath = "/v1/#{objectPath}/surespot/#{path}"
-      hmac_body = "#{method}\n#{expires}\n#{objectPath}"
-      sig =  crypto.createHmac('sha1',key).update(hmac_body).digest("hex")
-      tempPutUrl = "#{baseUrl}#{objectPath}?temp_url_sig=#{sig}&temp_url_expires=#{expires}"
-
-
-      #store in hash of temp urls generated for user
-      rc.hset "csUrlTokens:#{username}", token, csToken.csStorageUrl, (err, added) ->
-        return callback err if err?
-        callback null, {token: token, tempPutUrl: tempPutUrl}
-
-  csAuth = (callback) ->
-    request.get
-      url: csAuthUrl
-      headers:
-        'HOST': csAuthHost
-        'X-AUTH-USER': 'adam2fours'
-        'X-AUTH-KEY': csAuthKey
-      (err, res, body) ->
-        return callback err if err?
-        if res.statusCode is 204
-          csToken = {csStorageUrl: res.headers['x-storage-url'], cdnManagementUrl: res.headers['x-cdn-management-url'], csAuthToken: res.headers['x-auth-token']}
-          callback()
-        else
-          return callback new Error "cloud storage error, statusCode: #{res.statusCode}"
-
-
-
   getConversationIds = (username, callback) ->
     rc.smembers "conversations:" + username, (err, conversations) ->
       return callback err if err?
@@ -1974,7 +1850,7 @@ else
 
   generateRandomBytes = (callback) ->
     rc.incr "uniqueKeySeed", (err, seed) ->
-      hash = crypto.createHash("sha256").update('' + seed).digest('hex')
+      hash = crypto.createHash("sha1").update('' + seed).digest('hex')
       callback null, hash
 
   comparePassword = (password, dbpassword, callback) ->

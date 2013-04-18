@@ -459,28 +459,6 @@ describe "surespot server", () ->
             res.body.should.equal "madman\n"
             done()
 
-  describe "getting images from non existent spots", ->
-    it "should return 404", (done) ->
-      http.get
-        url: baseUri + "/images/test0:test1/6000"
-        (err, res, body) ->
-          if err
-            done err
-          else
-            res.statusCode.should.equal 404
-            done()
-
-  describe "getting images from spots we don't belong to", ->
-    it "should not be allowed", (done) ->
-      http.get
-        url: baseUri + "/images/a:room/1"
-        (err, res, body) ->
-          if err
-            done err
-          else
-            res.statusCode.should.equal 403
-            done()
-
   describe "uploading an image to a spot we don't belong to", ->
     it "should not be allowed", (done) ->
       login "test2", "test2", keys[2].sig, done, (res, body) ->
