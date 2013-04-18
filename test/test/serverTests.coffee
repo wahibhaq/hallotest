@@ -450,7 +450,7 @@ describe "surespot server", () ->
 
     it "should return the same image when location url requested", (done) ->
       http.get
-        url: baseUri + location
+        url: location
         (err, res, body) ->
           if err
             done err

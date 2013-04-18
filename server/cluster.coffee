@@ -20,6 +20,9 @@ shortid = require 'shortid'
 _ = require 'underscore'
 querystring = require 'querystring'
 request = require 'request'
+pkgcloud = require 'pkgcloud'
+
+
 MESSAGES_PER_USER = 100
 USERNAME_LENGTH = 20
 
@@ -82,6 +85,9 @@ else
   ssloptions = undefined
   connectionCount = 0
   googleApiKey = 'AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ'
+  rackspaceApiKey = "6c20021990a1fd28f0afa8f0c793599a"
+  rackspaceCdnBaseUrl = "https://c24fde4b93d21c89dc0e-e429e41837f7a4011051bd4ebfe56f4e.ssl.cf1.rackcdn.com"
+  rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: 'adam2fours', apiKey: rackspaceApiKey}
 
 
   createRedisClient = (callback, database, port, hostname, password) ->
@@ -206,6 +212,8 @@ else
             accept null, false
     else
       accept "No cookie transmitted.", false
+
+
 
   ensureAuthenticated = (req, res, next) ->
     logger.debug "ensureAuth"
@@ -945,9 +953,8 @@ else
       return next err if err?
       return res.send 403 unless user?
 
-      crypto.randomBytes 32, (err, buf) ->
+      generateRandomBytes (err, token) ->
         return next err if err?
-        token = buf.toString('base64')
         rc.set "deletetoken:#{username}", token, (err, result) ->
           return next err if err?
           res.send token
@@ -966,9 +973,8 @@ else
       return next err if err?
       return res.send 403 unless user?
 
-      crypto.randomBytes 32, (err, buf) ->
+      generateRandomBytes (err, token) ->
         return next err if err?
-        token = buf.toString('base64')
         rc.set "passwordtoken:#{username}", token, (err, result) ->
           return next err if err?
           res.send token
@@ -1004,22 +1010,37 @@ else
     room = getRoomName req.user.username, req.params.username
     getNextMessageId room, null, (id) ->
       return unless id?
-      #todo env var for base location
-      relUri = "/images/" + room
-      newPath = __dirname + "/static" + relUri
-      mkdirp newPath, (err) ->
-        filename = newPath + "/#{id}"
-        relUri += "/#{id}"
-        return next err if err
-        ins = fs.createReadStream req.files.image.path
-        out = fs.createWriteStream filename
-        ins.pipe out
-        ins.on "end", ->
 
-        createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, relUri, "image/", id, (err) ->
-          fs.unlinkSync req.files.image.path
-          return res.send err.status if err?
-          res.send 202, { 'Location': relUri }
+      generateRandomBytes (err, bytes) ->
+        return next err if err?
+        path = bytes
+
+        rackspace.upload {container:'surespotImages', remote: path, local: req.files.image.path}, (err) ->
+          return next err if err?
+          uri = rackspaceCdnBaseUrl + "/#{path}"
+          createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, uri, "image/", id, (err) ->
+            return next err if err?
+            res.send 202, { 'Location': uri }
+
+
+  app.post "/images/:token/:fromversion/:username/:toversion", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
+
+    #see if we have a matching image token
+    rc.hget  "csUrlTokens:#{res.user.username}", req.params.token, (err, url) ->
+      return next err if err?
+      return res.send 404 unless url?
+      #BURN THE token
+      rc.hdel "csUrlTokens:#{res.user.username}", req.params.token, (err, del) ->
+        return next err if err?
+
+          #create a message and send it to chat recipients
+        room = getRoomName req.user.username, req.params.username
+        getNextMessageId room, null, (id) ->
+          return unless id?
+          #todo env var for base location
+          createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, url, "image/", id, (err) ->
+            return res.send err.status if err?
+            res.send 204
 
   oneYear = 31557600000
   staticMiddleware = express["static"](__dirname + "/static", { maxAge: oneYear})
@@ -1038,6 +1059,92 @@ else
       #req.url = "/images/" + req.params.room + "/" + req.params.id
       #authenticate but use static so we can use http caching
       staticMiddleware req, res, next
+
+
+  #get cloud upload temp url
+  app.get "/uploadurltoken", ensureAuthenticated, (req, res, next) ->
+    generateRandomBytes (err, key) ->
+      return next err if err?
+      csSetMetadataKey key, (err) ->
+        return next err if err?
+        createCsTempPutURL req.user.username, key, (err, urlData) ->
+          return next err if err?
+          res.send urlData
+
+
+  csAuthHost = "identity.api.rackspacecloud.com"
+  csAuthUrl = "https://#{csAuthHost}/v1.0"
+
+  csMetaDataKeyHost = "storage.clouddrive.com"
+  csToken = undefined
+
+  csSetMetadataKey = (key, callback) ->
+    ensureCsAuth = (callback) ->
+      if not csToken?
+        csAuth callback
+      else
+        callback()
+
+    ensureCsAuth (err) ->
+      return callback err if err?
+
+      postMetaKey = (callback) ->
+
+
+
+        request.post
+          url: csToken.csStorageUrl
+          headers:
+            'HOST': csMetaDataKeyHost
+            'X-AUTH-TOKEN': csToken.csAuthToken
+            'X-Account-Meta-Temp-Url-Key': key
+          (err, res, body) ->
+            return callback err if err?
+            if res.statusCode isnt 204
+              csAuth (err) ->
+                return callback err if err?
+                postMetaKey callback
+            else
+              callback()
+
+      postMetaKey callback
+
+  createCsTempPutURL = (username, key, callback) ->
+
+    generateRandomBytes (err, token) ->
+      return callback err if err?
+
+      [baseUrl, objectPath] = csToken.csStorageUrl.split '/v1/'
+      method = "PUT"
+      expires = '' + (Date.now() + 300)
+
+      path = encodeURIComponent token
+      objectPath = "/v1/#{objectPath}/surespot/#{path}"
+      hmac_body = "#{method}\n#{expires}\n#{objectPath}"
+      sig =  crypto.createHmac('sha1',key).update(hmac_body).digest("hex")
+      tempPutUrl = "#{baseUrl}#{objectPath}?temp_url_sig=#{sig}&temp_url_expires=#{expires}"
+
+
+      #store in hash of temp urls generated for user
+      rc.hset "csUrlTokens:#{username}", token, csToken.csStorageUrl, (err, added) ->
+        return callback err if err?
+        callback null, {token: token, tempPutUrl: tempPutUrl}
+
+  csAuth = (callback) ->
+    request.get
+      url: csAuthUrl
+      headers:
+        'HOST': csAuthHost
+        'X-AUTH-USER': 'adam2fours'
+        'X-AUTH-KEY': csAuthKey
+      (err, res, body) ->
+        return callback err if err?
+        if res.statusCode is 204
+          csToken = {csStorageUrl: res.headers['x-storage-url'], cdnManagementUrl: res.headers['x-cdn-management-url'], csAuthToken: res.headers['x-auth-token']}
+          callback()
+        else
+          return callback new Error "cloud storage error, statusCode: #{res.statusCode}"
+
 
 
   getConversationIds = (username, callback) ->
@@ -1293,9 +1400,8 @@ else
 
         #inc key version
         kv = parseInt(currkv) + 1
-        crypto.randomBytes 32, (err, buf) ->
+        generateRandomBytes (err, token) ->
           return next err if err?
-          token = buf.toString('base64')
           rc.set "keytoken:#{username}", token, (err, result) ->
             return next err if err?
             res.send {keyversion: kv, token: token}
@@ -1866,6 +1972,10 @@ else
     req.logout()
     res.send 204
 
+  generateRandomBytes = (callback) ->
+    rc.incr "uniqueKeySeed", (err, seed) ->
+      hash = crypto.createHash("sha256").update('' + seed).digest('hex')
+      callback null, hash
 
   comparePassword = (password, dbpassword, callback) ->
     bcrypt.compare password, dbpassword, callback
