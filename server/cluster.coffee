@@ -17,9 +17,14 @@ logger = require("winston")
 async = require 'async'
 _ = require 'underscore'
 querystring = require 'querystring'
+formidable = require 'formidable'
 request = require 'request'
 pkgcloud = require 'pkgcloud'
 utils = require('connect/lib/utils')
+multiparty = require 'multiparty'
+bodyParser = require('connect-multiparty').bodyParser
+Batch = require 'batch'
+
 
 
 MESSAGES_PER_USER = 100
@@ -145,18 +150,24 @@ else
     app.use express.compress()
     #app.use express["static"](__dirname + "/../assets")
     app.use express.cookieParser()
-    app.use express.bodyParser()
-    #app.use express.json()
-    #app.use express.urlencoded()
+    #app.use express.bodyParser()
+    app.use express.json()
+    app.use express.urlencoded()
+
+    #app.use bodyParser()
+
     app.use express.session(
       secret: sessionSecret
       store: sessionStore
     )
     app.use passport.initialize()
     app.use passport.session()
-    app.use expressWinston.logger({
-    transports: transports
-    })
+#    app.use expressWinston.logger({
+#    transports: transports
+#    })
+
+
+
     app.use app.router
 
     app.use (err, req, res, next) ->
@@ -1012,8 +1023,14 @@ else
             return next err if err?
             res.send 204
 
+
+
   app.post "/images/:fromversion/:username/:toversion", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
     #create a message and send it to chat recipients
+
+
+
+
     room = getRoomName req.user.username, req.params.username
     getNextMessageId room, null, (id) ->
       return unless id?
@@ -1022,13 +1039,55 @@ else
         return next err if err?
         path = bytes
 
-        rackspace.upload {container: rackspaceImageContainer, remote: path, local: req.files.image.path}, (err) ->
-          return next err if err?
-          uri = rackspaceCdnBaseUrl + "/#{path}"
-          createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, uri, "image/", id, (err) ->
+        form = new formidable.IncomingForm
+        form.onPart = (part) ->
+          return this.handlePart unless form.filename?
+
+          rackspace.upload {container: rackspaceImageContainer, remote: path, stream: part}, (err) ->
             return next err if err?
-            res.setHeader 'Location', uri
-            res.send 202
+            uri = rackspaceCdnBaseUrl + "/#{path}"
+            createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, uri, "image/", id, (err) ->
+              return next err if err?
+
+
+          part.on 'end', ->
+            res.send 500
+
+        form.parse req
+
+
+
+
+#        batch.push (callback) ->
+#          form.on 'field', (name, value) ->
+#            if name is 'path'
+#              destPath = value
+#              if (destPath[0] isnt '/')
+#                destPath = '/' + destPath
+#              callback null, destPath
+
+
+#        uri = undefined
+#        form.on 'part', (part) ->
+#          return unless part.filename?
+#
+#          rackspace.upload {container: rackspaceImageContainer, remote: path, stream: part}, (err) ->
+#            return next err if err?
+#            uri = rackspaceCdnBaseUrl + "/#{path}"
+#            createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, uri, "image/", id, (err) ->
+#              return next err if err?
+#
+#
+#        form.on 'error',   (err) ->
+#          next new Error err
+#
+#        form.on 'close', ->
+#          res.setHeader 'Location', uri
+#          res.send 202
+
+        #form.parse req
+
+
 
   getConversationIds = (username, callback) ->
     rc.smembers "conversations:" + username, (err, conversations) ->

@@ -30,7 +30,9 @@
     "validator": "~0.4.25",
     "forever": "~0.10.0",
     "pkgcloud": "~0.6.12",
-    "express": "~3.2.0"
+    "express": "~3.2.0",
+    "multiparty": "~2.1.5",
+    "batch": "~0.3.2"
   },
   "subdomain": "2fours.com",
   "scripts": {
