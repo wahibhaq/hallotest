@@ -22,9 +22,9 @@ request = require 'request'
 pkgcloud = require 'pkgcloud'
 utils = require('connect/lib/utils')
 multiparty = require 'multiparty'
-bodyParser = require('connect-multiparty').bodyParser
 Batch = require 'batch'
-
+pause = require 'pause'
+stream = require 'readable-stream'
 
 
 MESSAGES_PER_USER = 100
@@ -86,7 +86,7 @@ else
   rackspaceCdnBaseUrlStage = "https://b8bd94a94939231436ca-1a5c42003e29f66e4992dc05d6c9ef5c.ssl.cf1.rackcdn.com"
   rackspaceCdnBaseUrlProd =  "https://92e4d74ce2d4cdc1c4aa-5c12bd92c930cddf5a9d06a5e7413967.ssl.cf1.rackcdn.com"
 
-  rackspaceCdnBaseUrl = eval("rackspaceCdnBaseUrl#{env}")
+  rackspaceCdnBaseUrl = eval("rackspaceCdnBaseUrl#{env}") + ":443"
   rackspaceImageContainer = "surespotImages#{env}"
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: 'adam2fours', apiKey: rackspaceApiKey}
 
@@ -153,8 +153,6 @@ else
     #app.use express.bodyParser()
     app.use express.json()
     app.use express.urlencoded()
-
-    #app.use bodyParser()
 
     app.use express.session(
       secret: sessionSecret
@@ -267,20 +265,27 @@ else
       next()
 
   validateUsernameExists = (req, res, next) ->
+    #pause and resume events - https://github.com/felixge/node-formidable/issues/213
+    paused = pause req
     userExistsOrDeleted req.params.username, (err, exists) ->
       return next err if err?
       return res.send 404 unless exists
       next()
+      paused.resume()
 
   validateAreFriends = (req, res, next) ->
+    #pause and resume events - https://github.com/felixge/node-formidable/issues/213
+    paused = pause req
     username = req.user.username
     friendname = req.params.username
     isFriend username, friendname, (err, result) ->
       return next err if err?
       if result
         next()
+        paused.resume()
       else
         res.send 403
+        paused.resume()
 
   validateAreFriendsOrDeleted = (req, res, next) ->
     username = req.user.username
@@ -1025,69 +1030,60 @@ else
 
 
 
-  app.post "/images/:fromversion/:username/:toversion", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
-    #create a message and send it to chat recipients
+  app.post "/images/:fromversion/:username/:toversion",  (req, res, next) ->
+    #upload image to rackspace then create a message with the image url and send it to chat recipients
+   #
 
+    uris = []
 
+    form = new formidable.IncomingForm()
+    #form = new multiparty.Form()
+    #form.on 'part', (part) ->
+    form.onPart = (part) ->
+      #return unless part.filename?
+      return form.handlePart part unless part.filename?
+      #paused = pause(req)
+      form.pause()
+      room = getRoomName "A", req.params.username
+      getNextMessageId room, null, (id) ->
+        return new Error 'could not generate messageId' unless id?
+      #id = 501
+        generateRandomBytes 'hex', (err, bytes) ->
+          return next err if err?
 
+          path = bytes
+          logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
-    room = getRoomName req.user.username, req.params.username
-    getNextMessageId room, null, (id) ->
-      return unless id?
+          outStream = new stream.PassThrough()
 
-      generateRandomBytes 'hex', (err, bytes) ->
-        return next err if err?
-        path = bytes
-
-        form = new formidable.IncomingForm
-        form.onPart = (part) ->
-          return this.handlePart unless form.filename?
-
-          rackspace.upload {container: rackspaceImageContainer, remote: path, stream: part}, (err) ->
-            return next err if err?
-            uri = rackspaceCdnBaseUrl + "/#{path}"
-            createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, uri, "image/", id, (err) ->
-              return next err if err?
+          part.on 'data', (buffer) ->
+            form.pause();
+            outStream.write buffer, ->
+              form.resume()
 
 
           part.on 'end', ->
-            res.send 500
-
-        form.parse req
+            outStream.end()
 
 
 
+          rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream}, (err) ->
+            return next err if err?
+            uri = rackspaceCdnBaseUrl + "/#{path}"
+            uris.push uri
+            createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, "image/", id, (err) ->
+              return next err if err?)
 
-#        batch.push (callback) ->
-#          form.on 'field', (name, value) ->
-#            if name is 'path'
-#              destPath = value
-#              if (destPath[0] isnt '/')
-#                destPath = '/' + destPath
-#              callback null, destPath
-
-
-#        uri = undefined
-#        form.on 'part', (part) ->
-#          return unless part.filename?
-#
-#          rackspace.upload {container: rackspaceImageContainer, remote: path, stream: part}, (err) ->
-#            return next err if err?
-#            uri = rackspaceCdnBaseUrl + "/#{path}"
-#            createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, uri, "image/", id, (err) ->
-#              return next err if err?
-#
-#
-#        form.on 'error',   (err) ->
-#          next new Error err
-#
-#        form.on 'close', ->
-#          res.setHeader 'Location', uri
-#          res.send 202
-
-        #form.parse req
+          form.resume()
 
 
+    form.on 'error', (err) ->
+      next new Error err
+
+    form.on 'end', ->
+      res.send uris
+
+    form.parse req
 
   getConversationIds = (username, callback) ->
     rc.smembers "conversations:" + username, (err, conversations) ->
