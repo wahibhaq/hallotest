@@ -268,10 +268,20 @@ else
     #pause and resume events - https://github.com/felixge/node-formidable/issues/213
     paused = pause req
     userExistsOrDeleted req.params.username, (err, exists) ->
-      return next err if err?
-      return res.send 404 unless exists
+      if err?
+        paused.resume()
+        return next err
+
+
+      if not exists
+        paused.resume()
+        return res.send 404
+
+
       next()
       paused.resume()
+
+
 
   validateAreFriends = (req, res, next) ->
     #pause and resume events - https://github.com/felixge/node-formidable/issues/213
@@ -279,13 +289,18 @@ else
     username = req.user.username
     friendname = req.params.username
     isFriend username, friendname, (err, result) ->
-      return next err if err?
+      if err?
+        paused.resume()
+        return next err
+
       if result
+
         next()
         paused.resume()
       else
-        res.send 403
         paused.resume()
+        res.send 403
+
 
   validateAreFriendsOrDeleted = (req, res, next) ->
     username = req.user.username
@@ -1030,60 +1045,63 @@ else
 
 
 
-  app.post "/images/:fromversion/:username/:toversion",  (req, res, next) ->
+  app.post "/images/:fromversion/:username/:toversion", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
     #upload image to rackspace then create a message with the image url and send it to chat recipients
-   #
-
-    uris = []
+    #uris = []
 
     form = new formidable.IncomingForm()
-    #form = new multiparty.Form()
-    #form.on 'part', (part) ->
     form.onPart = (part) ->
-      #return unless part.filename?
+
       return form.handlePart part unless part.filename?
-      #paused = pause(req)
-      form.pause()
-      room = getRoomName "A", req.params.username
+      outStream = new stream.PassThrough()
+
+      part.on 'data', (buffer) ->
+        form.pause()
+        logger.debug 'received part data'
+        outStream.write buffer, ->
+          form.resume()
+
+
+      part.on 'end', ->
+        form.pause()
+        logger.debug 'received part end'
+        outStream.end ->
+          form.resume()
+
+      room = getRoomName req.user.username, req.params.username
       getNextMessageId room, null, (id) ->
-        return new Error 'could not generate messageId' unless id?
-      #id = 501
+        #todo send message error on socket
+        return logger.error 'could not generate messageId' unless id?
+
         generateRandomBytes 'hex', (err, bytes) ->
-          return next err if err?
+          return logger.error err if err?
 
           path = bytes
           logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
-          outStream = new stream.PassThrough()
-
-          part.on 'data', (buffer) ->
-            form.pause();
-            outStream.write buffer, ->
-              form.resume()
-
-
-          part.on 'end', ->
-            outStream.end()
-
-
-
-          rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream}, (err) ->
-            return next err if err?
+          outStream.pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
+            #todo send messageerror on socket
+            return logger.error err if err?
+            logger.debug 'uploaded completed'
             uri = rackspaceCdnBaseUrl + "/#{path}"
-            uris.push uri
-            createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, "image/", id, (err) ->
-              return next err if err?)
+            #uris.push uri
+            createAndSendMessage(req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, "image/", id, (err) ->
+              return logger.error err if err?)
 
-          form.resume()
+          logger.debug 'stream piped'
+          #paused.resume()
 
 
     form.on 'error', (err) ->
       next new Error err
 
     form.on 'end', ->
-      res.send uris
+      logger.debug 'form end'
+      res.send 204
 
     form.parse req
+
+
 
   getConversationIds = (username, callback) ->
     rc.smembers "conversations:" + username, (err, conversations) ->
