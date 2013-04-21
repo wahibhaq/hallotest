@@ -161,12 +161,12 @@ else
     app.use expressWinston.logger({
     transports: transports
     })
-
     app.use app.router
+    app.use expressWinston.errorLogger({
+    transports: transports
+    })
 
     app.use (err, req, res, next) ->
-      exceptionMeta = logger.exception.getAllInfo(err);
-      logger.log 'error', "middlewareError", exceptionMeta
       res.send err.status or 500
 
   oneYear = 31536000000
@@ -1068,7 +1068,6 @@ else
 
     form = new formidable.IncomingForm()
     form.onPart = (part) ->
-
       return form.handlePart part unless part.filename?
       filenames[part.filename] = "uploading"
       iv = part.filename
