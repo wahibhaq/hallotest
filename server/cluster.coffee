@@ -78,7 +78,7 @@ else
   client = undefined
   app = undefined
   ssloptions = undefined
-  connectionCount = 0
+
   googleApiKey = 'AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ'
   rackspaceApiKey = "6c20021990a1fd28f0afa8f0c793599a"
   rackspaceCdnBaseUrlLocal = "https://19be2df346b051f6d1c9-bc27bdc385cad6381ae24d242305422a.ssl.cf1.rackcdn.com"
@@ -138,7 +138,6 @@ else
   # openssl dgst -sha256 -verify key -signature sig.bin data
 
 
-
   app = express()
   app.configure ->
     sessionStore = new RedisStore({db: database})
@@ -149,9 +148,7 @@ else
     createRedisClient ((err, c) -> client = c), database
 
     app.use express.compress()
-    #app.use express["static"](__dirname + "/../assets")
     app.use express.cookieParser()
-    #app.use express.bodyParser()
     app.use express.json()
     app.use express.urlencoded()
 
@@ -161,11 +158,9 @@ else
     )
     app.use passport.initialize()
     app.use passport.session()
-#    app.use expressWinston.logger({
-#    transports: transports
-#    })
-
-
+    app.use expressWinston.logger({
+    transports: transports
+    })
 
     app.use app.router
 
@@ -832,7 +827,6 @@ else
 
   sio.on "connection", (socket) ->
     user = socket.handshake.session.passport.user
-    logger.info 'connections: ' + connectionCount++
 
     #join user's room
     logger.debug "user #{user} joining socket.io room"
