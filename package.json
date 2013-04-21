@@ -7,8 +7,6 @@
     "jade": "~0.27.7",
     "connect-redis": "~1.4.5",
     "bcrypt": "~0.7.3",
-    "passport": "~0.1.15",
-    "passport-local": "~0.1.6",
     "redis": "~0.7.3",
     "socket.io": "~0.9.13",
     "chai": "~1.1.1",
@@ -30,7 +28,11 @@
     "validator": "~0.4.25",
     "forever": "~0.10.0",
     "pkgcloud": "~0.6.12",
-    "express": "~3.2.0"
+    "express": "~3.2.0",
+    "multiparty": "~2.1.5",
+    "batch": "~0.3.2",
+    "cloudfiles": "~0.3.4",
+    "throttle": "~1.0.3"
   },
   "subdomain": "2fours.com",
   "scripts": {

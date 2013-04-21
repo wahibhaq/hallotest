@@ -17,9 +17,15 @@ logger = require("winston")
 async = require 'async'
 _ = require 'underscore'
 querystring = require 'querystring'
+formidable = require 'formidable'
 request = require 'request'
-pkgcloud = require 'pkgcloud'
+#pkgcloud = require 'pkgcloud'
 utils = require('connect/lib/utils')
+#multiparty = require 'multiparty'
+#Batch = require 'batch'
+pause = require 'pause'
+stream = require 'readable-stream'
+cloudfiles = require 'cloudfiles'
 
 
 MESSAGES_PER_USER = 100
@@ -81,9 +87,11 @@ else
   rackspaceCdnBaseUrlStage = "https://b8bd94a94939231436ca-1a5c42003e29f66e4992dc05d6c9ef5c.ssl.cf1.rackcdn.com"
   rackspaceCdnBaseUrlProd =  "https://92e4d74ce2d4cdc1c4aa-5c12bd92c930cddf5a9d06a5e7413967.ssl.cf1.rackcdn.com"
 
-  rackspaceCdnBaseUrl = eval("rackspaceCdnBaseUrl#{env}")
+  rackspaceCdnBaseUrl = eval("rackspaceCdnBaseUrl#{env}") + ":443"
   rackspaceImageContainer = "surespotImages#{env}"
-  rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: 'adam2fours', apiKey: rackspaceApiKey}
+  #rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: 'adam2fours', apiKey: rackspaceApiKey}
+  cfClient = cloudfiles.createClient {auth: { username: 'adam2fours', apiKey: rackspaceApiKey}}
+
 
 
   createRedisClient = (callback, database, port, hostname, password) ->
@@ -145,18 +153,22 @@ else
     app.use express.compress()
     #app.use express["static"](__dirname + "/../assets")
     app.use express.cookieParser()
-    app.use express.bodyParser()
-    #app.use express.json()
-    #app.use express.urlencoded()
+    #app.use express.bodyParser()
+    app.use express.json()
+    app.use express.urlencoded()
+
     app.use express.session(
       secret: sessionSecret
       store: sessionStore
     )
     app.use passport.initialize()
     app.use passport.session()
-    app.use expressWinston.logger({
-    transports: transports
-    })
+#    app.use expressWinston.logger({
+#    transports: transports
+#    })
+
+
+
     app.use app.router
 
     app.use (err, req, res, next) ->
@@ -256,20 +268,42 @@ else
       next()
 
   validateUsernameExists = (req, res, next) ->
+    #pause and resume events - https://github.com/felixge/node-formidable/issues/213
+    paused = pause req
     userExistsOrDeleted req.params.username, (err, exists) ->
-      return next err if err?
-      return res.send 404 unless exists
+      if err?
+        paused.resume()
+        return next err
+
+
+      if not exists
+        paused.resume()
+        return res.send 404
+
+
       next()
+      paused.resume()
+
+
 
   validateAreFriends = (req, res, next) ->
+    #pause and resume events - https://github.com/felixge/node-formidable/issues/213
+    paused = pause req
     username = req.user.username
     friendname = req.params.username
     isFriend username, friendname, (err, result) ->
-      return next err if err?
+      if err?
+        paused.resume()
+        return next err
+
       if result
+
         next()
+        paused.resume()
       else
+        paused.resume()
         res.send 403
+
 
   validateAreFriendsOrDeleted = (req, res, next) ->
     username = req.user.username
@@ -926,10 +960,21 @@ else
     path = splits[splits.length - 1]
     logger.debug "removing file from cloud: #{path}"
 
+
+    retry = 0
     removeFile = (path) ->
-      rackspace.removeFile rackspaceImageContainer, path, (err) ->
-        return logger.error "could not remove file from cloud: #{path}, error: #{err}" if err?
-        logger.debug "removed file from cloud: #{path}"
+      ensureCfClientAuthorized ->
+        cfClient.destroyFile rackspaceImageContainer, path, (err) ->
+          if err?
+            #try to auth once
+            if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
+              retry++
+              removeFile path
+            else
+              logger.error "could not remove file from cloud: #{path}, error: #{err}"
+          else
+            logger.debug "removed file from cloud: #{path}"
+
     removeFile path
 
 
@@ -1012,23 +1057,91 @@ else
             return next err if err?
             res.send 204
 
+  ensureCfClientAuthorized = (callback) ->
+    if not cfClient.authorized
+      cfClient.setAuth ->
+        callback()
+    else
+      callback()
+
   app.post "/images/:fromversion/:username/:toversion", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
-    #create a message and send it to chat recipients
-    room = getRoomName req.user.username, req.params.username
-    getNextMessageId room, null, (id) ->
-      return unless id?
+    #upload image to rackspace then create a message with the image url and send it to chat recipients
+    #uris = []
 
-      generateRandomBytes 'hex', (err, bytes) ->
-        return next err if err?
-        path = bytes
+    form = new formidable.IncomingForm()
+    form.onPart = (part) ->
 
-        rackspace.upload {container: rackspaceImageContainer, remote: path, local: req.files.image.path}, (err) ->
-          return next err if err?
-          uri = rackspaceCdnBaseUrl + "/#{path}"
-          createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, req.files.image.name, uri, "image/", id, (err) ->
-            return next err if err?
-            res.setHeader 'Location', uri
-            res.send 202
+      return form.handlePart part unless part.filename?
+      outStream = new stream.PassThrough()
+
+      part.on 'data', (buffer) ->
+        form.pause()
+        #logger.debug 'received part data'
+        outStream.write buffer, ->
+          form.resume()
+
+
+      part.on 'end', ->
+        form.pause()
+        #logger.debug 'received part end'
+        outStream.end ->
+          form.resume()
+
+      room = getRoomName req.user.username, req.params.username
+      getNextMessageId room, null, (id) ->
+        #todo send message error on socket
+        return logger.error 'could not generate messageId' unless id?
+
+        generateRandomBytes 'hex', (err, bytes) ->
+          return logger.error err if err?
+
+          path = bytes
+          logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
+
+          retry = 0
+          postFile = (callback) ->
+            ensureCfClientAuthorized ->
+              cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
+                #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
+                #todo send messageerror on socket
+                if err?
+                  #try to auth once
+                  if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
+                    retry++
+                    postFile callback
+                  else
+                    callback err
+
+                else
+                  callback()
+
+
+
+          postFile (err) ->
+            if err?
+              console.log err
+              form._error err
+            else
+              #logger.debug 'uploaded completed'
+              uri = rackspaceCdnBaseUrl + "/#{path}"
+              #uris.push uri
+              createAndSendMessage(req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, "image/", id, (err) ->
+                return logger.error err if err?)
+
+          #logger.debug 'stream piped'
+          #paused.resume()
+
+
+    form.on 'error', (err) ->
+      next new Error err
+
+    form.on 'end', ->
+      #logger.debug 'form end'
+      res.send 204
+
+    form.parse req
+
+
 
   getConversationIds = (username, callback) ->
     rc.smembers "conversations:" + username, (err, conversations) ->
