@@ -1080,7 +1080,6 @@ else
         outStream.write buffer, ->
           form.resume()
 
-
       part.on 'end', ->
         form.pause()
         #logger.debug 'received part end'
@@ -1090,10 +1089,10 @@ else
       room = getRoomName req.user.username, req.params.username
       getNextMessageId room, null, (id) ->
         #todo send message error on socket
-        return logger.error 'could not generate messageId' unless id?
+        return form._error new Error 'could not generate messageId' unless id?
 
         generateRandomBytes 'hex', (err, bytes) ->
-          return logger.error err if err?
+          return form._error err if err?
 
           path = bytes
           logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
@@ -1126,18 +1125,20 @@ else
               uri = rackspaceCdnBaseUrl + "/#{path}"
               #uris.push uri
               createAndSendMessage(req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, "image/", id, (err) ->
-                return logger.error err if err?)
+                return form._error err if err?
+
+                #for now we're only supporting 1 picture upload at a time
+                res.send uri)
 
           #logger.debug 'stream piped'
           #paused.resume()
 
-
     form.on 'error', (err) ->
       next new Error err
 
-    form.on 'end', ->
+    #form.on 'end', ->
       #logger.debug 'form end'
-      res.send 204
+
 
     form.parse req
 
