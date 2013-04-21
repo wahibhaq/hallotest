@@ -19,12 +19,13 @@ _ = require 'underscore'
 querystring = require 'querystring'
 formidable = require 'formidable'
 request = require 'request'
-pkgcloud = require 'pkgcloud'
+#pkgcloud = require 'pkgcloud'
 utils = require('connect/lib/utils')
-multiparty = require 'multiparty'
-Batch = require 'batch'
+#multiparty = require 'multiparty'
+#Batch = require 'batch'
 pause = require 'pause'
 stream = require 'readable-stream'
+cloudfiles = require 'cloudfiles'
 
 
 MESSAGES_PER_USER = 100
@@ -88,7 +89,9 @@ else
 
   rackspaceCdnBaseUrl = eval("rackspaceCdnBaseUrl#{env}") + ":443"
   rackspaceImageContainer = "surespotImages#{env}"
-  rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: 'adam2fours', apiKey: rackspaceApiKey}
+  #rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: 'adam2fours', apiKey: rackspaceApiKey}
+  cfClient = cloudfiles.createClient {auth: { username: 'adam2fours', apiKey: rackspaceApiKey}}
+
 
 
   createRedisClient = (callback, database, port, hostname, password) ->
@@ -957,10 +960,21 @@ else
     path = splits[splits.length - 1]
     logger.debug "removing file from cloud: #{path}"
 
+
+    retry = 0
     removeFile = (path) ->
-      rackspace.removeFile rackspaceImageContainer, path, (err) ->
-        return logger.error "could not remove file from cloud: #{path}, error: #{err}" if err?
-        logger.debug "removed file from cloud: #{path}"
+      ensureCfClientAuthorized ->
+        cfClient.destroyFile rackspaceImageContainer, path, (err) ->
+          if err?
+            #try to auth once
+            if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
+              retry++
+              removeFile path
+            else
+              logger.error "could not remove file from cloud: #{path}, error: #{err}"
+          else
+            logger.debug "removed file from cloud: #{path}"
+
     removeFile path
 
 
@@ -1043,7 +1057,12 @@ else
             return next err if err?
             res.send 204
 
-
+  ensureCfClientAuthorized = (callback) ->
+    if not cfClient.authorized
+      cfClient.setAuth ->
+        callback()
+    else
+      callback()
 
   app.post "/images/:fromversion/:username/:toversion", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
     #upload image to rackspace then create a message with the image url and send it to chat recipients
@@ -1057,14 +1076,14 @@ else
 
       part.on 'data', (buffer) ->
         form.pause()
-        logger.debug 'received part data'
+        #logger.debug 'received part data'
         outStream.write buffer, ->
           form.resume()
 
 
       part.on 'end', ->
         form.pause()
-        logger.debug 'received part end'
+        #logger.debug 'received part end'
         outStream.end ->
           form.resume()
 
@@ -1079,16 +1098,37 @@ else
           path = bytes
           logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
-          outStream.pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
-            #todo send messageerror on socket
-            return logger.error err if err?
-            logger.debug 'uploaded completed'
-            uri = rackspaceCdnBaseUrl + "/#{path}"
-            #uris.push uri
-            createAndSendMessage(req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, "image/", id, (err) ->
-              return logger.error err if err?)
+          retry = 0
+          postFile = (callback) ->
+            ensureCfClientAuthorized ->
+              cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
+                #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
+                #todo send messageerror on socket
+                if err?
+                  #try to auth once
+                  if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
+                    retry++
+                    postFile callback
+                  else
+                    callback err
 
-          logger.debug 'stream piped'
+                else
+                  callback()
+
+
+
+          postFile (err) ->
+            if err?
+              console.log err
+              form._error err
+            else
+              #logger.debug 'uploaded completed'
+              uri = rackspaceCdnBaseUrl + "/#{path}"
+              #uris.push uri
+              createAndSendMessage(req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, "image/", id, (err) ->
+                return logger.error err if err?)
+
+          #logger.debug 'stream piped'
           #paused.resume()
 
 
@@ -1096,7 +1136,7 @@ else
       next new Error err
 
     form.on 'end', ->
-      logger.debug 'form end'
+      #logger.debug 'form end'
       res.send 204
 
     form.parse req
