@@ -578,9 +578,14 @@ else
     friend = {}
     friend.name = name
     friend.flags = flags
-    friend.imageUrl = imageUrl
-    friend.imageVersion = imageVersion
-    friend.imageIv = imageIv
+    if imageUrl?
+      friend.imageUrl = imageUrl
+
+    if imageVersion?
+      friend.imageVersion = imageVersion
+
+    if imageIv?
+      friend.imageIv = imageIv
     return friend
 
 
