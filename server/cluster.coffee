@@ -1720,8 +1720,8 @@ else
 
   deleteInvites = (username, friendname, callback) ->
     multi = rc.multi()
-    multi.srem "invited:#{friendname}", username
     multi.srem "invites:#{username}", friendname
+    multi.srem "invited:#{friendname}", username
     multi.exec (err, results) ->
       callback new Error("[friend] srem failed for invites:#{username}:#{friendname}") if err?
       callback null
@@ -1889,53 +1889,89 @@ else
             return next err if err?
             return res.send 404 unless rdel is 1
 
-            #copy data from user's list of friends to list of deleted users friends
-            rc.smembers "friends:#{username}", (err, friends) ->
+            multi = rc.multi()
+
+            #delete invites
+            multi.del "invites:#{username}"
+            multi.del "invited:#{username}"
+            #tell users that invited me that i'm deleted
+            #get users that invited us
+            rc.smembers "invites:#{username}", (err, invites) ->
               return next err if err?
+              #delete their invites
+              async.each(
+                invites,
+                (name, callback) ->
+                  multi.srem "invited:#{name}", username
 
-
-              addDeletedFriend = (friends, callback) ->
-                if friends.length > 0
-                  rc.sadd "deleted:#{username}", friends, (err, nadded) ->
-                    return next err if err?
+                  #tell them we've been deleted
+                  createAndSendUserControlMessage name, "delete", username, username, (err) ->
+                    #return callback err if err?
                     callback()
-                else
-                  callback()
-
-              addDeletedFriend friends, (err) ->
-                return next err if err?
-                multi = rc.multi()
-                #remove them from the global set of users
-                multi.srem "users", username
-
-                #add them to the global set of deleted users
-                multi.sadd "deleted", username
-
-                multi.del "users:#{username}"
-
-                #add user to each friend's set of deleted users
-                async.each(
-                  friends,
-                  (friend, callback) ->
-                    deleteUser username, friend, multi, (err) ->
-                      return callback err if err?
-
-                      #tell them we've been deleted
-                      createAndSendUserControlMessage friend, "delete", username, username, (err) ->
-                        return callback err if err?
-                        callback()
-                  (err) ->
+                (err) ->
+                  return next err if err?
+                  #delete my invites to them
+                  rc.smembers "invited:#{username}", (err, invited) ->
                     return next err if err?
 
-                    #if we don't have any friends aww, just blow everything away
-                    if friends.length is 0
-                      deleteRemainingIdentityData multi, username
+                    async.each(
+                      invited,
+                      (name, callback) ->
+                        multi.srem "invites:#{name}", username
 
-                    multi.exec (err, replies) ->
-                      return next err if err?
-                      createAndSendUserControlMessage username, "revoke", username, parseInt(kv) + 1, (err) ->
+                        #tell them we've been deleted
+                        createAndSendUserControlMessage name, "delete", username, username, (err) ->
+                          #return callback err if err?
+                          callback()
+                      (err) ->
                         return next err if err?
-                        res.send 204)
+
+                        #copy data from user's list of friends to list of deleted users friends
+                        rc.smembers "friends:#{username}", (err, friends) ->
+                          return next err if err?
+
+                          addDeletedFriend = (friends, callback) ->
+                            if friends.length > 0
+                              rc.sadd "deleted:#{username}", friends, (err, nadded) ->
+                                return next err if err?
+                                callback()
+                            else
+                              callback()
+
+                          addDeletedFriend friends, (err) ->
+                            return next err if err?
+
+                            #remove me from the global set of users
+                            multi.srem "users", username
+
+                            #add me to the global set of deleted users
+                            multi.sadd "deleted", username
+
+                            multi.del "users:#{username}"
+
+                            #add user to each friend's set of deleted users
+                            async.each(
+                              friends,
+                              (friend, callback) ->
+                                deleteUser username, friend, multi, (err) ->
+                                  return callback err if err?
+
+                                  #tell them we've been deleted
+                                  createAndSendUserControlMessage friend, "delete", username, username, (err) ->
+                                    return callback err if err?
+                                    callback()
+                              (err) ->
+                                return next err if err?
+
+                                #if we don't have any friends aww, just blow everything away
+                                if friends.length is 0
+                                  deleteRemainingIdentityData multi, username
+
+                                multi.exec (err, replies) ->
+                                  return next err if err?
+                                  createAndSendUserControlMessage username, "revoke", username, parseInt(kv) + 1, (err) ->
+                                    return next err if err?
+                                    res.send 204)))
 
 
   app.put "/users/password", (req, res, next) ->

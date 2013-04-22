@@ -47,6 +47,8 @@ cleanup = (done) ->
   multi.del("messages:test0:test2")
   multi.del("control:message:test0:test1")
   multi.del("control:message:test0:test2")
+  multi.del("messages:test1")
+  multi.del("messages:test2")
 
 
   multi.exec (err, blah) ->
@@ -482,5 +484,5 @@ describe "delete identity tests", () ->
     clients[0].disconnect()
     clients[1].disconnect()
     clients[2].disconnect()
-    #cleanup done
-    done()
+    cleanup done
+    #done()
