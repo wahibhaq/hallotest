@@ -1672,8 +1672,12 @@ else
 
     logger.debug "#{username} inviting #{friendname} to be friends"
     #check if friendname has blocked username
-    rc.sismember "blocked:#{friendname}", username, (err, blocked) ->
-      return res.send 404 if blocked
+    multi = rc.multi()
+    multi.sismember "blocked:#{friendname}", username
+    multi.sismember "users:deleted:#{username}", friendname
+    multi.exec (err, results) ->
+      return next err if err?
+      return res.send 404 if 1 in results
 
       #see if they are already friends
       isFriend username, friendname, (err, result) ->
@@ -1824,10 +1828,11 @@ else
 
               friend = friends.filter (friend) -> friend.name is name
 
-              if not friend?
-                friends.push new Friend name, 1
+              if friend.length is 1
+                friend[0].flags += 1
               else
-                friend.name += 1
+                friends.push new Friend name, 1
+
 
 
             rc.get "control:user:#{username}:id", (err, id) ->

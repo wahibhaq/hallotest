@@ -187,8 +187,8 @@ describe "external invite tests", () ->
             done err
           else
             res.statusCode.should.equal 200
-            messageData = JSON.parse(body)
-            messageData.friends['test1'].should.equal 32
+            friendData = JSON.parse(body)
+            friendData.friends[0].flags.should.equal 32
             done()
 
     it 'should have created an invite user control message', (done) ->
@@ -258,7 +258,7 @@ describe "external invite tests", () ->
           else
             res.statusCode.should.equal 200
             messageData = JSON.parse(body)
-            messageData.friends['test3'].should.equal 32
+            messageData.friends[0].flags.should.equal 32
             done()
 
     it 'should have created an invite user control message', (done) ->

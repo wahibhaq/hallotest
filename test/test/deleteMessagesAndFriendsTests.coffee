@@ -376,8 +376,9 @@ describe "delete messages and friends test", () ->
           else
             res.statusCode.should.equal 200
             data = JSON.parse(body)
-            flags = parseInt(data.friends["test0"])
-            flags & 1.should.equal 1
+            flags = parseInt(data.friends[0].flags)
+            masked = flags & 1
+            masked.should.equal 1
             done()
 
 
@@ -398,7 +399,7 @@ describe "delete messages and friends test", () ->
                 else
                   res.statusCode.should.equal 200
                   data = JSON.parse(body)
-                  flags = parseInt(data.friends["test0"])
+                  flags = parseInt(data.friends[0].flags)
                   (flags & 1).should.equal 1
                   done()
 
