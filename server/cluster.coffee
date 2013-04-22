@@ -2028,6 +2028,13 @@ else
         #delete the conversation with this user from the set of my conversations
         multi.srem "conversations:#{username}", room
 
+
+        getFriendImageData username, theirUsername, (err, friend) ->
+          if friend.imageUrl?
+            deleteImage friend.imageUrl
+
+        multi.hdel "friendImages:#{username}", "#{theirUsername}:imageUrl", "#{theirUsername}:imageVersion", "#{theirUsername}:imageIv"
+
         #todo delete related user control messages
 
         #if i've been deleted by them this will be populated with their username
