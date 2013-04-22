@@ -18,7 +18,7 @@ async = require 'async'
 _ = require 'underscore'
 querystring = require 'querystring'
 formidable = require 'formidable'
-request = require 'request'
+#request = require 'request'
 #pkgcloud = require 'pkgcloud'
 utils = require('connect/lib/utils')
 pause = require 'pause'
@@ -1060,16 +1060,16 @@ else
     #upload image to rackspace then create a message with the image url and send it to chat recipients
     #uris = []
 
-    filenames = {}
-    complete = false
-    formEnded = false
-    resSent = false
+#    filenames = {}
+ #   complete = false
+  #  formEnded = false
+   # resSent = false
     username = req.user.username
 
     form = new formidable.IncomingForm()
     form.onPart = (part) ->
       return form.handlePart part unless part.filename?
-      filenames[part.filename] = "uploading"
+    #  filenames[part.filename] = "uploading"
       iv = part.filename
 
       outStream = new stream.PassThrough()
@@ -1093,13 +1093,14 @@ else
         if not id?
           logger.error new Error 'could not generate messageId'
           sio.sockets.to(username).emit "messageError", new MessageError(iv, 'could not generate message id')
-          return delete filenames[part.filename]
+          return# delete filenames[part.filename]
+
 
         generateRandomBytes 'hex', (err, bytes) ->
           if err?
             logger.error err
             sio.sockets.to(username).emit "messageError", new MessageError(iv, 'could not generate unique filename')
-            return delete filenames[part.filename]
+            return #delete filenames[part.filename]
 
           path = bytes
           logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
@@ -1127,7 +1128,7 @@ else
             if err?
               logger.error err
               sio.sockets.to(username).emit "messageError", new MessageError(iv, 'error uploading file')
-              return delete filenames[part.filename]
+              return #delete filenames[part.filename]
 
             logger.debug 'uploaded completed'
             uri = rackspaceCdnBaseUrl + "/#{path}"
@@ -1136,19 +1137,19 @@ else
               logger.error "error sending message on socket: #{err}" if err?
               #return delete filenames[part.filename]
 
-              filenames[part.filename] = uri
+              #filenames[part.filename] = uri
 
-              allCompleted = true
-              for filename in filenames
-                if filenames[filename] is 'uploading'
-                  allCompleted = false
-                  break
-
-              complete = allCompleted
-              if complete and formEnded and not resSent
-                logger.debug 'uploads complete'
-                res.send filenames
-                resSent = true
+#              allCompleted = true
+#              for filename in filenames
+#                if filenames[filename] is 'uploading'
+#                  allCompleted = false
+#                  break
+#
+#              complete = allCompleted
+#              if complete and formEnded and not resSent
+#                logger.debug 'uploads complete'
+#                res.send filenames
+#                resSent = true
             )
 
         #logger.debug 'stream piped'
@@ -1160,20 +1161,20 @@ else
 
     form.on 'end', ->
       logger.debug 'form end'
-      formEnded = true
+      #formEnded = true
 
-      allCompleted = true
-      for filename in filenames
-        if filenames[filename] is 'uploading'
-          allCompleted = false
-          break
-
-      complete = allCompleted
-      if complete and not resSent
-
-        logger.debug 'uploads complete'
-        res.send filenames
-        resSent = true
+#      allCompleted = true
+#      for filename in filenames
+#        if filenames[filename] is 'uploading'
+#          allCompleted = false
+#          break
+#
+#      complete = allCompleted
+#      if complete and not resSent
+#
+#        logger.debug 'uploads complete'
+      res.send 200
+        #resSent = true
 
 
 

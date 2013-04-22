@@ -439,25 +439,25 @@ describe "surespot server", () ->
           if err
             done err
           else
-            res.statusCode.should.equal 202
-            location = res.headers["location"]
-            should.exists location
+            res.statusCode.should.equal 200
+            #location = body
+            #should.exists location
             done()
 
         form = r.form()
         form.append "image", fs.createReadStream "test/testImage"
     #todo set filename explicitly
 
-    it "should return the same image when location url requested", (done) ->
-      http.get
-        url: location
-        (err, res, body) ->
-          if err
-            done err
-          else
-            res.statusCode.should.equal 200
-            res.body.should.equal "madman\n"
-            done()
+#    it "should return the same image when location url requested", (done) ->
+#      http.get
+#        url: location
+#        (err, res, body) ->
+#          if err
+#            done err
+#          else
+#            res.statusCode.should.equal 200
+#            res.body.should.equal "madman\n"
+#            done()
 
   describe "uploading an image to a spot we don't belong to", ->
     it "should not be allowed", (done) ->
