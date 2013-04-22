@@ -1092,19 +1092,16 @@ else
         outStream.write buffer, ->
           form.resume()
 
-
       part.on 'end', ->
         form.pause()
         #logger.debug 'received part end'
         outStream.end ->
           form.resume()
 
-
-
       generateRandomBytes 'hex', (err, bytes) ->
         return next err if err?
 
-        path = bytes + ".jpg"
+        path = bytes
         logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
         retry = 0
@@ -1132,9 +1129,15 @@ else
           logger.debug 'uploaded completed'
           url = rackspaceCdnBaseUrl + "/#{path}"
 
-          rc.hmset "friendImages:#{username}", "#{otherUser}:imageUrl", url, "#{otherUser}:imageVersion", version, "#{otherUser}:imageIv", iv, (err, status) ->
+          getFriendImageData username, otherUser, (err, friend) ->
             return next err if err?
-            res.send url
+
+            if friend.imageUrl?
+              deleteImage friend.imageUrl
+
+            rc.hmset "friendImages:#{username}", "#{otherUser}:imageUrl", url, "#{otherUser}:imageVersion", version, "#{otherUser}:imageIv", iv, (err, status) ->
+              return next err if err?
+              res.send url
 
     form.on 'error', (err) ->
       next new Error err
@@ -1784,6 +1787,12 @@ else
           else return next new Error 'invalid action'
 
 
+  getFriendImageData = (username, friendname, callback) ->
+    rc.hmget "friendImages:#{username}", "#{friendname}:imageUrl", "#{friendname}:imageVersion", "#{friendname}:imageIv", (err, friendImageData) ->
+      return callback err if err?
+      callback null, new Friend friendname, 0, friendImageData[0], friendImageData[1], friendImageData[2]
+
+
   getFriends = (req, res, next) ->
     username = req.user.username
     #get users we're friends with
@@ -1794,8 +1803,9 @@ else
 
       _.each rfriends, (name) ->
         #todo use bulk operation
-        rc.hmget "friendImages:#{username}", "#{name}:imageUrl", "#{name}:imageVersion", "#{name}:imageIv", (err, friendImageData) ->
-          friends.push new Friend name, 0, friendImageData[0], friendImageData[1], friendImageData[2]
+        getFriendImageData username, name, (err, friend) ->
+          return next err if err?
+          friends.push friend
 
       #get users that invited us
       rc.smembers "invites:#{username}", (err, invites) ->
