@@ -574,6 +574,16 @@ else
     messageError.status = status
     return messageError
 
+  Friend = (name, flags, imageUrl, imageVersion, imageIv) ->
+    friend = {}
+    friend.name = name
+    friend.flags = flags
+    friend.imageUrl = imageUrl
+    friend.imageVersion = imageVersion
+    friend.imageIv = imageIv
+    return friend
+
+
   createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, callback) ->
     logger.debug "new message"
     time = Date.now()
@@ -1055,6 +1065,81 @@ else
         callback()
     else
       callback()
+
+
+  app.post "/images/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
+
+    username = req.user.username
+    otherUser = req.params.username
+    version = req.params.version
+
+    form = new formidable.IncomingForm()
+    form.onPart = (part) ->
+      return form.handlePart part unless part.filename?
+      #  filenames[part.filename] = "uploading"
+      iv = part.filename
+
+      outStream = new stream.PassThrough()
+
+      part.on 'data', (buffer) ->
+        form.pause()
+        #logger.debug 'received part data'
+        outStream.write buffer, ->
+          form.resume()
+
+
+      part.on 'end', ->
+        form.pause()
+        #logger.debug 'received part end'
+        outStream.end ->
+          form.resume()
+
+
+
+      generateRandomBytes 'hex', (err, bytes) ->
+        return next err if err?
+
+        path = bytes + ".jpg"
+        logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
+
+        retry = 0
+        postFile = (callback) ->
+          ensureCfClientAuthorized ->
+            cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
+              #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
+              #todo send messageerror on socket
+              if err?
+                #try to auth once
+                if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
+                  retry++
+                  postFile callback
+                else
+                  callback err
+
+              else
+                callback()
+
+
+
+        postFile (err) ->
+          return next err if err?
+
+          logger.debug 'uploaded completed'
+          url = rackspaceCdnBaseUrl + "/#{path}"
+
+          rc.hmset "friendImages:#{username}", "#{otherUser}:imageUrl", url, "#{otherUser}:imageVersion", version, "#{otherUser}:imageIv", iv, (err, status) ->
+            return next err if err?
+            res.send url
+
+    form.on 'error', (err) ->
+      next new Error err
+
+#    form.on 'end', ->
+#      logger.debug 'form end'
+#      res.send 200
+
+    form.parse req
+
 
   app.post "/images/:fromversion/:username/:toversion", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
     #upload image to rackspace then create a message with the image url and send it to chat recipients
@@ -1699,29 +1784,36 @@ else
     #get users we're friends with
     rc.smembers "friends:#{username}", (err, rfriends) ->
       return next err if err?
-      friends = {}
+      friends = []
       return res.send {} unless rfriends?
 
-      _.each rfriends, (name) -> friends[name] = 0
+      _.each rfriends, (name) ->
+        #todo use bulk operation
+        rc.hmget "friendImages:#{username}", "#{name}:imageUrl", "#{name}:imageVersion", "#{name}:imageIv", (err, friendImageData) ->
+          friends.push new Friend name, 0, friendImageData[0], friendImageData[1], friendImageData[2]
 
       #get users that invited us
       rc.smembers "invites:#{username}", (err, invites) ->
         return next err if err?
-        _.each invites, (name) -> friends[name] = 32
+        _.each invites, (name) -> friends.push new Friend name, 32
 
         #get users that we invited
         rc.smembers "invited:#{username}", (err, invited) ->
           return next err if err?
-          _.each invited, (name) -> friends[name] = 2
+          _.each invited, (name) -> friends.push new Friend name, 2
 
           #get users that deleted us that we haven't deleted
           rc.smembers "users:deleted:#{username}", (err, deleted) ->
             return next err if err?
             _.each deleted, (name) ->
-              if not friends[name]?
-                friends[name] = 1
+
+              friend = friends.filter (friend) -> friend.name is name
+
+              if not friend?
+                friends.push new Friend name, 1
               else
-                friends[name] += 1
+                friend.name += 1
+
 
             rc.get "control:user:#{username}:id", (err, id) ->
               friendstate = {}

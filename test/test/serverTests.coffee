@@ -431,7 +431,6 @@ describe "surespot server", () ->
             done()
 
   describe "uploading an image to a valid spot", ->
-    location = undefined
     it "should return the location header and 202", (done) ->
       login "test0", "test0", keys[0].sig, done, (res, body) ->
         res.statusCode.should.equal 204
@@ -440,24 +439,41 @@ describe "surespot server", () ->
             done err
           else
             res.statusCode.should.equal 200
-            #location = body
-            #should.exists location
+            done()
+
+        form = r.form()
+        form.append "image", fs.createReadStream "test/testImage"
+
+  #todo add test to make sure we receive associated message and download the image
+
+  describe "uploading an image for a friend ", ->
+    location = undefined
+    it "should return 200 and the image url", (done) ->
+      login "test0", "test0", keys[0].sig, done, (res, body) ->
+        res.statusCode.should.equal 204
+        r = http.post baseUri + "/images/test1/1", (err, res, body) ->
+          if err
+            done err
+          else
+            res.statusCode.should.equal 200
+            location = body
+            should.exists location
             done()
 
         form = r.form()
         form.append "image", fs.createReadStream "test/testImage"
     #todo set filename explicitly
 
-#    it "should return the same image when location url requested", (done) ->
-#      http.get
-#        url: location
-#        (err, res, body) ->
-#          if err
-#            done err
-#          else
-#            res.statusCode.should.equal 200
-#            res.body.should.equal "madman\n"
-#            done()
+    it "should return the same friend image when url requested", (done) ->
+      http.get
+        url: location
+        (err, res, body) ->
+          if err
+            done err
+          else
+            res.statusCode.should.equal 200
+            res.body.should.equal "madman\n"
+            done()
 
   describe "uploading an image to a spot we don't belong to", ->
     it "should not be allowed", (done) ->
