@@ -967,22 +967,22 @@ else
     path = splits[splits.length - 1]
     logger.debug "removing file from cloud: #{path}"
 
-
     retry = 0
-    removeFile = (path) ->
-      ensureCfClientAuthorized ->
+    removeFile = (force, path) ->
+      ensureCfClientAuthorized force, (err) ->
+        return logger.error "could not remove file from cloud: #{path}, error: #{err}" if err?
         cfClient.destroyFile rackspaceImageContainer, path, (err) ->
           if err?
             #try to auth once
             if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
               retry++
-              removeFile path
+              removeFile true, path
             else
               logger.error "could not remove file from cloud: #{path}, error: #{err}"
           else
             logger.debug "removed file from cloud: #{path}"
 
-    removeFile path
+    removeFile false, path
 
 
 
@@ -1064,9 +1064,11 @@ else
             return next err if err?
             res.send 204
 
-  ensureCfClientAuthorized = (callback) ->
-    if not cfClient.authorized
-      cfClient.setAuth ->
+  ensureCfClientAuthorized = (force, callback) ->
+    if not cfClient.authorized or force
+      cfClient.authorized = false
+      cfClient.setAuth (err) ->
+        return callback err if err?
         callback()
     else
       callback()
@@ -1105,16 +1107,16 @@ else
         logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
         retry = 0
-        postFile = (callback) ->
-          ensureCfClientAuthorized ->
+        postFile = (force, callback) ->
+          ensureCfClientAuthorized force, (err) ->
+            return next err if err?
             cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
               #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
-              #todo send messageerror on socket
               if err?
                 #try to auth once
                 if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
                   retry++
-                  postFile callback
+                  postFile callback, true
                 else
                   callback err
 
@@ -1123,7 +1125,7 @@ else
 
 
 
-        postFile (err) ->
+        postFile false, (err) ->
           return next err if err?
 
           logger.debug 'uploaded completed'
@@ -1185,22 +1187,26 @@ else
         #todo send message error on socket
         if not id?
           logger.error new Error 'could not generate messageId'
-          sio.sockets.to(username).emit "messageError", new MessageError(iv, 'could not generate message id')
+          sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
           return# delete filenames[part.filename]
 
 
         generateRandomBytes 'hex', (err, bytes) ->
           if err?
             logger.error err
-            sio.sockets.to(username).emit "messageError", new MessageError(iv, 'could not generate unique filename')
+            sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
             return #delete filenames[part.filename]
 
           path = bytes
           logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
           retry = 0
-          postFile = (callback) ->
-            ensureCfClientAuthorized ->
+          postFile = (force, callback) ->
+            ensureCfClientAuthorized force, (err) ->
+              if err?
+                sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
+                return
+
               cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
                 #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
                 #todo send messageerror on socket
@@ -1208,7 +1214,7 @@ else
                   #try to auth once
                   if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
                     retry++
-                    postFile callback
+                    postFile true, callback
                   else
                     callback err
 
@@ -1217,10 +1223,10 @@ else
 
 
 
-          postFile (err) ->
+          postFile false, (err) ->
             if err?
               logger.error err
-              sio.sockets.to(username).emit "messageError", new MessageError(iv, 'error uploading file')
+              sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
               return #delete filenames[part.filename]
 
             logger.debug 'uploaded completed'
