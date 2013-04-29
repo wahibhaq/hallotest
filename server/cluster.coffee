@@ -965,12 +965,12 @@ else
   deleteImage = (uri) ->
     splits = uri.split('/')
     path = splits[splits.length - 1]
-    logger.debug "removing file from cloud: #{path}"
+    logger.debug "removing file from rackspace: #{path}"
 
     retry = 0
     removeFile = (force, path) ->
       ensureCfClientAuthorized force, (err) ->
-        return logger.error "could not remove file from cloud: #{path}, error: #{err}" if err?
+        return logger.error "could not remove file from rackspace: #{path}, error: #{err}" if err?
         cfClient.destroyFile rackspaceImageContainer, path, (err) ->
           if err?
             #try to auth once
@@ -979,9 +979,9 @@ else
               retry++
               removeFile true, path
             else
-              logger.error "could not remove file from cloud: #{path}, error: #{err}"
+              logger.error "could not remove file from rackspace: #{path}, error: #{err}"
           else
-            logger.debug "removed file from cloud: #{path}"
+            logger.debug "removed file from rackspace: #{path}"
 
     removeFile false, path
 
