@@ -1013,7 +1013,7 @@ else
       return next err if err?
       return res.send 403 unless user?
 
-      generateRandomBytes 'base64', (err, token) ->
+      generateSecureRandomBytes 'base64', (err, token) ->
         return next err if err?
         rc.set "deletetoken:#{username}", token, (err, result) ->
           return next err if err?
@@ -1033,7 +1033,7 @@ else
       return next err if err?
       return res.send 403 unless user?
 
-      generateRandomBytes 'base64', (err, token) ->
+      generateSecureRandomBytes 'base64', (err, token) ->
         return next err if err?
         rc.set "passwordtoken:#{username}", token, (err, result) ->
           return next err if err?
@@ -1101,6 +1101,7 @@ else
         outStream.end ->
           form.resume()
 
+      #no need for secure randoms for image paths
       generateRandomBytes 'hex', (err, bytes) ->
         return next err if err?
 
@@ -1192,7 +1193,7 @@ else
           sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
           return# delete filenames[part.filename]
 
-
+        #no need for secure randoms for image paths
         generateRandomBytes 'hex', (err, bytes) ->
           if err?
             logger.error err
@@ -1532,7 +1533,7 @@ else
 
         #inc key version
         kv = parseInt(currkv) + 1
-        generateRandomBytes 'base64',(err, token) ->
+        generateSecureRandomBytes 'base64',(err, token) ->
           return next err if err?
           rc.set "keytoken:#{username}", token, (err, result) ->
             return next err if err?
@@ -2166,10 +2167,16 @@ else
     req.logout()
     res.send 204
 
+
+  generateSecureRandomBytes = (encoding, callback) ->
+    crypto.randomBytes 32, (err, bytes) ->
+      return callback err if err?
+      callback null, bytes.toString(encoding)
+
   generateRandomBytes = (encoding, callback) ->
-    rc.incr "uniqueKeySeed", (err, seed) ->
-      hash = crypto.createHash("sha1").update('' + seed).digest(encoding)
-      callback null, hash
+    crypto.pseudoRandomBytes 16, (err, bytes) ->
+      return callback err if err?
+      callback null, bytes.toString(encoding)
 
   comparePassword = (password, dbpassword, callback) ->
     bcrypt.compare password, dbpassword, callback
