@@ -26,8 +26,20 @@ stream = require 'readable-stream'
 cloudfiles = require 'cloudfiles'
 
 
-MESSAGES_PER_USER = 100
 USERNAME_LENGTH = 20
+
+#config
+MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER
+debugLevel = process.env.SURESPOT_DEBUG_LEVEL
+database = process.env.SURESPOT_DB ? 0
+socketPort = process.env.SURESPOT_SOCKET ? 443
+env = process.env.SURESPOT_ENV ? 'Local' # one of "Local","Stage", "Prod"
+googleApiKey = process.env.SURESPOT_GOOGLE_API_KEY
+rackspaceApiKey = process.env.SURESPOT_RACKSPACE_API_KEY
+rackspaceCdnBaseUrl = process.env.SURESPOT_RACKSPACE_CDN_URL
+rackspaceImageContainer = process.env.SURESPOT_RACKSPACE_IMAGE_CONTAINER
+rackspaceUsername = process.env.SURESPOT_RACKSPACE_USERNAME
+sessionSecret = process.env.SURESPOT_SESSION_SECRET
 
 
 logger.remove logger.transports.Console
@@ -35,16 +47,12 @@ logger.setLevels logger.config.syslog.levels
 logger.exitOnError = false
 
 transports = []
-transports.push new (logger.transports.File)({ dirname: 'logs', filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: 'debug', handleExceptions: true })
+transports.push new (logger.transports.File)({ dirname: 'logs', filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: debugLevel, handleExceptions: true })
 #always use file transport
 logger.add transports[0], null, true
 
-database = process.env.NODE_DB ? 0
-socketPort = process.env.SOCKET ? 443
-env = process.env.NODE_ENV ? 'Local' # one of "Local","Stage", "Prod"
-
 if env is 'Local'
-  transports.push new (logger.transports.Console)({colorize: true, timestamp: true, level: 'debug', handleExceptions: true })
+  transports.push new (logger.transports.Console)({colorize: true, timestamp: true, level: debugLevel, handleExceptions: true })
   logger.add transports[1], null, true
   numCPUs = 1
 
@@ -66,6 +74,15 @@ else
   logger.info "database: #{database}"
   logger.info "socket: #{socketPort}"
 
+  logger.info "messages per user: #{MESSAGES_PER_USER}"
+  logger.info "debug level: #{debugLevel}"
+  logger.info "google api key: #{googleApiKey}"
+  logger.info "rackspace api key: #{rackspaceApiKey}"
+  logger.info "rackspace cdn url: #{rackspaceCdnBaseUrl}"
+  logger.info "rackspace image container: #{rackspaceImageContainer}"
+  logger.info "rackspace username: #{rackspaceUsername}"
+  logger.info "session secret: #{sessionSecret}"
+
   #process.on "uncaughtException", uncaught = (err) ->
    # logger.error "Uncaught Exception: " + err
 
@@ -79,16 +96,7 @@ else
   app = undefined
   ssloptions = undefined
 
-  googleApiKey = 'AIzaSyC-JDOca03zSKnN-_YsgOZOS5uBFiDCLtQ'
-  rackspaceApiKey = "6c20021990a1fd28f0afa8f0c793599a"
-  rackspaceCdnBaseUrlLocal = "https://19be2df346b051f6d1c9-bc27bdc385cad6381ae24d242305422a.ssl.cf1.rackcdn.com"
-  rackspaceCdnBaseUrlStage = "https://b8bd94a94939231436ca-1a5c42003e29f66e4992dc05d6c9ef5c.ssl.cf1.rackcdn.com"
-  rackspaceCdnBaseUrlProd =  "https://92e4d74ce2d4cdc1c4aa-5c12bd92c930cddf5a9d06a5e7413967.ssl.cf1.rackcdn.com"
-
-  rackspaceCdnBaseUrl = eval("rackspaceCdnBaseUrl#{env}") + ":443"
-  rackspaceImageContainer = "surespotImages#{env}"
-  #rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: 'adam2fours', apiKey: rackspaceApiKey}
-  cfClient = cloudfiles.createClient {auth: { username: 'adam2fours', apiKey: rackspaceApiKey}}
+  cfClient = cloudfiles.createClient {auth: { username: rackspaceUsername, apiKey: rackspaceApiKey}}
 
 
 
@@ -99,6 +107,7 @@ else
       if database?
         client.select database, (err, res) ->
           return callback err if err?
+
           callback null, client
 
       else
@@ -126,7 +135,7 @@ else
     ssloptions["ca"] = fs.readFileSync(peerCertPath)
 
   serverPrivateKey = fs.readFileSync("ec#{env}/priv.pem")
-  sessionSecret = "your mama"
+
 
   # create EC keys like so
   # priv key
@@ -1374,7 +1383,6 @@ else
         logger.debug "sending: #{sData}"
         res.send sData
 
-  #todo figure out caching
   app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, getPublicKeys
   app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setCache(oneYear), getPublicKeys
   app.get "/keyversion/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted,(req, res, next) ->
