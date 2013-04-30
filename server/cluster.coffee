@@ -975,7 +975,7 @@ else
           if err?
             #try to auth once
             if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
-              logger.debug "received error from rackspace, retrying: #{err}"
+              logger.debug "received 401 from rackspace, retrying: #{err}"
               retry++
               removeFile true, path
             else
@@ -1116,7 +1116,7 @@ else
               if err?
                 #try to auth once
                 if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
-                  logger.debug "received error from rackspace, retrying: #{err}"
+                  logger.debug "received 401 from rackspace, retrying: #{err}"
                   retry++
                   postFile callback, true
                 else
@@ -1215,7 +1215,7 @@ else
                 if err?
                   #try to auth once
                   if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
-                    logger.debug "received error from rackspace, retrying: #{err}"
+                    logger.debug "received 401 from rackspace, retrying: #{err}"
                     retry++
                     postFile true, callback
                   else
