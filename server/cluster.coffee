@@ -1539,7 +1539,7 @@ else
         kv = parseInt(currkv) + 1
         generateSecureRandomBytes 'base64',(err, token) ->
           return next err if err?
-          rc.set "keytoken:#{username}", token, (err, result) ->
+          rc.set "kt:#{username}", token, (err, result) ->
             return next err if err?
             res.send {keyversion: kv, token: token}
 
@@ -1566,7 +1566,7 @@ else
 
       #todo transaction
       #make sure the tokens match
-      rc.get "keytoken:#{username}", (err, rtoken) ->
+      rc.get "kt:#{username}", (err, rtoken) ->
         return next new Error 'no keytoken exists' unless rtoken?
         newKeys = {}
         newKeys.dhPub = req.body.dhPub
@@ -1592,7 +1592,7 @@ else
             return res.send 403 unless user?
 
             #delete the token of which there should only be one
-            rc.del "keytoken:#{username}", (err, rdel) ->
+            rc.del "kt:#{username}", (err, rdel) ->
               return next err if err?
               return res.send 404 unless rdel is 1
 
