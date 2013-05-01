@@ -19,10 +19,11 @@ rc = redis.createClient()
 # then public
 #    for i in {0..4999}; do openssl ec -inform PEM -outform PEM -in test${i}_priv.pem -out test${i}_pub.pem -pubout; done
 
+testkeydir = '../testkeys'
 
 baseUri = "https://localhost:443"
 minclient = 0
-maxclient = 49
+maxclient = 10
 #maxsockets = 100
 
 #http.globalAgent.maxSockets = maxsockets
@@ -92,41 +93,38 @@ makeCreate = (i, key) ->
     createUsers(i, key, callback)
 
 
-describe "surespot chat test", () ->
-  keys = []
-  it "create #{maxclient-minclient+1} signatures", (done) ->
-    index = 0
-    for i in [minclient..maxclient - 1]
-      priv = fs.readFileSync "testkeys/test#{i}_priv.pem", 'utf-8'
-      pub = fs.readFileSync "testkeys/test#{i}_pub.pem", 'utf-8'
 
-      random = crypto.randomBytes 16
-      dsaPubSig =
-        crypto
-          .createSign('sha256')
-          .update(new Buffer("test#{i}"))
-          .update(new Buffer("test#{i}"))
-          .update(random)
-          .sign(priv, 'base64')
+keys = []
+index = 0
+for i in [minclient..maxclient - 1]
+  priv = fs.readFileSync "#{testkeydir}/test#{i}_priv.pem", 'utf-8'
+  pub = fs.readFileSync "#{testkeydir}/test#{i}_pub.pem", 'utf-8'
+
+  random = crypto.randomBytes 16
+  dsaPubSig =
+    crypto
+      .createSign('sha256')
+      .update(new Buffer("test#{i}"))
+      .update(new Buffer("test#{i}"))
+      .update(random)
+      .sign(priv, 'base64')
 
 
-      sig = Buffer.concat([random, new Buffer(dsaPubSig, 'base64')]).toString('base64')
-      fs.writeFileSync "testkeys/test#{i}.sig", sig
-      keys[index++] = {
-      pub: pub
-      sig: sig
-      }
-    done()
+  sig = Buffer.concat([random, new Buffer(dsaPubSig, 'base64')]).toString('base64')
+  fs.writeFileSync "#{testkeydir}/test#{i}.sig", sig
+  keys[index++] = {
+  pub: pub
+  sig: sig
+  }
 
-  it "create #{maxclient-minclient} users", (done) ->
-    tasks = []
-    #create connect clients tasks
-    index = 0
-    for i in [minclient..maxclient - 1] by 1
-      tasks.push makeCreate i, keys[index++]
-    #execute the tasks which creates the cookie jars
-    async.series tasks, (err) ->
-      if err?
-        done err
-      else
-        done()
+
+
+tasks = []
+#create connect clients tasks
+index = 0
+for i in [minclient..maxclient - 1] by 1
+  tasks.push makeCreate i, keys[index++]
+#execute the tasks which creates the cookie jars
+async.series tasks, (err) ->
+  if err? then console.log err
+  process.exit()

@@ -9,8 +9,8 @@ clean1up = (max ,i, done) ->
   keys = []
   keys.push "f:test#{i}"
   keys.push "is:test#{i}"
-  keys.push "id:test#{i}"
-  keys.push "test#{i}:test#{i + 1}:id"
+  keys.push "ir:test#{i}"
+  keys.push "m:test#{i}:test#{i + 1}:id"
   keys.push "m:test#{i}:test#{i + 1}"
   keys.push "c:test#{i}"
   #rc.del keys1, (err, blah) ->

@@ -11,11 +11,12 @@ _ = require 'underscore'
 crypto = require 'crypto'
 
 rc = redis.createClient()
-rc.select 1
+#rc.select 1
 
-baseUri = "https://www.surespot.me:8080"
-minclient = 1200
-maxclient = 1999
+testkeydir = '../testkeys'
+baseUri = "https://localhost:443"
+minclient = 0
+maxclient = 9
 clients = maxclient - minclient + 1
 jars = []
 http.globalAgent.maxSockets = 20000
@@ -27,12 +28,14 @@ clean = 0
 
 clean1up = (max ,i, done) ->
   keys = []
-  keys.push "friends:test#{i}"
-  keys.push "invites:test#{i}"
-  keys.push "invited:test#{i}"
-  keys.push "test#{i}:test#{i + 1}:id"
-  keys.push "messages:test#{i}:test#{i + 1}"
-  keys.push "conversations:test#{i}"
+  keys.push "f:test#{i}"
+  keys.push "is:test#{i}"
+  keys.push "ir:test#{i}"
+  keys.push "m:test#{i}:test#{i + 1}:id"
+  keys.push "m:test#{i}:test#{i + 1}"
+  keys.push "c:test#{i}"
+  keys.push "c:u:test#{i}"
+  keys.push "c:u:test#{i}:id"
   #rc.del keys1, (err, blah) ->
   # return done err if err?
   rc.del keys, (err, blah) ->
@@ -89,7 +92,7 @@ connectChats = (cookie, callback) ->
 
 send = (socket, i, callback) ->
   if i % 2 is 0
-    jsonMessage = {to: "test" + (i + 1), from: "test#{i}", iv: i, data: "message data", mimeType: "text/plain"}
+    jsonMessage = {to: "test" + (i + 1), from: "test#{i}", iv: i, data: "message data", mimeType: "text/plain", toVersion: 1, fromVersion: 1}
     socket.send JSON.stringify(jsonMessage)
     callback null, true
   else
@@ -148,7 +151,7 @@ describe "surespot chat test", () ->
     for i in [minclient..maxclient]
       #priv = fs.readFileSync "testkeys/test#{i}_priv.pem", 'utf-8'
       #pub = fs.readFileSync "testkeys/test#{i}_pub.pem", 'utf-8'
-      sig = fs.readFileSync "testkeys/test#{i}.sig", 'utf-8'
+      sig = fs.readFileSync "#{testkeydir}/test#{i}.sig", 'utf-8'
       sigs[i-minclient] = sig
     done()
 

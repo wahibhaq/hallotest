@@ -92,27 +92,22 @@ makeCreate = (i, key) ->
     createUsers(i, key, callback)
 
 
-describe "surespot chat test", () ->
-  keys = []
-  it "load keys", (done) ->
-    for i in [minclient..maxclient]
-      pub = fs.readFileSync "testkeys/test#{i}_pub.pem", 'utf-8'
-      sig = fs.readFileSync "testkeys/test#{i}.sig", 'utf-8'
-      keys[i-minclient] =  {
-        sig: sig
-        pub: pub
-      }
-    done()
+keys = []
 
-  it "create #{maxclient-minclient} users", (done) ->
-    tasks = []
-    #create connect clients tasks
-    index = 0
-    for i in [minclient..maxclient - 1] by 1
-      tasks.push makeCreate i, keys[index++]
-    #execute the tasks which creates the cookie jars
-    async.series tasks, (err) ->
-      if err?
-        done err
-      else
-        done()
+for i in [minclient..maxclient]
+  pub = fs.readFileSync "testkeys/test#{i}_pub.pem", 'utf-8'
+  sig = fs.readFileSync "testkeys/test#{i}.sig", 'utf-8'
+  keys[i-minclient] =  {
+    sig: sig
+    pub: pub
+  }
+
+tasks = []
+#create connect clients tasks
+index = 0
+for i in [minclient..maxclient - 1] by 1
+  tasks.push makeCreate i, keys[index++]
+#execute the tasks which creates the cookie jars
+async.series tasks, (err) ->
+  console.log err if err?
+  process.exit()

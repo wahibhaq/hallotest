@@ -33,7 +33,7 @@ cleanup = (done) ->
     multi.del "f:test#{i}"
     multi.del "f:test#{i}"
     multi.del "is:test#{i}"
-    multi.del "id:test#{i}"
+    multi.del "ir:test#{i}"
     multi.del "c:test#{i}"
     multi.srem "u", "test#{i}"
 
@@ -41,8 +41,8 @@ cleanup = (done) ->
     buildKeys i
 
   multi.del("d:test0")
-  multi.del("test0:test1:id")
-  multi.del("test0:test2:id")
+  multi.del("m:test0:test1:id")
+  multi.del("m:test0:test2:id")
   multi.del("m:test0:test1")
   multi.del("m:test0:test2")
   multi.del("c:m:test0:test1")
