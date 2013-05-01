@@ -25,7 +25,7 @@ cleanup = (done) ->
   buildKeys = (i) ->
     multi.del "users:test#{i}"
     multi.del "keys:test#{i}"
-    multi.del "keyversion:test#{i}"
+    multi.del "kv:test#{i}"
 
     multi.del "control:user:test#{i}"
     multi.del "control:user:test#{i}:id"

@@ -1382,7 +1382,7 @@ else
   app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, getPublicKeys
   app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setCache(oneYear), getPublicKeys
   app.get "/keyversion/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted,(req, res, next) ->
-    rc.get "keyversion:#{req.params.username}", (err, version) ->
+    rc.get "kv:#{req.params.username}", (err, version) ->
       return callback err if err?
       res.send version
 
@@ -1479,7 +1479,7 @@ else
             logger.debug "#{keys.username}, dhPubSig: #{keys.dhPubSig}, dsaPubSig: #{keys.dsaPubSig}"
 
             #get key version
-            rc.incr "keyversion:#{username}", (err, kv) ->
+            rc.incr "kv:#{username}", (err, kv) ->
               return next err if err?
               multi = rc.multi()
               userKey = "users:#{username}"
@@ -1532,7 +1532,7 @@ else
 
       #the user wants to update their key so we will generate a token that the user signs to make sure they're not using a replay attack of some kind
       #get the current version
-      rc.get "keyversion:#{username}", (err, currkv) ->
+      rc.get "kv:#{username}", (err, currkv) ->
         return next err if err?
 
         #inc key version
@@ -1558,7 +1558,7 @@ else
     username = req.body.username
 
     kv = req.body.keyVersion
-    rc.get "keyversion:#{username}", (err, storedkv) ->
+    rc.get "kv:#{username}", (err, storedkv) ->
       return next err if err?
 
       storedkv++
@@ -1607,7 +1607,7 @@ else
               multi = rc.multi()
               multi.hset keysKey, kv, JSON.stringify(newKeys)
               #update the version
-              multi.set "keyversion:#{username}", storedkv
+              multi.set "kv:#{username}", storedkv
 
               #send revoke message
               multi.exec (err, replies) ->
@@ -2062,7 +2062,7 @@ else
     #cleanup stuff
     multi.srem "deleted", username
     multi.del "keys:#{username}"
-    multi.del "keyversion:#{username}"
+    multi.del "kv:#{username}"
     multi.del "control:user:#{username}"
     multi.del "control:user:#{username}:id"
 
@@ -2186,7 +2186,7 @@ else
     bcrypt.compare password, dbpassword, callback
 
   getLatestKeys = (username, callback) ->
-    rc.get "keyversion:#{username}", (err, version) ->
+    rc.get "kv:#{username}", (err, version) ->
       return callback err if err?
       return callback new Error 'no keys exist for user: #{username}' unless version?
       getKeys username, version, callback

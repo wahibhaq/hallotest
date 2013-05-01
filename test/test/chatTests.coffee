@@ -30,9 +30,9 @@ cleanup = (done) ->
     "messages:test0:test1",
     "conversations:test1",
     "conversations:test0",
-    "keyversion:test0",
+    "kv:test0",
     "keys:test0",
-    "keyversion:test1",
+    "kv:test1",
     "keys:test1",
     "control:message:test0:test1",
     "control:message:test0:test1:id"
