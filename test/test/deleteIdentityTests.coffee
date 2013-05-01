@@ -23,32 +23,32 @@ cleanup = (done) ->
   multi = rc.multi()
 
   buildKeys = (i) ->
-    multi.del "users:test#{i}"
-    multi.del "keys:test#{i}"
+    multi.del "u:test#{i}"
+    multi.del "k:test#{i}"
     multi.del "kv:test#{i}"
 
-    multi.del "control:user:test#{i}"
-    multi.del "control:user:test#{i}:id"
-    multi.del "users:deleted:test#{i}"
-    multi.del "friends:test#{i}"
-    multi.del "friends:test#{i}"
-    multi.del "invites:test#{i}"
-    multi.del "invited:test#{i}"
-    multi.del "conversations:test#{i}"
-    multi.srem "users", "test#{i}"
+    multi.del "c:u:test#{i}"
+    multi.del "c:u:test#{i}:id"
+    multi.del "u:d:test#{i}"
+    multi.del "f:test#{i}"
+    multi.del "f:test#{i}"
+    multi.del "is:test#{i}"
+    multi.del "id:test#{i}"
+    multi.del "c:test#{i}"
+    multi.srem "u", "test#{i}"
 
   for i in [0..2]
     buildKeys i
 
-  multi.del("deleted:test0")
+  multi.del("d:test0")
   multi.del("test0:test1:id")
   multi.del("test0:test2:id")
-  multi.del("messages:test0:test1")
-  multi.del("messages:test0:test2")
-  multi.del("control:message:test0:test1")
-  multi.del("control:message:test0:test2")
-  multi.del("messages:test1")
-  multi.del("messages:test2")
+  multi.del("m:test0:test1")
+  multi.del("m:test0:test2")
+  multi.del("c:m:test0:test1")
+  multi.del("c:m:test0:test2")
+  multi.del("m:test1")
+  multi.del("m:test2")
 
 
   multi.exec (err, blah) ->

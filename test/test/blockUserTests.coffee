@@ -18,36 +18,36 @@ cookie2 = undefined
 
 cleanup = (done) ->
   keys = [
-    "users:test0",
-    "users:test1",
-    "friends:test0",
-    "friends:test1",
-    "invites:test0",
-    "invited:test0",
-    "invites:test1",
-    "invited:test1",
-    "blocked:test0",
-    "blocked:test1",
+    "u:test0",
+    "u:test1",
+    "f:test0",
+    "f:test1",
+    "is:test0",
+    "id:test0",
+    "is:test1",
+    "id:test1",
+    "b:test0",
+    "b:test1",
     "test0:test1:id",
-    "messages:test0:test1",
-    "conversations:test1",
-    "conversations:test0",
+    "m:test0:test1",
+    "c:test1",
+    "c:test0",
     "kv:test0",
-    "keys:test0",
+    "k:test0",
     "kv:test1",
-    "keys:test1",
-    "control:message:test0:test1",
-    "control:message:test0:test1:id"
-    "control:user:test0",
-    "control:user:test1",
-    "control:user:test0:id",
-    "control:user:test1:id",
-    "users:deleted:test0",
-    "users:deleted:test1"]
+    "k:test1",
+    "c:m:test0:test1",
+    "c:m:test0:test1:id"
+    "c:u:test0",
+    "c:u:test1",
+    "c:u:test0:id",
+    "c:u:test1:id",
+    "u:d:test0",
+    "u:d:test1"]
   multi = rc.multi()
 
   multi.del keys
-  multi.srem "users", "test0", "test1"
+  multi.srem "u", "test0", "test1"
   multi.exec (err, results) ->
     if err
       done err

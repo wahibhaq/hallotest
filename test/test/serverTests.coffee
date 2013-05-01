@@ -13,36 +13,37 @@ baseUri = "https://localhost:" + port
 
 cleanup = (done) ->
   keys = [
-    "users:test0",
-    "users:test1",
-    "users:test2",
-    "friends:test0",
-    "friends:test1",
-    "invites:test0",
-    "invited:test0",
-    "invites:test1",
-    "invited:test1",
+    "u:test0",
+    "u:test1",
+    "u:test2",
+    "f:test0",
+    "f:test1",
+    "fi:test0",
+    "is:test0",
+    "id:test0",
+    "is:test1",
+    "id:test1",
     "test0:test1:id",
-    "messages:test0",
-    "messages:test0:test1",
-    "conversations:test1",
-    "conversations:test0",
-    "conversations:test2",
-    "keytoken:test0"
+    "m:test0",
+    "m:test0:test1",
+    "c:test1",
+    "c:test0",
+    "c:test2",
+    "kt:test0"
     "kv:test0",
-    "keys:test0",
+    "k:test0",
     "kv:test1",
-    "keys:test1",
+    "k:test1",
     "kv:test2",
-    "keys:test2",
-    "control:user:test0",
-    "control:user:test0:id",
-    "control:user:test1"
-    "control:user:test1:id"]
+    "k:test2",
+    "c:u:test0",
+    "c:u:test0:id",
+    "c:u:test1"
+    "c:u:test1:id"]
   multi = rc.multi()
 
   multi.del keys
-  multi.srem "users", "test0", "test1", "test2"
+  multi.srem "u", "test0", "test1", "test2"
   multi.exec (err, results) ->
     if err
       done err

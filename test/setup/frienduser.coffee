@@ -9,6 +9,6 @@ friends = []
 for i in [0..userCount]
   friends.push "test#{i}"
 
-rc.sadd "friends:#{friendUser}", friends, (err, results) ->
+rc.sadd "f:#{friendUser}", friends, (err, results) ->
   process.exit()
 

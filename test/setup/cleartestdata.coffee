@@ -7,12 +7,12 @@ clients = 10000
 
 clean1up = (max ,i, done) ->
   keys = []
-  keys.push "friends:test#{i}"
-  keys.push "invites:test#{i}"
-  keys.push "invited:test#{i}"
+  keys.push "f:test#{i}"
+  keys.push "is:test#{i}"
+  keys.push "id:test#{i}"
   keys.push "test#{i}:test#{i + 1}:id"
-  keys.push "messages:test#{i}:test#{i + 1}"
-  keys.push "conversations:test#{i}"
+  keys.push "m:test#{i}:test#{i + 1}"
+  keys.push "c:test#{i}"
   #rc.del keys1, (err, blah) ->
   # return done err if err?
   rc.del keys, (err, blah) ->

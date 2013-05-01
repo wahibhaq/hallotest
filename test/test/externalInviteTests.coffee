@@ -21,47 +21,47 @@ cookie3 = undefined
 
 cleanup = (done) ->
   keys = [
-    "users:test0",
-    "users:test1",
-    "users:test2",
-    "users:test3",
-    "friends:test0",
-    "friends:test1",
-    "invites:test0",
-    "invited:test0",
-    "invites:test1",
-    "invites:test2",
-    "invites:test3",
-    "invited:test1",
-    "invited:test2",
-    "invited:test3",
+    "u:test0",
+    "u:test1",
+    "u:test2",
+    "u:test3",
+    "f:test0",
+    "f:test1",
+    "is:test0",
+    "id:test0",
+    "is:test1",
+    "is:test2",
+    "is:test3",
+    "id:test1",
+    "id:test2",
+    "id:test3",
     "test0:test1:id",
-    "messages:test0:test1",
-    "conversations:test1",
-    "conversations:test0",
-    "conversations:test2",
-    "keytoken:test0"
+    "m:test0:test1",
+    "c:test1",
+    "c:test0",
+    "c:test2",
+    "kt:test0"
     "kv:test0",
-    "keys:test0",
+    "k:test0",
     "kv:test1",
-    "keys:test1",
+    "k:test1",
     "kv:test2",
-    "keys:test2",
+    "k:test2",
     "kv:test3",
-    "keys:test3",
-    "control:user:test0",
-    "control:user:test2",
-    "control:user:test1",
-    "control:user:test3",
-    "control:user:test3:id",
-    "control:user:test1:id",
-    "control:user:test0:id",
-    "control:user:test2:id"]
+    "k:test3",
+    "c:u:test0",
+    "c:u:test2",
+    "c:u:test1",
+    "c:u:test3",
+    "c:u:test3:id",
+    "c:u:test1:id",
+    "c:u:test0:id",
+    "c:u:test2:id"]
 
   multi = rc.multi()
 
   multi.del keys
-  multi.srem "users", "test0", "test1", "test2", "test3"
+  multi.srem "u", "test0", "test1", "test2", "test3"
   multi.exec (err, results) ->
     if err
       done err

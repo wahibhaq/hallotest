@@ -233,16 +233,16 @@ else
     next()
 
   userExists = (username, fn) ->
-    rc.sismember "users", username, (err, isMember) ->
+    rc.sismember "u", username, (err, isMember) ->
       return fn err if err?
       return fn null, if isMember then true else false
 
 
   userExistsOrDeleted = (username, fn) ->
-    rc.sismember "users", username, (err, isMember) ->
+    rc.sismember "u", username, (err, isMember) ->
       return fn err if err?
       return fn null, true if isMember
-      rc.sismember "deleted", username, (err, isMember) ->
+      rc.sismember "d", username, (err, isMember) ->
         return fn err if err?
         return fn null, true if isMember
         fn null, false
@@ -312,7 +312,7 @@ else
         next()
       else
         #if we're not friends check if he deleted himself
-        rc.sismember "users:deleted:#{username}", friendname, (err, isDeleted) ->
+        rc.sismember "u:d:#{username}", friendname, (err, isDeleted) ->
           return next err if err?
           if isDeleted
             next()
@@ -329,13 +329,13 @@ else
         next()
       else
         #we've been deleted
-        rc.sismember "users:deleted:#{username}", friendname, (err, isDeleted) ->
+        rc.sismember "u:d:#{username}", friendname, (err, isDeleted) ->
           return next err if err?
           if isDeleted
             next()
           else
             #we invited someone
-            rc.sismember "invited:#{username}", friendname, (err, isInvited) ->
+            rc.sismember "id:#{username}", friendname, (err, isInvited) ->
               return next err if err?
               if isInvited
                 next()
@@ -345,16 +345,16 @@ else
 
   #is friendname a friend of username
   isFriend = (username, friendname, callback) ->
-    rc.sismember "friends:#{username}", friendname, callback
+    rc.sismember "f:#{username}", friendname, callback
 
   hasConversation = (username, room, callback) ->
-    rc.sismember "conversations:#{username}", room, callback
+    rc.sismember "c:#{username}", room, callback
 
   inviteExists = (username, friendname, callback) ->
-    rc.sismember "invited:#{username}", friendname, (err, result) =>
+    rc.sismember "id:#{username}", friendname, (err, result) =>
       return callback err if err?
       return callback null, false if not result
-      rc.sismember "invites:#{friendname}", username, callback
+      rc.sismember "is:#{friendname}", username, callback
 
   getRoomName = (from, to) ->
     if from < to then from + ":" + to else to + ":" + from
@@ -377,7 +377,7 @@ else
         res.send keys
 
   getMessage = (room, id, fn) ->
-    rc.zrangebyscore "messages:" + room, id, id, (err, data) ->
+    rc.zrangebyscore "m:" + room, id, id, (err, data) ->
       return fn err if err?
       if data.length is 1
         message = undefined
@@ -394,25 +394,25 @@ else
 
   removeRoomMessage = (room, id, fn) ->
     #remove message data from set of room messages
-    rc.zremrangebyscore "messages:" + room, id, id, fn
+    rc.zremrangebyscore "m:" + room, id, id, fn
 
   removeMessage = (to, room, id, fn) ->
     user = getOtherUser room, to
 
     multi = rc.multi()
     #remove message data from set of room messages
-    multi.zremrangebyscore "messages:" + room, id, id
+    multi.zremrangebyscore "m:" + room, id, id
 
     #remove from other user's deleted messages set
-    multi.srem "deleted:#{to}:#{room}", id
+    multi.srem "d:#{to}:#{room}", id
 
     #remove from my total message pointer set
-    multi.zrem "messages:#{user}", "messages:#{room}:#{id}"
+    multi.zrem "m:#{user}", "m:#{room}:#{id}"
 
     multi.exec fn
 
   filterDeletedMessages = (username, room, messages, callback) ->
-    rc.smembers "deleted:#{username}:#{room}", (err, deleted) ->
+    rc.smembers "d:#{username}:#{room}", (err, deleted) ->
       scoredMessages = []
       sendMessages = []
       index = 0
@@ -430,21 +430,21 @@ else
           callback null, sendMessages)
 
   getAllMessages = (room, fn) ->
-    rc.zrange "messages:#{room}", 0, -1, fn
+    rc.zrange "m:#{room}", 0, -1, fn
 
 
   getMessages = (username, room, count, fn) ->
     #return last x messages
     #args = []
-    rc.zrange "messages:#{room}", -count, -1, 'withscores', (err, data) ->
+    rc.zrange "m:#{room}", -count, -1, 'withscores', (err, data) ->
       return fn err if err?
       filterDeletedMessages username, room, data, fn
 
   getControlMessages = (room, count, fn) ->
-    rc.zrange "control:message:" + room, -count, -1, fn
+    rc.zrange "c:m:" + room, -count, -1, fn
 
   getUserControlMessages = (user, count, fn) ->
-    rc.zrange "control:user:" + user, -count, -1, fn
+    rc.zrange "c:u:" + user, -count, -1, fn
 
   getMessagesAfterId = (username, room, id, fn) ->
     if id is -1
@@ -454,11 +454,11 @@ else
         getMessages username, room, 30, fn
       else
         #args = []
-        rc.zrangebyscore "messages:#{room}", "(" + id, "+inf", 'withscores', (err, data) ->
+        rc.zrangebyscore "m:#{room}", "(" + id, "+inf", 'withscores', (err, data) ->
           filterDeletedMessages username, room, data, fn
 
   getMessagesBeforeId = (username, room, id, fn) ->
-    rc.zrangebyscore "messages:#{room}", id - 60, "(" + id, 'withscores', (err, data) ->
+    rc.zrangebyscore "m:#{room}", id - 60, "(" + id, 'withscores', (err, data) ->
       filterDeletedMessages username, room, data, fn
 
   checkForDuplicateMessage = (resendId, username, room, message, callback) ->
@@ -510,7 +510,7 @@ else
       if id is 0
         getControlMessages room, 60, fn
       else
-        rc.zrangebyscore "control:message:" + room, "(" + id, "+inf", fn
+        rc.zrangebyscore "c:m:" + room, "(" + id, "+inf", fn
 
   getUserControlMessagesAfterId = (user, id, fn) ->
     if id is -1
@@ -519,7 +519,7 @@ else
       if id is 0
         getUserControlMessages user, 20, fn
       else
-        rc.zrangebyscore "control:user:" + user, "(" + id, "+inf", fn
+        rc.zrangebyscore "c:u:" + user, "(" + id, "+inf", fn
 
 
   checkForDuplicateControlMessage = (resendId, room, message, callback) ->
@@ -556,7 +556,7 @@ else
 
   getNextMessageControlId = (room, callback) ->
     #INCR message id
-    rc.incr "control:message:#{room}:id", (err, newId) ->
+    rc.incr "c:m:#{room}:id", (err, newId) ->
       if err?
         logger.error "ERROR: getNextMessageControlId, room: #{room}, error: #{err}"
         callback null
@@ -565,7 +565,7 @@ else
 
   getNextUserControlId = (user, callback) ->
           #INCR message id
-    rc.incr "control:user:#{user}:id", (err, newId) ->
+    rc.incr "c:u:#{user}:id", (err, newId) ->
       if err?
         logger.error "ERROR: getNextUserControlId, user: #{user}, error: #{err}"
         callback null
@@ -620,10 +620,10 @@ else
 
       #store messages in sorted sets
       multi = rc.multi()
-      userMessagesKey = "messages:#{from}"
-      multi.zadd "messages:#{room}", id, newMessage
+      userMessagesKey = "m:#{from}"
+      multi.zadd "m:#{room}", id, newMessage
       #keep track of all the users message so we can remove the earliest when we cross their threshold
-      multi.zadd userMessagesKey, time, "messages:#{room}:#{id}"
+      multi.zadd userMessagesKey, time, "m:#{room}:#{id}"
       multi.exec  (err, results) ->
         if err?
           logger.error ("ERROR: Socket.io onmessage, " + err)
@@ -653,7 +653,7 @@ else
 
           sendGcm = (gcmCallback) ->
             #send gcm message
-            userKey = "users:" + to
+            userKey = "u:" + to
             rc.hget userKey, "gcmId", (err, gcm_id) ->
               if err?
                 logger.error ("ERROR: Socket.io onmessage, " + err)
@@ -690,8 +690,8 @@ else
               if id is 1
                 #if this is the first message, add the "room" to the user's list of rooms
                 multi = rc.multi()
-                multi.sadd "conversations:" + from, room
-                multi.sadd "conversations:" + to, room
+                multi.sadd "c:" + from, room
+                multi.sadd "c:" + to, room
                 multi.exec (err, results) ->
                   return ccCallback err if err?
                   ccCallback()
@@ -734,7 +734,7 @@ else
       message.id = id
       message.from = from
       sMessage = JSON.stringify message
-      rc.zadd "control:message:#{room}", id, sMessage, (err, addcount) ->
+      rc.zadd "c:m:#{room}", id, sMessage, (err, addcount) ->
         callback err if err?
         sio.sockets.to(to).emit "control", sMessage
         callback null
@@ -756,7 +756,7 @@ else
         message.id = id
         newMessage = JSON.stringify(message)
         #store messages in sorted sets
-        rc.zadd "control:user:#{to}", id, newMessage, (err, addcount) ->
+        rc.zadd "c:u:#{to}", id, newMessage, (err, addcount) ->
           #end transaction here
           return callback err if err?
           sio.sockets.to(to).emit "control", newMessage
@@ -774,7 +774,7 @@ else
 
 
       #Get all the dude's conversations
-      rc.smembers "conversations:#{who}", (err, convos) ->
+      rc.smembers "c:#{who}", (err, convos) ->
         return callback err if err?
         async.each convos, (room, callback) ->
           to = getOtherUser(room, who)
@@ -889,7 +889,7 @@ else
 
           if oMessage.from is username
             ourMessageIds.push oMessage.id
-            multi.zrem "messages:#{username}", "messages:#{room}:#{oMessage.id}"
+            multi.zrem "m:#{username}", "m:#{room}:#{oMessage.id}"
 
             #delete image from rackspace
             if oMessage.mimeType is 'image/'
@@ -903,12 +903,12 @@ else
 
           if ourMessageIds.length > 0
             #zrem does not handle array as last parameter https://github.com/mranney/node_redis/issues/404
-            results.unshift "messages:#{room}"
+            results.unshift "m:#{room}"
             #need z remove by score here :( http://redis.io/commands/zrem#comment-845220154
             #remove the messages
             multi.zrem results
             #remove deleted message ids from other user's deleted set as the message is gone now
-            multi.srem "deleted:#{otherUser}:#{room}", ourMessageIds
+            multi.srem "d:#{otherUser}:#{room}", ourMessageIds
             #remove message pointers
 
 
@@ -916,7 +916,7 @@ else
 
           if theirMessageIds.length > 0 and markTheirsDeleted
             #add their message id's to our deleted message set
-            multi.sadd "deleted:#{username}:#{room}", theirMessageIds
+            multi.sadd "d:#{username}:#{room}", theirMessageIds
 
 
           multi.exec (err, mResults) ->
@@ -946,11 +946,11 @@ else
             callback()
         else
           #check if user is a user (ie. not deleted) before adding deleted message ids to the set
-          rc.sismember "users", from, (err, isUser) ->
+          rc.sismember "u", from, (err, isUser) ->
             return callback err if err?
 
             if isUser
-              rc.sadd "deleted:#{from}:#{room}", messageId, (err, count) ->
+              rc.sadd "d:#{from}:#{room}", messageId, (err, count) ->
                 return callback err if err?
                 callback()
             else
@@ -1020,7 +1020,7 @@ else
 
       generateSecureRandomBytes 'base64', (err, token) ->
         return next err if err?
-        rc.set "deletetoken:#{username}", token, (err, result) ->
+        rc.set "dt:#{username}", token, (err, result) ->
           return next err if err?
           res.send token
 
@@ -1040,7 +1040,7 @@ else
 
       generateSecureRandomBytes 'base64', (err, token) ->
         return next err if err?
-        rc.set "passwordtoken:#{username}", token, (err, result) ->
+        rc.set "pt:#{username}", token, (err, result) ->
           return next err if err?
           res.send token
 
@@ -1064,7 +1064,7 @@ else
 
         bShareable = shareable is 'true'
         dMessage.shareable = bShareable
-        rc.zadd "messages:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
+        rc.zadd "m:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
           return next err if err?
           createAndSendMessageControlMessage username, otherUser, room, (if bShareable then "shareable" else "notshareable"), room, messageId, (err) ->
             return next err if err?
@@ -1145,7 +1145,7 @@ else
             if friend.imageUrl?
               deleteImage friend.imageUrl
 
-            rc.hmset "friendImages:#{username}", "#{otherUser}:imageUrl", url, "#{otherUser}:imageVersion", version, "#{otherUser}:imageIv", iv, (err, status) ->
+            rc.hmset "fi:#{username}", "#{otherUser}:imageUrl", url, "#{otherUser}:imageVersion", version, "#{otherUser}:imageIv", iv, (err, status) ->
               return next err if err?
               res.send url
 
@@ -1292,7 +1292,7 @@ else
 
 
   getConversationIds = (username, callback) ->
-    rc.smembers "conversations:" + username, (err, conversations) ->
+    rc.smembers "c:" + username, (err, conversations) ->
       return callback err if err?
       if (conversations.length > 0)
         conversationsWithId = _.map conversations, (conversation) -> conversation + ":id"
@@ -1324,7 +1324,7 @@ else
         async.each(
           conversationIds
           (item, callback) ->
-            controlIdKeys.push "control:message:#{item.conversation}:id"
+            controlIdKeys.push "c:m:#{item.conversation}:id"
             callback()
           (err) ->
             return next err if err?
@@ -1352,7 +1352,7 @@ else
 #  app.get "/messages/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
 #    #return last x messages
 #    getMessages req.user.username, getRoomName(req.user.username, req.params.username), 30, (err, data) ->
-#      #    rc.zrange "messages:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
+#      #    rc.zrange "m:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
 #      return next err if err?
 #      res.send data
 
@@ -1400,7 +1400,7 @@ else
       (referrer, callback) ->
         referralUserName = referrer.utm_content
         usersToInvite.push referralUserName
-        multi.sismember "users", referralUserName
+        multi.sismember "u", referralUserName
         callback()
       (err) ->
         return callback err if err?
@@ -1482,12 +1482,12 @@ else
             rc.incr "kv:#{username}", (err, kv) ->
               return next err if err?
               multi = rc.multi()
-              userKey = "users:#{username}"
-              keysKey = "keys:#{username}"
+              userKey = "u:#{username}"
+              keysKey = "k:#{username}"
               keys.version = kv + ""
               multi.hmset userKey, user
               multi.hset keysKey, kv, JSON.stringify(keys)
-              multi.sadd "users", username
+              multi.sadd "u", username
               multi.exec (err,replies) ->
                 return next err if err?
                 logger.debug "created user: #{username}"
@@ -1601,7 +1601,7 @@ else
               newKeys.dsaPubSig = crypto.createSign('sha256').update(new Buffer(newKeys.dsaPub)).sign(serverPrivateKey, 'base64')
               logger.debug "saving keys #{username}, dhPubSig: #{newKeys.dhPubSig}, dsaPubSig: #{newKeys.dsaPubSig}"
 
-              keysKey = "keys:#{username}"
+              keysKey = "k:#{username}"
               newKeys.version = storedkv + ""
               #add the keys to the key set and add revoke message in transaction
               multi = rc.multi()
@@ -1627,7 +1627,7 @@ else
 
   app.post "/registergcm", ensureAuthenticated, (req, res, next) ->
     gcmId = req.body.gcmId
-    userKey = "users:" + req.user.username
+    userKey = "u:" + req.user.username
     rc.hset userKey, "gcmId", gcmId, (err) ->
       return next err if err?
       res.send 204
@@ -1636,9 +1636,9 @@ else
   inviteUser = (username, friendname, callback) ->
     multi = rc.multi()
     #remove you from my blocked set if you're blocked
-    multi.srem "blocked:#{username}", friendname
-    multi.sadd "invited:#{username}", friendname
-    multi.sadd "invites:#{friendname}", username
+    multi.srem "b:#{username}", friendname
+    multi.sadd "id:#{username}", friendname
+    multi.sadd "is:#{friendname}", username
     multi.exec (err, results) ->
       return callback err if err?
       invitesCount = results[2]
@@ -1650,7 +1650,7 @@ else
             return callback err if err?
             #sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
             #send gcm message
-            userKey = "users:" + friendname
+            userKey = "u:" + friendname
             rc.hget userKey, "gcmId", (err, gcmId) ->
               if err?
                 logger.error ("ERROR: " + err)
@@ -1687,8 +1687,8 @@ else
     logger.debug "#{username} inviting #{friendname} to be friends"
     #check if friendname has blocked username
     multi = rc.multi()
-    multi.sismember "blocked:#{friendname}", username
-    multi.sismember "users:deleted:#{username}", friendname
+    multi.sismember "b:#{friendname}", username
+    multi.sismember "u:d:#{username}", friendname
     multi.exec (err, results) ->
       return next err if err?
       return res.send 404 if 1 in results
@@ -1720,10 +1720,10 @@ else
 
   createFriendShip = (username, friendname, callback) ->
     multi = rc.multi()
-    multi.sadd "friends:#{username}", friendname
-    multi.sadd "friends:#{friendname}", username
-    multi.srem "users:deleted:#{username}", friendname
-    multi.srem "users:deleted:#{friendname}", username
+    multi.sadd "f:#{username}", friendname
+    multi.sadd "f:#{friendname}", username
+    multi.srem "u:d:#{username}", friendname
+    multi.srem "u:d:#{friendname}", username
     multi.exec (err, results) ->
       callback next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
       createAndSendUserControlMessage username, "added", friendname, null, (err) ->
@@ -1734,14 +1734,14 @@ else
 
   deleteInvites = (username, friendname, callback) ->
     multi = rc.multi()
-    multi.srem "invites:#{username}", friendname
-    multi.srem "invited:#{friendname}", username
+    multi.srem "is:#{username}", friendname
+    multi.srem "id:#{friendname}", username
     multi.exec (err, results) ->
-      callback new Error("[friend] srem failed for invites:#{username}:#{friendname}") if err?
+      callback new Error("[friend] srem failed for is:#{username}:#{friendname}") if err?
       callback null
 
   sendInviteResponseGcm = (username, friendname, action, callback) ->
-    userKey = "users:" + friendname
+    userKey = "u:" + friendname
     rc.hget userKey, "gcmId", (err, gcmId) ->
       if err?
         logger.error ("ERROR: " + err)
@@ -1794,7 +1794,7 @@ else
                 res.send 204
 
           when 'block'
-            rc.sadd "blocked:#{username}", friendname, (err, data) ->
+            rc.sadd "b:#{username}", friendname, (err, data) ->
               return next err if err?
               createAndSendUserControlMessage friendname, 'ignore', username, null, (err) ->
                 return next err if err?
@@ -1806,7 +1806,7 @@ else
 
 
   getFriendImageData = (username, friendname, callback) ->
-    rc.hmget "friendImages:#{username}", "#{friendname}:imageUrl", "#{friendname}:imageVersion", "#{friendname}:imageIv", (err, friendImageData) ->
+    rc.hmget "fi:#{username}", "#{friendname}:imageUrl", "#{friendname}:imageVersion", "#{friendname}:imageIv", (err, friendImageData) ->
       return callback err if err?
       callback null, new Friend friendname, 0, friendImageData[0], friendImageData[1], friendImageData[2]
 
@@ -1814,7 +1814,7 @@ else
   getFriends = (req, res, next) ->
     username = req.user.username
     #get users we're friends with
-    rc.smembers "friends:#{username}", (err, rfriends) ->
+    rc.smembers "f:#{username}", (err, rfriends) ->
       return next err if err?
       friends = []
       return res.send {} unless rfriends?
@@ -1826,17 +1826,17 @@ else
           friends.push friend
 
       #get users that invited us
-      rc.smembers "invites:#{username}", (err, invites) ->
+      rc.smembers "is:#{username}", (err, invites) ->
         return next err if err?
         _.each invites, (name) -> friends.push new Friend name, 32
 
         #get users that we invited
-        rc.smembers "invited:#{username}", (err, invited) ->
+        rc.smembers "id:#{username}", (err, invited) ->
           return next err if err?
           _.each invited, (name) -> friends.push new Friend name, 2
 
           #get users that deleted us that we haven't deleted
-          rc.smembers "users:deleted:#{username}", (err, deleted) ->
+          rc.smembers "u:d:#{username}", (err, deleted) ->
             return next err if err?
             _.each deleted, (name) ->
 
@@ -1849,7 +1849,7 @@ else
 
 
 
-            rc.get "control:user:#{username}:id", (err, id) ->
+            rc.get "c:u:#{username}:id", (err, id) ->
               friendstate = {}
               friendstate.userControlId = id ? 0
               friendstate.friends = friends
@@ -1876,7 +1876,7 @@ else
     logger.debug "signed with keyversion: " + kv
     #todo transaction
     #make sure the tokens match
-    rc.get "deletetoken:#{username}", (err, rtoken) ->
+    rc.get "dt:#{username}", (err, rtoken) ->
       return next new Error 'no delete token' unless rtoken?
       logger.debug "token: " + rtoken
 
@@ -1899,24 +1899,24 @@ else
           return res.send 403 unless user?
 
           #delete the token of which there should only be one
-          rc.del "deletetoken:#{username}", (err, rdel) ->
+          rc.del "dt:#{username}", (err, rdel) ->
             return next err if err?
             return res.send 404 unless rdel is 1
 
             multi = rc.multi()
 
             #delete invites
-            multi.del "invites:#{username}"
-            multi.del "invited:#{username}"
+            multi.del "is:#{username}"
+            multi.del "id:#{username}"
             #tell users that invited me that i'm deleted
             #get users that invited us
-            rc.smembers "invites:#{username}", (err, invites) ->
+            rc.smembers "is:#{username}", (err, invites) ->
               return next err if err?
               #delete their invites
               async.each(
                 invites,
                 (name, callback) ->
-                  multi.srem "invited:#{name}", username
+                  multi.srem "id:#{name}", username
 
                   #tell them we've been deleted
                   createAndSendUserControlMessage name, "delete", username, username, (err) ->
@@ -1925,13 +1925,13 @@ else
                 (err) ->
                   return next err if err?
                   #delete my invites to them
-                  rc.smembers "invited:#{username}", (err, invited) ->
+                  rc.smembers "id:#{username}", (err, invited) ->
                     return next err if err?
 
                     async.each(
                       invited,
                       (name, callback) ->
-                        multi.srem "invites:#{name}", username
+                        multi.srem "is:#{name}", username
 
                         #tell them we've been deleted
                         createAndSendUserControlMessage name, "delete", username, username, (err) ->
@@ -1941,12 +1941,12 @@ else
                         return next err if err?
 
                         #copy data from user's list of friends to list of deleted users friends
-                        rc.smembers "friends:#{username}", (err, friends) ->
+                        rc.smembers "f:#{username}", (err, friends) ->
                           return next err if err?
 
                           addDeletedFriend = (friends, callback) ->
                             if friends.length > 0
-                              rc.sadd "deleted:#{username}", friends, (err, nadded) ->
+                              rc.sadd "d:#{username}", friends, (err, nadded) ->
                                 return next err if err?
                                 callback()
                             else
@@ -1956,12 +1956,12 @@ else
                             return next err if err?
 
                             #remove me from the global set of users
-                            multi.srem "users", username
+                            multi.srem "u", username
 
                             #add me to the global set of deleted users
-                            multi.sadd "deleted", username
+                            multi.sadd "d", username
 
-                            multi.del "users:#{username}"
+                            multi.del "u:#{username}"
 
                             #add user to each friend's set of deleted users
                             async.each(
@@ -2005,7 +2005,7 @@ else
     logger.debug "signed with keyversion: " + kv
     #todo transaction
     #make sure the tokens match
-    rc.get "passwordtoken:#{username}", (err, rtoken) ->
+    rc.get "pt:#{username}", (err, rtoken) ->
       return next new Error 'no password token' unless rtoken?
       logger.debug "token: " + rtoken
 
@@ -2026,7 +2026,7 @@ else
           return res.send 403 unless user?
 
           #delete the token of which there should only be one
-          rc.del "passwordtoken:#{username}", (err, rdel) ->
+          rc.del "pt:#{username}", (err, rdel) ->
             return next err if err?
             return res.send 404 unless rdel is 1
 
@@ -2035,7 +2035,7 @@ else
 
               bcrypt.hash newPassword, salt, (err, hashedPassword) ->
                 return next err if err?
-                rc.hset "users:#{username}", "password", hashedPassword, (err, set) ->
+                rc.hset "u:#{username}", "password", hashedPassword, (err, set) ->
                   return next err if err?
                   res.send 204
 
@@ -2060,16 +2060,16 @@ else
 
   deleteRemainingIdentityData = (multi, username) ->
     #cleanup stuff
-    multi.srem "deleted", username
-    multi.del "keys:#{username}"
+    multi.srem "d", username
+    multi.del "k:#{username}"
     multi.del "kv:#{username}"
-    multi.del "control:user:#{username}"
-    multi.del "control:user:#{username}:id"
+    multi.del "c:u:#{username}"
+    multi.del "c:u:#{username}:id"
 
 
   deleteUser = (username, theirUsername, multi, next) ->
     #check if they've only been invited
-    rc.sismember "invited:#{username}", theirUsername, (err, isInvited) ->
+    rc.sismember "id:#{username}", theirUsername, (err, isInvited) ->
       return next err if err?
       if isInvited
         deleteInvites theirUsername, username, (err) ->
@@ -2078,22 +2078,22 @@ else
       else
         room = getRoomName username, theirUsername
         #delete the set that held message ids of theirs that we deleted
-        multi.del "deleted:#{username}:#{room}"
+        multi.del "d:#{username}:#{room}"
 
         #delete the conversation with this user from the set of my conversations
-        multi.srem "conversations:#{username}", room
+        multi.srem "c:#{username}", room
 
 
         getFriendImageData username, theirUsername, (err, friend) ->
           if friend.imageUrl?
             deleteImage friend.imageUrl
 
-        multi.hdel "friendImages:#{username}", "#{theirUsername}:imageUrl", "#{theirUsername}:imageVersion", "#{theirUsername}:imageIv"
+        multi.hdel "fi:#{username}", "#{theirUsername}:imageUrl", "#{theirUsername}:imageVersion", "#{theirUsername}:imageIv"
 
         #todo delete related user control messages
 
         #if i've been deleted by them this will be populated with their username
-        rc.sismember "users:deleted:#{username}", theirUsername, (err, theyHaveDeletedMe) ->
+        rc.sismember "u:d:#{username}", theirUsername, (err, theyHaveDeletedMe) ->
           return next err if err?
 
           #if we are deleting them and they haven't deleted us already
@@ -2114,30 +2114,30 @@ else
               deleteMessages id, (err) ->
                 return next err if err?
                 #delete friend association
-                multi.srem "friends:#{username}", theirUsername
-                multi.srem "friends:#{theirUsername}", username
+                multi.srem "f:#{username}", theirUsername
+                multi.srem "f:#{theirUsername}", username
 
                 #add me to their set of deleted users if they're not deleted
-                rc.sismember "deleted", theirUsername, (err, isDeleted) ->
+                rc.sismember "d", theirUsername, (err, isDeleted) ->
                   callback err if err?
                   if not isDeleted
-                    multi.sadd "users:deleted:#{theirUsername}", username
+                    multi.sadd "u:d:#{theirUsername}", username
                   next()
 
           #they've already deleted me
           else
             #remove them from their deleted set (if they deleted their identity)
-            rc.srem "deleted:#{theirUsername}", username, (err, rCount) ->
+            rc.srem "d:#{theirUsername}", username, (err, rCount) ->
               return next err if err?
               #if they have been deleted and we are the last person to delete them
               #remove the final pieces of data
-              rc.sismember "deleted", theirUsername, (err, isDeleted) ->
+              rc.sismember "d", theirUsername, (err, isDeleted) ->
                 return next err if err?
 
                 deleteLastUserScraps = (callback) ->
 
                   if isDeleted
-                    rc.scard "deleted:#{theirUsername}", (err, card) ->
+                    rc.scard "d:#{theirUsername}", (err, card) ->
                       callback err if err?
                       if card is 0
 
@@ -2154,16 +2154,16 @@ else
 
 
                   #delete control message data
-                  multi.del "control:message:#{room}"
-                  multi.del "control:message:#{room}:id"
+                  multi.del "c:m:#{room}"
+                  multi.del "c:m:#{room}:id"
 
                   #remove them from my deleted set
-                  multi.srem "users:deleted:#{username}", theirUsername
+                  multi.srem "u:d:#{username}", theirUsername
 
 
                   #delete message data
                   multi.del "#{room}:id"
-                  multi.del "messages:#{room}"
+                  multi.del "m:#{room}"
                   next()
 
 
@@ -2192,7 +2192,7 @@ else
       getKeys username, version, callback
 
   getKeys = (username, version, callback) ->
-    rc.hget "keys:#{username}", version, (err, keys) ->
+    rc.hget "k:#{username}", version, (err, keys) ->
       return callback err if err?
 
       jkeys = undefined
@@ -2218,7 +2218,7 @@ else
   validateUser = (username, password, signature, gcmId, done) ->
     return done(null, 403) if (!checkUser(username) or !checkPassword(password))
     return done(null, 403) if signature.length < 16
-    userKey = "users:" + username
+    userKey = "u:" + username
     logger.debug "validating: " + username
     rcs.hgetall userKey, (err, user) ->
       return done(err) if err?
@@ -2263,6 +2263,6 @@ else
 
   passport.deserializeUser (username, done) ->
     logger.debug "deserializeUser, user:" + username
-    rcs.hgetall "users:" + username, (err, user) ->
+    rcs.hgetall "u:" + username, (err, user) ->
       done err, user
 
