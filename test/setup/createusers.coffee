@@ -20,9 +20,9 @@ rc = redis.createClient()
 #    for i in {0..4999}; do openssl ec -inform PEM -outform PEM -in test${i}_priv.pem -out test${i}_pub.pem -pubout; done
 
 
-baseUri = "https://www.surespot.me"
-minclient = 100
-maxclient = 101
+baseUri = "https://localhost:443"
+minclient = 0
+maxclient = 49
 #maxsockets = 100
 
 #http.globalAgent.maxSockets = maxsockets
@@ -94,7 +94,7 @@ makeCreate = (i, key) ->
 
 describe "surespot chat test", () ->
   keys = []
-  it "create #{maxclient-minclient} signatures", (done) ->
+  it "create #{maxclient-minclient+1} signatures", (done) ->
     index = 0
     for i in [minclient..maxclient - 1]
       priv = fs.readFileSync "testkeys/test#{i}_priv.pem", 'utf-8'

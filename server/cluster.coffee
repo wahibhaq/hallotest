@@ -29,8 +29,8 @@ cloudfiles = require 'cloudfiles'
 USERNAME_LENGTH = 20
 
 #config
-MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER
-debugLevel = process.env.SURESPOT_DEBUG_LEVEL
+MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 100
+debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'debug'
 database = process.env.SURESPOT_DB ? 0
 socketPort = process.env.SURESPOT_SOCKET ? 443
 env = process.env.SURESPOT_ENV ? 'Local' # one of "Local","Stage", "Prod"
@@ -44,7 +44,8 @@ sessionSecret = process.env.SURESPOT_SESSION_SECRET
 
 logger.remove logger.transports.Console
 logger.setLevels logger.config.syslog.levels
-logger.exitOnError = false
+logger.exitOnError = true
+logger.emitErrs = false
 
 transports = []
 transports.push new (logger.transports.File)({ dirname: 'logs', filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: debugLevel, handleExceptions: true })
@@ -67,7 +68,8 @@ if (cluster.isMaster && env isnt 'Local')
     logger.debug 'worker ' + worker.process.pid + ' online'
 
   cluster.on 'exit', (worker, code, signal) ->
-    logger.debug 'worker ' + worker.process.pid + ' died'
+    logger.debug "worker #{worker.process.pid} died, forking another"
+    cluster.fork()
 
 else
   logger.info "env: #{env}"
@@ -83,9 +85,6 @@ else
   logger.info "rackspace username: #{rackspaceUsername}"
   logger.info "session secret: #{sessionSecret}"
 
-  #process.on "uncaughtException", uncaught = (err) ->
-   # logger.error "Uncaught Exception: " + err
-
   sio = undefined
   sessionStore = undefined
   rc = undefined
@@ -97,9 +96,6 @@ else
   ssloptions = undefined
 
   cfClient = cloudfiles.createClient {auth: { username: rackspaceUsername, apiKey: rackspaceApiKey}}
-
-
-
   createRedisClient = (callback, database, port, hostname, password) ->
     if port? and hostname? and password?
       client = require("redis").createClient(port, hostname)
