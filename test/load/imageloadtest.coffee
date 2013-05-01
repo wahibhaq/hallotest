@@ -13,6 +13,7 @@ crypto = require 'crypto'
 rc = redis.createClient()
 #rc.select 1
 
+testImageLocation = "../testImage"
 testkeydir = '../testkeys'
 baseUri = "https://localhost:443"
 minclient = 0
@@ -200,6 +201,51 @@ describe "surespot image load test", () ->
       sends.push makeSend(socket, minclient + i++)
 
     async.parallel sends,  (err, results) ->
+      if err?
+        done err
+      else
+        _.every results, (result) -> result.should.be.true
+        done()
+
+
+
+  it "upload an image", (done) ->
+
+    upload = (i, callback) ->
+      if i % 2 is 0
+        r = request.post
+          agent: false
+          #maxSockets: 6000
+          jar: jars[i - minclient]
+          url: baseUri + "/images/1/test#{i+1}/1"
+          (err, res, body) ->
+            if err
+              callback err
+            else
+              res.statusCode.should.equal 200
+              callback null, true
+
+        form = r.form()
+        form.append "image", fs.createReadStream "#{testImageLocation}"
+
+
+      else
+        socket.once "message", (message) ->
+          #receivedMessage = JSON.parse message
+          callback null, true
+
+
+    makeUploads = (i) ->
+      return (callback) ->
+        upload i, callback
+
+
+    uploads = []
+    i = 0
+    for socket in sockets
+      uploads.push makeUploads(minclient + i++)
+
+    async.parallel uploads, (err, results) ->
       if err?
         done err
       else

@@ -432,7 +432,7 @@ describe "surespot server", () ->
             done()
 
   describe "uploading an image to a valid spot", ->
-    it "should return the location header and 202", (done) ->
+    it "should return the 200", (done) ->
       login "test0", "test0", keys[0].sig, done, (res, body) ->
         res.statusCode.should.equal 204
         r = http.post baseUri + "/images/1/test1/1", (err, res, body) ->
