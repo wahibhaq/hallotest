@@ -20,9 +20,10 @@ rc = redis.createClient()
 #    for i in {0..4999}; do openssl ec -inform PEM -outform PEM -in test${i}_priv.pem -out test${i}_pub.pem -pubout; done
 
 
+testkeydir = '../testkeys'
 baseUri = "https://localhost"
 minclient = 0
-maxclient = 20
+maxclient = 9
 #maxsockets = 100
 
 #http.globalAgent.maxSockets = maxsockets
@@ -95,8 +96,8 @@ makeCreate = (i, key) ->
 keys = []
 
 for i in [minclient..maxclient]
-  pub = fs.readFileSync "testkeys/test#{i}_pub.pem", 'utf-8'
-  sig = fs.readFileSync "testkeys/test#{i}.sig", 'utf-8'
+  pub = fs.readFileSync "#{testkeydir}/test#{i}_pub.pem", 'utf-8'
+  sig = fs.readFileSync "#{testkeydir}/test#{i}.sig", 'utf-8'
   keys[i-minclient] =  {
     sig: sig
     pub: pub
@@ -105,7 +106,7 @@ for i in [minclient..maxclient]
 tasks = []
 #create connect clients tasks
 index = 0
-for i in [minclient..maxclient - 1] by 1
+for i in [minclient..maxclient] by 1
   tasks.push makeCreate i, keys[index++]
 #execute the tasks which creates the cookie jars
 async.series tasks, (err) ->

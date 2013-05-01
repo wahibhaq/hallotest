@@ -23,7 +23,7 @@ testkeydir = '../testkeys'
 
 baseUri = "https://localhost:443"
 minclient = 0
-maxclient = 10
+maxclient = 9
 #maxsockets = 100
 
 #http.globalAgent.maxSockets = maxsockets
@@ -96,7 +96,7 @@ makeCreate = (i, key) ->
 
 keys = []
 index = 0
-for i in [minclient..maxclient - 1]
+for i in [minclient..maxclient]
   priv = fs.readFileSync "#{testkeydir}/test#{i}_priv.pem", 'utf-8'
   pub = fs.readFileSync "#{testkeydir}/test#{i}_pub.pem", 'utf-8'
 
@@ -122,7 +122,7 @@ for i in [minclient..maxclient - 1]
 tasks = []
 #create connect clients tasks
 index = 0
-for i in [minclient..maxclient - 1] by 1
+for i in [minclient..maxclient] by 1
   tasks.push makeCreate i, keys[index++]
 #execute the tasks which creates the cookie jars
 async.series tasks, (err) ->
