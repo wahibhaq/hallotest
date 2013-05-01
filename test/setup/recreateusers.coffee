@@ -23,7 +23,7 @@ rc = redis.createClient()
 testkeydir = '../testkeys'
 baseUri = "https://localhost"
 minclient = 0
-maxclient = 9
+maxclient = 1999
 #maxsockets = 100
 
 #http.globalAgent.maxSockets = maxsockets
