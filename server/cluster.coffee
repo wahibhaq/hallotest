@@ -396,10 +396,10 @@ else
     #remove message data from set of room messages
     rc.zremrangebyscore "m:" + room, id, id, fn
 
-  removeMessage = (to, room, id, fn) ->
+  removeMessage = (to, room, id, multi, fn) ->
     user = getOtherUser room, to
 
-    multi = rc.multi()
+    multi = rc.multi() unless multi?
     #remove message data from set of room messages
     multi.zremrangebyscore "m:" + room, id, id
 
@@ -624,32 +624,46 @@ else
       multi.zadd "m:#{room}", id, newMessage
       #keep track of all the users message so we can remove the earliest when we cross their threshold
       multi.zadd userMessagesKey, time, "m:#{room}:#{id}"
-      multi.exec  (err, results) ->
-        if err?
-          logger.error ("ERROR: Socket.io onmessage, " + err)
-          return callback new MessageError(iv, 500)
 
-
-        deleteEarliestMessage = (callback) ->
-          #check how many messages the user has total
-          rc.zcard userMessagesKey, (err, card) ->
-            return callback err if err?
-            #TODO per user threshold based on pay status
-            #delete the oldest message
-            deleteCount = card - MESSAGES_PER_USER
-
-            if deleteCount > 0
-
-              rc.zrange userMessagesKey,  0, deleteCount, (err, messagePointer) ->
-                return callback err if err?
-                #delete message
-                messageData = getMessagePointerData from, messagePointer[0]
-                deleteMessage from, messageData.to, messageData.id, true, callback
-            else
-              callback()
-
-        deleteEarliestMessage (err) ->
+      deleteEarliestMessage = (callback) ->
+        #check how many messages the user has total
+        rc.zcard userMessagesKey, (err, card) ->
           return callback err if err?
+          #TODO per user threshold based on pay status
+          #delete the oldest message(s)
+          deleteCount = (card - MESSAGES_PER_USER) + 1
+          logger.debug "deleteCount #{deleteCount}"
+          if deleteCount > 0
+
+            rc.zrange userMessagesKey,  0, deleteCount-1, (err, messagePointers) ->
+              return callback err if err?
+              deleteControlMessages = []
+              async.each(
+                messagePointers,
+                (item, callback) ->
+                  messageData = getMessagePointerData from, item
+                  deleteMessage from, messageData.to, messageData.id, false, multi, (err, deleteControlMessage) ->
+                    deleteControlMessages.push deleteControlMessage unless err?
+                    callback()
+                (err) ->
+                  logger.warning "error getting old messages to delete: #{err}" if err?
+                  callback null, deleteControlMessages)
+
+          else
+            callback null, null
+
+      deleteEarliestMessage (err, deleteControlMessages) ->
+        return callback err if err?
+
+        multi.exec  (err, results) ->
+          if err?
+            logger.error ("ERROR: Socket.io onmessage, " + err)
+            return callback new MessageError(iv, 500)
+
+          #if we deleted messages, add the delete control message(s) to this message to save sending the delete control message separately
+          if deleteControlMessages?.length > 0
+            message.deleteControlMessages = deleteControlMessages
+            newMessage = JSON.stringify message
 
           sendGcm = (gcmCallback) ->
             #send gcm message
@@ -703,6 +717,9 @@ else
                 logger.error ("ERROR: Socket.io onmessage, " + err)
                 return callback new MessageError(iv, 500)
 
+
+
+
               sio.sockets.to(to).emit "message", newMessage
               sio.sockets.to(from).emit "message", newMessage
 
@@ -719,7 +736,8 @@ else
     return data
 
 
-  createAndSendMessageControlMessage = (from, to, room, action, data, moredata, callback) ->
+
+  createMessageControlMessage = (from, to, room, action, data, moredata, callback)  ->
     message = {}
     message.type = "message"
     message.action = action
@@ -736,8 +754,14 @@ else
       sMessage = JSON.stringify message
       rc.zadd "c:m:#{room}", id, sMessage, (err, addcount) ->
         callback err if err?
-        sio.sockets.to(to).emit "control", sMessage
-        callback null
+        callback null, sMessage
+
+
+  createAndSendMessageControlMessage = (from, to, room, action, data, moredata, callback) ->
+    createMessageControlMessage from, to, room, action, data, moredata, (err, message) ->
+      return callback err if err?
+      sio.sockets.to(to).emit "control", message
+      callback null, message
 
   createAndSendUserControlMessage = (to, action, data, moredata, callback) ->
     userExists to, (err, exists) ->
@@ -924,7 +948,7 @@ else
             callback())
 
 
-  deleteMessage = (from, to, messageId, notifyMyself, callback) ->
+  deleteMessage = (from, to, messageId, sendControlMessage, multi, callback) ->
     room = getRoomName to, from
     #get the message we're modifying
     getMessage room, messageId, (err, dMessage) ->
@@ -936,7 +960,7 @@ else
         if (from is dMessage.from)
 
           #update message data
-          removeMessage dMessage.to, room, messageId, (err, count) ->
+          removeMessage dMessage.to, room, messageId, multi, (err, count) ->
             return callback err if err?
 
             #delete the file if it's a file
@@ -958,14 +982,16 @@ else
 
       deleteMessageInternal (err) ->
         return callback err if err?
-        createAndSendMessageControlMessage from, to, room, "delete", room, messageId, (err) ->
-          return next err if err?
-          if notifyMyself
-            createAndSendMessageControlMessage from, from, room, "delete", room, messageId, (err) ->
-              return next err if err?
-              callback null, true
-          else
-            callback null, true
+        if (sendControlMessage)
+          createAndSendMessageControlMessage from, to, room, "delete", room, messageId, (err, message) ->
+            return callback err if err?
+            callback null, message
+        else
+          createMessageControlMessage from, to, room, "delete", room, messageId, (err, message) ->
+            return callback err if err?
+            callback null, message
+
+
 
   deleteImage = (uri) ->
     splits = uri.split('/')
@@ -1002,9 +1028,9 @@ else
     username = req.user.username
     otherUser = req.params.username
 
-    deleteMessage username, otherUser, messageId, false, (err, deleted) ->
+    deleteMessage username, otherUser, messageId, true, null, (err, deleteControlMessage) ->
       return next err if err?
-      res.send (if deleted then 204 else 404)
+      res.send (if deleteControlMessage? then 204 else 404)
 
   app.post "/deletetoken", setNoCache, (req, res, next) ->
     return res.send 400 unless req.body?.username?
