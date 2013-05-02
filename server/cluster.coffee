@@ -165,6 +165,7 @@ else
     createRedisClient ((err, c) -> sub = c), database
     createRedisClient ((err, c) -> client = c), database
 
+
     app.use express.limit(MAX_HTTP_REQUEST_LENGTH)
     app.use express.compress()
     app.use express.cookieParser()
