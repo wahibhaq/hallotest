@@ -164,6 +164,7 @@ else
     createRedisClient ((err, c) -> sub = c), database
     createRedisClient ((err, c) -> client = c), database
 
+    app.use express.limit(500000)
     app.use express.compress()
     app.use express.cookieParser()
     app.use express.json()
