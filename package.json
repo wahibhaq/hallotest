@@ -7,7 +7,7 @@
     "jade": "~0.27.7",
     "connect-redis": "~1.4.5",
     "bcrypt": "~0.7.3",
-    "socket.io": "~0.9.13",
+    "socket.io": "https://github.com/2fours/socket.io/tarball/surespot",
     "chai": "~1.1.1",
     "fs.extra": "~1.2.0",
     "underscore": "~1.4.3",

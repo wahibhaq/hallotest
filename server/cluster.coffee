@@ -1,6 +1,5 @@
 cluster = require('cluster')
 https = require('https')
-numCPUs = require('os').cpus().length
 cookie = require("cookie")
 express = require("express")
 passport = require("passport")
@@ -30,6 +29,7 @@ ratelimit = redback.createRateLimit('messages')
 
 USERNAME_LENGTH = 20
 CONTROL_MESSAGE_HISTORY = 100
+MAX_MESSAGE_LENGTH = 8096
 
 #rate limit messages to MESSAGE_RATE_LIMIT_RATE / MESSAGE_RATE_LIMIT_TIME (seconds)
 MESSAGE_RATE_LIMIT_SECS = 3
@@ -60,6 +60,9 @@ transports = []
 transports.push new (logger.transports.File)({ dirname: 'logs', filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: debugLevel, handleExceptions: true })
 #always use file transport
 logger.add transports[0], null, true
+
+
+numCPUs = require('os').cpus().length
 
 if env is 'Local'
   transports.push new (logger.transports.Console)({colorize: true, timestamp: true, level: debugLevel, handleExceptions: true })
@@ -204,6 +207,7 @@ else
   )
 
   sio.set 'transports', ['websocket']
+  sio.set 'destroy buffer size', MAX_MESSAGE_LENGTH
 
   sio.set "authorization", (req, accept) ->
     logger.debug 'socket.io auth'
