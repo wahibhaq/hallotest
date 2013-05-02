@@ -30,6 +30,7 @@ ratelimit = redback.createRateLimit('messages')
 USERNAME_LENGTH = 20
 CONTROL_MESSAGE_HISTORY = 100
 MAX_MESSAGE_LENGTH = 8096
+MAX_HTTP_REQUEST_LENGTH = 500000
 
 #rate limit messages to MESSAGE_RATE_LIMIT_RATE / MESSAGE_RATE_LIMIT_TIME (seconds)
 MESSAGE_RATE_LIMIT_SECS = 3
@@ -164,6 +165,7 @@ else
     createRedisClient ((err, c) -> sub = c), database
     createRedisClient ((err, c) -> client = c), database
 
+    app.use express.limit(MAX_HTTP_REQUEST_LENGTH)
     app.use express.compress()
     app.use express.cookieParser()
     app.use express.json()
