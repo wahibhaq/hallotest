@@ -33,7 +33,7 @@ CONTROL_MESSAGE_HISTORY = 100
 
 #rate limit messages to MESSAGE_RATE_LIMIT_RATE / MESSAGE_RATE_LIMIT_TIME (seconds)
 MESSAGE_RATE_LIMIT_SECS = 3
-MESSAGE_RATE_LIMIT_RATE = 5
+MESSAGE_RATE_LIMIT_RATE = 10
 
 
 #config
@@ -222,7 +222,7 @@ else
     else
       accept "No cookie transmitted.", false
 
-
+  typeIsArray = Array.isArray || ( value ) -> return {}.toString.call( value ) is '[object Array]'
 
   ensureAuthenticated = (req, res, next) ->
     logger.debug "ensureAuth"
@@ -852,8 +852,7 @@ else
         , callback
 
 
-  handleMessage = (user, data, callback) ->
-
+  handleMessages = (socket, user, data) ->
 
     #rate limit
     ratelimit.add user
@@ -862,9 +861,15 @@ else
       if requests > MESSAGE_RATE_LIMIT_RATE
         try
           message = JSON.parse(data)
-          return callback new MessageError(message.iv, 429)
+
+          if typeIsArray message
+            #todo  this blows but will do for now
+            #would be better to send bulk messages on a separate event but fuck it
+            return socket.emit "messageError", new MessageError(data, 429)
+          else
+            return socket.emit "messageError", new MessageError(message.iv, 429)
         catch error
-          return callback new MessageError(data, 500)
+          return socket.emit "messageError", new MessageError(data, 500)
 
 
 
@@ -875,7 +880,21 @@ else
     catch error
       return callback new MessageError(data, 500)
 
+    if typeIsArray message
+      async.each(
+        message,
+        (item, callback) ->
+          handleSingleMessage user, item, (err) ->
+            socket.emit "messageError", err if err?
+            callback()
+        (err) -> )
 
+    else
+      handleSingleMessage user, message, (err) ->
+        socket.emit "messageError", err if err?
+
+
+  handleSingleMessage = (user, message, callback) ->
     # message.user = user
     logger.debug "received message from user #{user}"
 
@@ -932,9 +951,8 @@ else
     logger.debug "user #{user} joining socket.io room"
     socket.join user
 
-    socket.on "message", (data) ->
-      handleMessage user, data, (err) ->
-        socket.emit "messageError", err if err?
+    socket.on "message", (data) -> handleMessages socket, user, data
+
 
 
   #delete all messages
