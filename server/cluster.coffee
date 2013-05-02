@@ -27,8 +27,11 @@ cloudfiles = require 'cloudfiles'
 
 
 USERNAME_LENGTH = 20
+CONTROL_MESSAGE_HISTORY = 100
+
 
 #config
+
 MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 100
 debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'debug'
 database = process.env.SURESPOT_DB ? 0
@@ -752,9 +755,26 @@ else
       message.id = id
       message.from = from
       sMessage = JSON.stringify message
-      rc.zadd "c:m:#{room}", id, sMessage, (err, addcount) ->
-        callback err if err?
-        callback null, sMessage
+      controlMessageKey = "c:m:#{room}"
+      multi = rc.multi()
+
+      deleteEarliestControlMessage = (callback) ->
+        #check how many control messages the user has total
+        rc.zcard controlMessageKey, (err, card) ->
+          return callback err if err?
+          #delete the oldest control message(s)
+          deleteCount = (card - CONTROL_MESSAGE_HISTORY) + 1
+          logger.debug "control message deleteCount #{deleteCount}"
+          multi.zremrangebyrank controlMessageKey, 0, deleteCount-1 if deleteCount > 0
+          callback()
+
+
+      deleteEarliestControlMessage (err) ->
+        logger.warning "delete earliest control message error: #{err}" if err?
+        multi.zadd "c:m:#{room}", id, sMessage
+        multi.exec (err, results) ->
+          callback err if err?
+          callback null, sMessage
 
 
   createAndSendMessageControlMessage = (from, to, room, action, data, moredata, callback) ->
@@ -780,11 +800,28 @@ else
         message.id = id
         newMessage = JSON.stringify(message)
         #store messages in sorted sets
-        rc.zadd "c:u:#{to}", id, newMessage, (err, addcount) ->
-          #end transaction here
-          return callback err if err?
-          sio.sockets.to(to).emit "control", newMessage
-          callback null
+
+        multi = rc.multi()
+        controlMessageKey = "c:u:#{to}"
+
+        deleteEarliestControlMessage = (callback) ->
+          #check how many control messages the user has total
+          rc.zcard controlMessageKey, (err, card) ->
+            return callback err if err?
+            #delete the oldest control message(s)
+            deleteCount = (card - CONTROL_MESSAGE_HISTORY) + 1
+            logger.debug "user control message deleteCount: #{deleteCount}"
+            multi.zremrangebyrank controlMessageKey, 0, deleteCount-1 if deleteCount > 0
+            callback()
+
+
+        deleteEarliestControlMessage (err) ->
+
+          multi.zadd controlMessageKey, id, newMessage
+          multi.exec (err, results) ->
+            return callback err if err?
+            sio.sockets.to(to).emit "control", newMessage
+            callback null
 
   # broadcast a key revocation message to who's conversations
   sendRevokeMessages = (who, newVersion, callback) ->
