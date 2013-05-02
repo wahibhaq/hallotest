@@ -24,10 +24,16 @@ utils = require('connect/lib/utils')
 pause = require 'pause'
 stream = require 'readable-stream'
 cloudfiles = require 'cloudfiles'
+redback = require('redback').createClient()
+ratelimit = redback.createRateLimit('messages')
 
 
 USERNAME_LENGTH = 20
 CONTROL_MESSAGE_HISTORY = 100
+
+#rate limit messages to MESSAGE_RATE_LIMIT_RATE / MESSAGE_RATE_LIMIT_TIME (seconds)
+MESSAGE_RATE_LIMIT_SECS = 3
+MESSAGE_RATE_LIMIT_RATE = 5
 
 
 #config
@@ -847,7 +853,20 @@ else
 
 
   handleMessage = (user, data, callback) ->
-    #user = socket.handshake.session.passport.user
+
+
+    #rate limit
+    ratelimit.add user
+    ratelimit.count user, MESSAGE_RATE_LIMIT_SECS, (err,requests) ->
+      logger.debug "rate limit count #{user}: #{requests}"
+      if requests > MESSAGE_RATE_LIMIT_RATE
+        try
+          message = JSON.parse(data)
+          return callback new MessageError(message.iv, 429)
+        catch error
+          return callback new MessageError(data, 500)
+
+
 
     message = undefined
     #todo check from and to exist and are friends
