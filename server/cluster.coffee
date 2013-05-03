@@ -1605,7 +1605,11 @@ else
                   else
                     next()
 
-
+  app.head "/ping", (req,res,next) ->
+    rc.sismember "users", "adam", (err, ismember) ->
+      return next err if err?
+      return next new Error 'adam is not a member' unless not ismember
+      res.send 204
 
   app.post "/users", validateUsernamePassword, createNewUser, passport.authenticate("local"), (req, res, next) ->
     res.send 201
