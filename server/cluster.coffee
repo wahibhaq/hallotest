@@ -1606,9 +1606,9 @@ else
                     next()
 
   app.head "/ping", (req,res,next) ->
-    rc.sismember "users", "adam", (err, ismember) ->
+    rc.time (err, time) ->
       return next err if err?
-      return next new Error 'adam is not a member' unless not ismember
+      return next new Error 'redis does not know what time it is' unless time
       res.send 204
 
   app.post "/users", validateUsernamePassword, createNewUser, passport.authenticate("local"), (req, res, next) ->
