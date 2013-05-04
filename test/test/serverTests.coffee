@@ -9,7 +9,7 @@ async = require 'async'
 fs = require("fs")
 rc = redis.createClient()
 port = 443
-baseUri = "https://server.surespot.me:" + port
+baseUri = "https://localhost:" + port
 
 cleanup = (done) ->
   keys = [
