@@ -24,20 +24,46 @@ pause = require 'pause'
 stream = require 'readable-stream'
 cloudfiles = require 'cloudfiles'
 redback = require('redback').createClient()
-ratelimit = redback.createRateLimit('rl')
 
 
+#constants
 USERNAME_LENGTH = 20
 CONTROL_MESSAGE_HISTORY = 100
 MAX_MESSAGE_LENGTH = 8096
 MAX_HTTP_REQUEST_LENGTH = 500000
 
-#rate limit messages to MESSAGE_RATE_LIMIT_RATE / MESSAGE_RATE_LIMIT_SECS (seconds)
-MESSAGE_RATE_LIMIT_SECS = 10
-MESSAGE_RATE_LIMIT_RATE = 100
 
 
 #config
+
+
+#rate limit to MESSAGE_RATE_LIMIT_RATE / MESSAGE_RATE_LIMIT_SECS (seconds) (allows us to get request specific on top of iptables)
+RATE_LIMITING_MESSAGE=process.env.SURESPOT_RATE_LIMITING_MESSAGE is "true"
+RATE_LIMITING_PING=process.env.SURESPOT_RATE_LIMITING_PING is "true"
+RATE_LIMITING_EXISTS=process.env.SURESPOT_RATE_LIMITING_EXISTS is "true"
+RATE_LIMITING_CREATE_USER=process.env.SURESPOT_RATE_LIMITING_CREATE_USER is "true"
+
+RATE_LIMIT_BUCKET_MESSAGE = process.env.SURESPOT_RATE_LIMIT_BUCKET_MESSAGE ? 5
+RATE_LIMIT_SECS_MESSAGE = process.env.SURESPOT_RATE_LIMIT_SECS_MESSAGE ? 10
+RATE_LIMIT_RATE_MESSAGE = process.env.SURESPOT_RATE_LIMIT_RATE_MESSAGE ? 100
+
+RATE_LIMIT_BUCKET_PING = process.env.SURESPOT_RATE_LIMIT_BUCKET_PING ? 60
+RATE_LIMIT_SECS_PING = process.env.SURESPOT_RATE_LIMIT_SECS_PING ? 10
+RATE_LIMIT_RATE_PING = process.env.SURESPOT_RATE_LIMIT_RATE_PING ? 100
+
+RATE_LIMIT_BUCKET_EXISTS = process.env.SURESPOT_RATE_LIMIT_BUCKET_EXISTS ? 20
+RATE_LIMIT_SECS_EXISTS = process.env.SURESPOT_RATE_LIMIT_SECS_EXISTS ? 10
+RATE_LIMIT_RATE_EXISTS = process.env.SURESPOT_RATE_LIMIT_RATE_EXISTS ? 100
+
+RATE_LIMIT_BUCKET_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_BUCKET_CREATE_USER ? 600
+RATE_LIMIT_SECS_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_SECS_CREATE_USER ? 86400
+RATE_LIMIT_RATE_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_RATE_CREATE_USER ? 1000
+
+ratelimiterexists = redback.createRateLimit('rle', { bucket_interval: RATE_LIMIT_BUCKET_EXISTS } )
+ratelimiterping = redback.createRateLimit('rlp', { bucket_interval: RATE_LIMIT_BUCKET_PING })
+ratelimitercreateuser = redback.createRateLimit('rlu', { bucket_interval: RATE_LIMIT_BUCKET_CREATE_USER })
+ratelimitermessages = redback.createRateLimit('rlm', { bucket_interval: RATE_LIMIT_BUCKET_MESSAGE })
+
 
 MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 100
 debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'debug'
@@ -84,11 +110,13 @@ if (cluster.isMaster && env isnt 'Local')
     logger.debug "worker #{worker.process.pid} died, forking another"
     cluster.fork()
 
-else
   logger.info "env: #{env}"
   logger.info "database: #{database}"
   logger.info "socket: #{socketPort}"
-
+  logger.info "rate limiting messages: #{RATE_LIMITING_MESSAGE}, int: #{RATE_LIMIT_BUCKET_MESSAGE}, secs: #{RATE_LIMIT_SECS_MESSAGE}, rate: #{RATE_LIMIT_RATE_MESSAGE}"
+  logger.info "rate limiting ping: #{RATE_LIMITING_PING}, int: #{RATE_LIMIT_BUCKET_PING}, secs: #{RATE_LIMIT_SECS_PING}, rate: #{RATE_LIMIT_RATE_PING}"
+  logger.info "rate limiting exists: #{RATE_LIMITING_EXISTS}, int: #{RATE_LIMIT_BUCKET_EXISTS}, secs: #{RATE_LIMIT_SECS_EXISTS}, rate: #{RATE_LIMIT_RATE_EXISTS}"
+  logger.info "rate limiting create users: #{RATE_LIMITING_CREATE_USER}, int: #{RATE_LIMIT_BUCKET_CREATE_USER}, secs: #{RATE_LIMIT_SECS_CREATE_USER}, rate: #{RATE_LIMIT_RATE_CREATE_USER}"
   logger.info "messages per user: #{MESSAGES_PER_USER}"
   logger.info "debug level: #{debugLevel}"
   logger.info "google api key: #{googleApiKey}"
@@ -97,6 +125,26 @@ else
   logger.info "rackspace image container: #{rackspaceImageContainer}"
   logger.info "rackspace username: #{rackspaceUsername}"
   logger.info "session secret: #{sessionSecret}"
+
+
+else
+
+  if env is 'Local'
+    logger.info "env: #{env}"
+    logger.info "database: #{database}"
+    logger.info "socket: #{socketPort}"
+    logger.info "rate limiting messages: #{RATE_LIMITING_MESSAGE}, secs: #{RATE_LIMIT_SECS_MESSAGE}, rate: #{RATE_LIMIT_RATE_MESSAGE}"
+    logger.info "rate limiting ping: #{RATE_LIMITING_PING}, secs: #{RATE_LIMIT_SECS_PING}, rate: #{RATE_LIMIT_SECS_MESSAGE}"
+    logger.info "rate limiting exists: #{RATE_LIMITING_EXISTS}, secs: #{RATE_LIMIT_SECS_EXISTS}, rate: #{RATE_LIMIT_RATE_EXISTS}"
+    logger.info "rate limiting create users: #{RATE_LIMITING_CREATE_USER}, secs: #{RATE_LIMIT_SECS_CREATE_USER}, rate: #{RATE_LIMIT_RATE_CREATE_USER}"
+    logger.info "messages per user: #{MESSAGES_PER_USER}"
+    logger.info "debug level: #{debugLevel}"
+    logger.info "google api key: #{googleApiKey}"
+    logger.info "rackspace api key: #{rackspaceApiKey}"
+    logger.info "rackspace cdn url: #{rackspaceCdnBaseUrl}"
+    logger.info "rackspace image container: #{rackspaceImageContainer}"
+    logger.info "rackspace username: #{rackspaceUsername}"
+    logger.info "session secret: #{sessionSecret}"
 
   sio = undefined
   sessionStore = undefined
@@ -874,23 +922,24 @@ else
 
 
   handleMessages = (socket, user, data) ->
-
     #rate limit
-    ratelimit.add user
-    ratelimit.count user, MESSAGE_RATE_LIMIT_SECS, (err,requests) ->
-      logger.debug "rate limit count #{user}: #{requests}"
-      if requests > MESSAGE_RATE_LIMIT_RATE
-        try
-          message = JSON.parse(data)
+    if RATE_LIMITING_MESSAGE
+      ratelimitermessages.add user
+      ratelimitermessages.count user, RATE_LIMIT_SECS_MESSAGE, (err,requests) ->
 
-          if typeIsArray message
-            #todo  this blows but will do for now
-            #would be better to send bulk messages on a separate event but fuck it
-            return socket.emit "messageError", new MessageError(data, 429)
-          else
-            return socket.emit "messageError", new MessageError(message.iv, 429)
-        catch error
-          return socket.emit "messageError", new MessageError(data, 500)
+        if requests > RATE_LIMIT_RATE_MESSAGE
+          logger.warning "rate limiting messages for user: #{user}, ip: #{socket.handshake.address.address}"
+          try
+            message = JSON.parse(data)
+
+            if typeIsArray message
+              #todo  this blows but will do for now
+              #would be better to send bulk messages on a separate event but fuck it
+              return socket.emit "messageError", new MessageError(data, 429)
+            else
+              return socket.emit "messageError", new MessageError(message.iv, 429)
+          catch error
+            return socket.emit "messageError", new MessageError(data, 500)
 
 
 
@@ -1507,11 +1556,6 @@ else
       return callback err if err?
       res.send version
 
-  app.get "/users/:username/exists", setNoCache, (req, res, next) ->
-    userExistsOrDeleted req.params.username, (err, exists) ->
-      return next err if err?
-      res.send exists
-
   handleReferrers = (username, referrers, callback) ->
     return callback() if referrers.length is 0
     usersToInvite = []
@@ -1619,14 +1663,52 @@ else
                   else
                     next()
 
-  app.head "/ping", (req,res,next) ->
+
+
+
+
+  rateLimitByIp = (limit, limiter, seconds, rate) -> (req, res, next) ->
+    return next() unless limit
+
+
+    ip = req.header('x-forwarded-for') || req.connection.remoteAddress;
+    #port = req.connection.remotePort
+
+    #if we use this before stream we need to pause req
+
+    #hash the ip, no data is associated so doesn't really need to be secure, also ip address + port is 48 bit range so don't need crazy hashing function
+    hash = crypto.createHash('md4').update(ip).digest('base64')
+    logger.debug "checking rate limiting, hash: #{hash}, seconds: #{seconds}, rate: #{rate}"
+
+    limiter.add hash
+    limiter.count hash, seconds, (err, requests) ->
+      return next err if err?
+      if requests > rate
+        username = req.body.username
+        logger.warning "rate limiting ip: #{ip}" + if username? then ", user: #{username}"  #", port #{port}"
+        return res.send 429
+      else
+        next()
+
+
+
+  # unauth'd methods have rate limit
+  app.head "/ping", rateLimitByIp(RATE_LIMITING_PING, ratelimiterping, RATE_LIMIT_SECS_PING, RATE_LIMIT_RATE_PING), (req,res,next) ->
     rc.time (err, time) ->
       return next err if err?
       return next new Error 'redis does not know what time it is' unless time
       res.send 204
 
-  app.post "/users", validateUsernamePassword, createNewUser, passport.authenticate("local"), (req, res, next) ->
+  app.get "/users/:username/exists", rateLimitByIp(RATE_LIMITING_EXISTS, ratelimiterexists, RATE_LIMIT_SECS_EXISTS, RATE_LIMIT_RATE_EXISTS), setNoCache, (req, res, next) ->
+    userExistsOrDeleted req.params.username, (err, exists) ->
+      return next err if err?
+      res.send exists
+
+  app.post "/users", validateUsernamePassword, rateLimitByIp(RATE_LIMITING_CREATE_USER, ratelimitercreateuser, RATE_LIMIT_SECS_CREATE_USER, RATE_LIMIT_RATE_CREATE_USER), createNewUser, passport.authenticate("local"), (req, res, next) ->
     res.send 201
+
+
+  #end unauth'd methods
 
   app.post "/login", passport.authenticate("local"), (req, res, next) ->
     username = req.user.username
@@ -1643,6 +1725,8 @@ else
         return next error
     else
       res.send 204
+
+
 
   app.post "/keytoken", setNoCache, (req, res, next) ->
     return res.send 400 unless req.body?.username?
