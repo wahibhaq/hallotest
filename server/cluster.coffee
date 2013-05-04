@@ -259,12 +259,17 @@ else
 
   sio.set 'transports', ['websocket']
   sio.set 'destroy buffer size', MAX_MESSAGE_LENGTH
+  sio.set 'browser client', false
+
 
   sio.set "authorization", (req, accept) ->
     logger.debug 'socket.io auth'
     if req.headers.cookie
       parsedCookie = cookie.parse(req.headers.cookie)
-      req.sessionID = utils.parseSignedCookie(parsedCookie["connect.sid"], sessionSecret)
+      connectSid = parsedCookie["connect.sid"]
+      return accept 'no cookie', false unless connectSid?
+
+      req.sessionID = utils.parseSignedCookie(connectSid, sessionSecret)
       sessionStore.get req.sessionID, (err, session) ->
         if err or not session
           accept null, false
