@@ -24,7 +24,7 @@ pause = require 'pause'
 stream = require 'readable-stream'
 cloudfiles = require 'cloudfiles'
 redback = require('redback').createClient()
-ratelimit = redback.createRateLimit('messages')
+ratelimit = redback.createRateLimit('rl')
 
 
 USERNAME_LENGTH = 20
@@ -328,7 +328,7 @@ else
         next()
       else
         #if we're not friends check if he deleted himself
-        rc.sismember "u:d:#{username}", friendname, (err, isDeleted) ->
+        rc.sismember "ud:#{username}", friendname, (err, isDeleted) ->
           return next err if err?
           if isDeleted
             next()
@@ -345,7 +345,7 @@ else
         next()
       else
         #we've been deleted
-        rc.sismember "u:d:#{username}", friendname, (err, isDeleted) ->
+        rc.sismember "ud:#{username}", friendname, (err, isDeleted) ->
           return next err if err?
           if isDeleted
             next()
@@ -457,10 +457,10 @@ else
       filterDeletedMessages username, room, data, fn
 
   getControlMessages = (room, count, fn) ->
-    rc.zrange "c:m:" + room, -count, -1, fn
+    rc.zrange "cm:" + room, -count, -1, fn
 
   getUserControlMessages = (user, count, fn) ->
-    rc.zrange "c:u:" + user, -count, -1, fn
+    rc.zrange "cu:" + user, -count, -1, fn
 
   getMessagesAfterId = (username, room, id, fn) ->
     if id is -1
@@ -526,7 +526,7 @@ else
       if id is 0
         getControlMessages room, 60, fn
       else
-        rc.zrangebyscore "c:m:" + room, "(" + id, "+inf", fn
+        rc.zrangebyscore "cm:" + room, "(" + id, "+inf", fn
 
   getUserControlMessagesAfterId = (user, id, fn) ->
     if id is -1
@@ -535,7 +535,7 @@ else
       if id is 0
         getUserControlMessages user, 20, fn
       else
-        rc.zrangebyscore "c:u:" + user, "(" + id, "+inf", fn
+        rc.zrangebyscore "cu:" + user, "(" + id, "+inf", fn
 
 
   checkForDuplicateControlMessage = (resendId, room, message, callback) ->
@@ -572,7 +572,7 @@ else
 
   getNextMessageControlId = (room, callback) ->
     #INCR message id
-    rc.incr "c:m:#{room}:id", (err, newId) ->
+    rc.incr "cm:#{room}:id", (err, newId) ->
       if err?
         logger.error "ERROR: getNextMessageControlId, room: #{room}, error: #{err}"
         callback null
@@ -581,7 +581,7 @@ else
 
   getNextUserControlId = (user, callback) ->
           #INCR message id
-    rc.incr "c:u:#{user}:id", (err, newId) ->
+    rc.incr "cu:#{user}:id", (err, newId) ->
       if err?
         logger.error "ERROR: getNextUserControlId, user: #{user}, error: #{err}"
         callback null
@@ -782,7 +782,7 @@ else
       message.id = id
       message.from = from
       sMessage = JSON.stringify message
-      controlMessageKey = "c:m:#{room}"
+      controlMessageKey = "cm:#{room}"
       multi = rc.multi()
 
       deleteEarliestControlMessage = (callback) ->
@@ -798,7 +798,7 @@ else
 
       deleteEarliestControlMessage (err) ->
         logger.warning "delete earliest control message error: #{err}" if err?
-        multi.zadd "c:m:#{room}", id, sMessage
+        multi.zadd "cm:#{room}", id, sMessage
         multi.exec (err, results) ->
           callback err if err?
           callback null, sMessage
@@ -829,7 +829,7 @@ else
         #store messages in sorted sets
 
         multi = rc.multi()
-        controlMessageKey = "c:u:#{to}"
+        controlMessageKey = "cu:#{to}"
 
         deleteEarliestControlMessage = (callback) ->
           #check how many control messages the user has total
@@ -1445,7 +1445,7 @@ else
         async.each(
           conversationIds
           (item, callback) ->
-            controlIdKeys.push "c:m:#{item.conversation}:id"
+            controlIdKeys.push "cm:#{item.conversation}:id"
             callback()
           (err) ->
             return next err if err?
@@ -1632,6 +1632,7 @@ else
     username = req.user.username
     logger.debug "/login post, user #{username}, referrers: #{req.body.referrers}"
     if req.body?.referrers?
+
       try
         referrers = JSON.parse(req.body.referrers)
         handleReferrers username, referrers, (err) ->
@@ -1813,7 +1814,7 @@ else
     #check if friendname has blocked username
     multi = rc.multi()
     multi.sismember "b:#{friendname}", username
-    multi.sismember "u:d:#{username}", friendname
+    multi.sismember "ud:#{username}", friendname
     multi.exec (err, results) ->
       return next err if err?
       return res.send 404 if 1 in results
@@ -1847,8 +1848,8 @@ else
     multi = rc.multi()
     multi.sadd "f:#{username}", friendname
     multi.sadd "f:#{friendname}", username
-    multi.srem "u:d:#{username}", friendname
-    multi.srem "u:d:#{friendname}", username
+    multi.srem "ud:#{username}", friendname
+    multi.srem "ud:#{friendname}", username
     multi.exec (err, results) ->
       callback next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
       createAndSendUserControlMessage username, "added", friendname, null, (err) ->
@@ -1961,7 +1962,7 @@ else
           _.each invited, (name) -> friends.push new Friend name, 2
 
           #get users that deleted us that we haven't deleted
-          rc.smembers "u:d:#{username}", (err, deleted) ->
+          rc.smembers "ud:#{username}", (err, deleted) ->
             return next err if err?
             _.each deleted, (name) ->
 
@@ -1974,7 +1975,7 @@ else
 
 
 
-            rc.get "c:u:#{username}:id", (err, id) ->
+            rc.get "cu:#{username}:id", (err, id) ->
               friendstate = {}
               friendstate.userControlId = id ? 0
               friendstate.friends = friends
@@ -2188,8 +2189,8 @@ else
     multi.srem "d", username
     multi.del "k:#{username}"
     multi.del "kv:#{username}"
-    multi.del "c:u:#{username}"
-    multi.del "c:u:#{username}:id"
+    multi.del "cu:#{username}"
+    multi.del "cu:#{username}:id"
 
 
   deleteUser = (username, theirUsername, multi, next) ->
@@ -2218,7 +2219,7 @@ else
         #todo delete related user control messages
 
         #if i've been deleted by them this will be populated with their username
-        rc.sismember "u:d:#{username}", theirUsername, (err, theyHaveDeletedMe) ->
+        rc.sismember "ud:#{username}", theirUsername, (err, theyHaveDeletedMe) ->
           return next err if err?
 
           #if we are deleting them and they haven't deleted us already
@@ -2246,7 +2247,7 @@ else
                 rc.sismember "d", theirUsername, (err, isDeleted) ->
                   callback err if err?
                   if not isDeleted
-                    multi.sadd "u:d:#{theirUsername}", username
+                    multi.sadd "ud:#{theirUsername}", username
                   next()
 
           #they've already deleted me
@@ -2279,11 +2280,11 @@ else
 
 
                   #delete control message data
-                  multi.del "c:m:#{room}"
-                  multi.del "c:m:#{room}:id"
+                  multi.del "cm:#{room}"
+                  multi.del "cm:#{room}:id"
 
                   #remove them from my deleted set
-                  multi.srem "u:d:#{username}", theirUsername
+                  multi.srem "ud:#{username}", theirUsername
 
 
                   #delete message data

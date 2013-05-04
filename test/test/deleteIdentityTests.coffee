@@ -27,9 +27,9 @@ cleanup = (done) ->
     multi.del "k:test#{i}"
     multi.del "kv:test#{i}"
 
-    multi.del "c:u:test#{i}"
-    multi.del "c:u:test#{i}:id"
-    multi.del "u:d:test#{i}"
+    multi.del "cu:test#{i}"
+    multi.del "cu:test#{i}:id"
+    multi.del "ud:test#{i}"
     multi.del "f:test#{i}"
     multi.del "f:test#{i}"
     multi.del "is:test#{i}"
@@ -45,8 +45,8 @@ cleanup = (done) ->
   multi.del("m:test0:test2:id")
   multi.del("m:test0:test1")
   multi.del("m:test0:test2")
-  multi.del("c:m:test0:test1")
-  multi.del("c:m:test0:test2")
+  multi.del("cm:test0:test1")
+  multi.del("cm:test0:test2")
   multi.del("m:test1")
   multi.del("m:test2")
 

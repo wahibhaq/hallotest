@@ -49,14 +49,14 @@ cleanup = (done) ->
     "k:test2",
     "kv:test3",
     "k:test3",
-    "c:u:test0",
-    "c:u:test2",
-    "c:u:test1",
-    "c:u:test3",
-    "c:u:test3:id",
-    "c:u:test1:id",
-    "c:u:test0:id",
-    "c:u:test2:id"]
+    "cu:test0",
+    "cu:test2",
+    "cu:test1",
+    "cu:test3",
+    "cu:test3:id",
+    "cu:test1:id",
+    "cu:test0:id",
+    "cu:test2:id"]
 
   multi = rc.multi()
 

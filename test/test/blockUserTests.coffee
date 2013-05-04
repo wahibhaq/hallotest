@@ -36,14 +36,14 @@ cleanup = (done) ->
     "k:test0",
     "kv:test1",
     "k:test1",
-    "c:m:test0:test1",
-    "c:m:test0:test1:id"
-    "c:u:test0",
-    "c:u:test1",
-    "c:u:test0:id",
-    "c:u:test1:id",
-    "u:d:test0",
-    "u:d:test1"]
+    "cm:test0:test1",
+    "cm:test0:test1:id"
+    "cu:test0",
+    "cu:test1",
+    "cu:test0:id",
+    "cu:test1:id",
+    "ud:test0",
+    "ud:test1"]
   multi = rc.multi()
 
   multi.del keys
