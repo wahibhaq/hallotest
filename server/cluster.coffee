@@ -1685,7 +1685,7 @@ else
       return next err if err?
       if requests > rate
         username = req.body.username
-        logger.warning "rate limiting ip: #{ip}" + if username? then ", user: #{username}"  #", port #{port}"
+        logger.warning "rate limiting ip: #{ip}" + if username? then ", user: #{username}" else "" #", port #{port}"
         return res.send 429
       else
         next()
