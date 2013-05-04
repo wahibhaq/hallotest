@@ -30,7 +30,8 @@
     "batch": "~0.3.2",
     "cloudfiles": "~0.3.4",
     "throttle": "~1.0.3",
-    "express-winston": "~0.2.0"
+    "express-winston": "~0.2.0",
+    "socket.io-client": "https://github.com/2fours/socket.io-client/tarball/surespot-test"
   },
   "subdomain": "2fours.com",
   "scripts": {
