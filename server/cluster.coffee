@@ -32,9 +32,9 @@ CONTROL_MESSAGE_HISTORY = 100
 MAX_MESSAGE_LENGTH = 8096
 MAX_HTTP_REQUEST_LENGTH = 500000
 
-#rate limit messages to MESSAGE_RATE_LIMIT_RATE / MESSAGE_RATE_LIMIT_TIME (seconds)
-MESSAGE_RATE_LIMIT_SECS = 3
-MESSAGE_RATE_LIMIT_RATE = 10
+#rate limit messages to MESSAGE_RATE_LIMIT_RATE / MESSAGE_RATE_LIMIT_SECS (seconds)
+MESSAGE_RATE_LIMIT_SECS = 10
+MESSAGE_RATE_LIMIT_RATE = 100
 
 
 #config
@@ -636,10 +636,25 @@ else
 
       #store messages in sorted sets
       multi = rc.multi()
+
+
       userMessagesKey = "m:#{from}"
       multi.zadd "m:#{room}", id, newMessage
       #keep track of all the users message so we can remove the earliest when we cross their threshold
+      #we use a sorted set here so we can easily remove when message is deleted O(N) vs O(M*log(N))
       multi.zadd userMessagesKey, time, "m:#{room}:#{id}"
+
+      #marketing wanted some stats
+      #increment total user message / image counter
+      if mimeType is "image/"
+        multi.hincrby "u:#{from}", "ic", 1
+      else
+        multi.hincrby "u:#{from}", "mc", 1
+
+      if mimeType is "image/"
+        multi.incr "tic"
+      else
+        multi.incr "tmc"
 
       deleteEarliestMessage = (callback) ->
         #check how many messages the user has total
@@ -732,7 +747,6 @@ else
               if err?
                 logger.error ("ERROR: Socket.io onmessage, " + err)
                 return callback new MessageError(iv, 500)
-
 
 
 
@@ -1738,7 +1752,7 @@ else
 
   app.post "/registergcm", ensureAuthenticated, (req, res, next) ->
     gcmId = req.body.gcmId
-    userKey = "u:" + req.user.username
+    userKey = "u:#{req.user.username}"
     rc.hset userKey, "gcmId", gcmId, (err) ->
       return next err if err?
       res.send 204
