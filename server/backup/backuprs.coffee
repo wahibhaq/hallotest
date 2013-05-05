@@ -1,12 +1,18 @@
 cloudfiles = require 'cloudfiles'
 fs = require 'fs'
 dateformat = require 'dateformat'
+crypto = require 'crypto'
+zlib = require 'zlib'
+stream = require 'readable-stream'
+
 
 sourceFile = process.argv[2]
 rackspaceApiKey = process.env.SURESPOT_RACKSPACE_API_KEY
 rackspaceBackupContainer = process.env.SURESPOT_RACKSPACE_BACKUP_CONTAINER
 rackspaceUsername = process.env.SURESPOT_RACKSPACE_USERNAME
+encryptionPassword = process.env.SURESPOT_RACKSPACE_ENCRYPTION_PASSWORD
 
+process.exit 1 unless rackspaceApiKey? and rackspaceBackupContainer? and rackspaceUsername? and encryptionPassword? and sourceFile?
 
 cfClient = cloudfiles.createClient {auth: { username: rackspaceUsername, apiKey: rackspaceApiKey}}
 ensureCfClientAuthorized = (force, callback) ->
@@ -38,12 +44,15 @@ postFile = (force, path, file, callback) ->
 
 
 
-path = dateformat "isoUtcDateTime"
-#fileStream = fs.createReadStream sourceFile
+path = dateformat("yyyymmdd_HHMMss_") + "#{sourceFile}"
+
 console.log "backing up #{sourceFile} to #{path}"
-postFile false, "test", sourceFile, (err, uploaded) ->
-  process.exit 1 if err?
+postFile false, path, sourceFile, (err, uploaded) ->
+  if err?
+    console.log "error: #{err}"
+    process.exit 1
   console.log "uploaded: #{uploaded}"
   process.exit uploaded ? 0 : 1
+
 
 
