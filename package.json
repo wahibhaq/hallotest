@@ -31,7 +31,8 @@
     "cloudfiles": "~0.3.4",
     "throttle": "~1.0.3",
     "express-winston": "~0.2.0",
-    "socket.io-client": "https://github.com/2fours/socket.io-client/tarball/surespot-test"
+    "socket.io-client": "https://github.com/2fours/socket.io-client/tarball/surespot-test",
+    "dateformat": "~1.0.6-1.2.3"
   },
   "subdomain": "2fours.com",
   "scripts": {
