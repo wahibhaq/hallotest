@@ -12,7 +12,25 @@ rackspaceBackupContainer = process.env.SURESPOT_RACKSPACE_BACKUP_CONTAINER
 rackspaceUsername = process.env.SURESPOT_RACKSPACE_USERNAME
 encryptionPassword = process.env.SURESPOT_RACKSPACE_ENCRYPTION_PASSWORD
 
-process.exit 1 unless rackspaceApiKey? and rackspaceBackupContainer? and rackspaceUsername? and encryptionPassword? and sourceFile?
+if not rackspaceApiKey?
+  console.log "no rackspace api key"
+  process.exit(1)
+
+if not rackspaceBackupContainer?
+  console.log "no rackspace container"
+  process.exit(1)
+
+if not rackspaceUsername?
+  console.log "no rackspace username"
+  process.exit(1)
+
+if not encryptionPassword?
+  console.log "no file encryption password"
+  process.exit(1)
+
+if not sourceFile?
+  console.log "no file"
+  process.exit(1)
 
 cfClient = cloudfiles.createClient {auth: { username: rackspaceUsername, apiKey: rackspaceApiKey}}
 ensureCfClientAuthorized = (force, callback) ->
