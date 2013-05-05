@@ -13,23 +13,23 @@ rackspaceUsername = process.env.SURESPOT_RACKSPACE_USERNAME
 encryptionPassword = process.env.SURESPOT_RACKSPACE_BACKUP_ENCRYPTION_PASSWORD
 
 if not rackspaceApiKey?
-  console.err "no rackspace api key"
+  console.error "no rackspace api key"
   process.exit(1)
 
 if not rackspaceBackupContainer?
-  console.err "no rackspace container"
+  console.error "no rackspace container"
   process.exit(1)
 
 if not rackspaceUsername?
-  console.err "no rackspace username"
+  console.error "no rackspace username"
   process.exit(1)
 
 if not encryptionPassword?
-  console.err "no file encryption password"
+  console.error "no file encryption password"
   process.exit(1)
 
 if not sourceFile?
-  console.err "no file"
+  console.error "no file"
   process.exit(1)
 
 cfClient = cloudfiles.createClient {auth: { username: rackspaceUsername, apiKey: rackspaceApiKey}}
@@ -67,7 +67,7 @@ path = dateformat("yyyymmdd_HHMMss_") + "#{sourceFile}"
 console.log "backing up #{sourceFile} to #{path}"
 postFile false, path, sourceFile, (err, uploaded) ->
   if err?
-    console.err "error: #{err}"
+    console.error "error: #{err}"
     process.exit 1
   console.log "uploaded: #{uploaded}"
   process.exit uploaded ? 0 : 1
