@@ -1648,9 +1648,17 @@ else
             keys.dsaPubSig = crypto.createSign('sha256').update(new Buffer(keys.dsaPub)).sign(serverPrivateKey, 'base64')
             logger.debug "#{keys.username}, dhPubSig: #{keys.dhPubSig}, dsaPubSig: #{keys.dsaPubSig}"
 
+            multi2 = rc.multi()
+            #user id
+            multi2.incr "uid"
             #get key version
-            rc.incr "kv:#{username}", (err, kv) ->
+            multi2.incr "kv:#{username}"
+            multi2.exec (err, results) ->
               return next err if err?
+
+              user.id = results[0]
+              kv = results[1]
+
               multi = rc.multi()
               userKey = "u:#{username}"
               keysKey = "k:#{username}"
@@ -1660,7 +1668,7 @@ else
               multi.sadd "u", username
               multi.exec (err,replies) ->
                 return next err if err?
-                logger.debug "created user: #{username}"
+                logger.debug "created user: #{username}, uid: #{user.id}"
                 req.login user, ->
                   req.user = user
                   if referrers
