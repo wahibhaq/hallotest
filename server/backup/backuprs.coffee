@@ -10,7 +10,7 @@ sourceFile = process.argv[2]
 rackspaceApiKey = process.env.SURESPOT_RACKSPACE_API_KEY
 rackspaceBackupContainer = process.env.SURESPOT_RACKSPACE_BACKUP_CONTAINER
 rackspaceUsername = process.env.SURESPOT_RACKSPACE_USERNAME
-encryptionPassword = process.env.SURESPOT_RACKSPACE_ENCRYPTION_PASSWORD
+encryptionPassword = process.env.SURESPOT_RACKSPACE_BACKUP_ENCRYPTION_PASSWORD
 
 if not rackspaceApiKey?
   console.log "no rackspace api key"
