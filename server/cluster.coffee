@@ -100,7 +100,7 @@ logger.debug "__dirname: #{__dirname}"
 
 if (cluster.isMaster && env isnt 'Local')
   # Fork workers.
-  for i in [0..1 - numCPUs]
+  for i in [0..1 - (numCPUs-2)]
     cluster.fork();
 
   cluster.on 'online', (worker, code, signal) ->
