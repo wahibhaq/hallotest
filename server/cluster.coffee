@@ -1037,9 +1037,9 @@ else
     otherUser = req.params.username
     room = getRoomName username, otherUser
 
-    deleteMyMessages username, otherUser, true, (err) ->
+    deleteMyMessages username, otherUser, true, (err, lastMessageId) ->
       return next err if err?
-      createAndSendMessageControlMessage username, otherUser, room, "deleteAll", room, null, (err) ->
+      createAndSendMessageControlMessage username, otherUser, room, "deleteAll", room, lastMessageId, (err) ->
         return next err if err?
         res.send 204
 
@@ -1048,6 +1048,11 @@ else
     room = getRoomName username, otherUser
     getAllMessages room, (err, messages) ->
       return callback err if err?
+
+      lastMessageId = null
+      if messages?.length > 0
+        lastMessageId =  JSON.parse(messages[messages.length-1]).id
+
       ourMessageIds = []
       theirMessageIds = []
       multi = rc.multi()
@@ -1094,7 +1099,7 @@ else
 
           multi.exec (err, mResults) ->
             return callback err if err?
-            callback())
+            callback(null, lastMessageId))
 
 
   deleteMessage = (from, to, messageId, sendControlMessage, multi, callback) ->
