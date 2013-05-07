@@ -65,7 +65,7 @@ ratelimitercreateuser = redback.createRateLimit('rlu', { bucket_interval: RATE_L
 ratelimitermessages = redback.createRateLimit('rlm', { bucket_interval: RATE_LIMIT_BUCKET_MESSAGE })
 
 
-MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 100
+MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 20
 debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'debug'
 database = process.env.SURESPOT_DB ? 0
 socketPort = process.env.SURESPOT_SOCKET ? 443
@@ -690,7 +690,6 @@ else
       #store messages in sorted sets
       multi = rc.multi()
 
-
       userMessagesKey = "m:#{from}"
       multi.zadd "m:#{room}", id, newMessage
       #keep track of all the users message so we can remove the earliest when we cross their threshold
@@ -725,22 +724,36 @@ else
 
             rc.zrange userMessagesKey,  0, deleteCount-1, (err, messagePointers) ->
               return callback err if err?
-              deleteControlMessages = []
+              myDeleteControlMessages = []
+              theirDeleteControlMessages = []
               async.each(
                 messagePointers,
                 (item, callback) ->
                   messageData = getMessagePointerData from, item
-                  deleteMessage from, messageData.to, messageData.id, false, multi, (err, deleteControlMessage) ->
-                    deleteControlMessages.push deleteControlMessage unless err?
+
+
+                  #if the message we deleted is not part of the same conversation,send a control message
+                  deletedSpot = getRoomName messageData.from, messageData.to
+                  deletedFromSameSpot = room is deletedSpot
+
+                  deleteMessage from, messageData.to, messageData.id, not deletedFromSameSpot, multi, (err, deleteControlMessage) ->
+                    if not err?
+                      myDeleteControlMessages.push deleteControlMessage
+
+                      #don't send control message to other user in the message if it pertains to a different conversation
+                      if deletedFromSameSpot
+                        theirDeleteControlMessages.push deleteControlMessage
+
+
                     callback()
                 (err) ->
                   logger.warning "error getting old messages to delete: #{err}" if err?
-                  callback null, deleteControlMessages)
+                  callback null, myDeleteControlMessages, theirDeleteControlMessages)
 
           else
             callback null, null
 
-      deleteEarliestMessage (err, deleteControlMessages) ->
+      deleteEarliestMessage (err, myDeleteControlMessages, theirDeleteControlMessages) ->
         return callback err if err?
 
         multi.exec  (err, results) ->
@@ -748,10 +761,21 @@ else
             logger.error ("ERROR: Socket.io onmessage, " + err)
             return callback new MessageError(iv, 500)
 
+          myMessage = null
+          theirMessage = null
+
           #if we deleted messages, add the delete control message(s) to this message to save sending the delete control message separately
-          if deleteControlMessages?.length > 0
-            message.deleteControlMessages = deleteControlMessages
-            newMessage = JSON.stringify message
+          if myDeleteControlMessages?.length > 0
+            message.deleteControlMessages = myDeleteControlMessages
+            myMessage = JSON.stringify message
+          else
+            myMessage = newMessage
+
+          if theirDeleteControlMessages?.length > 0
+            message.deleteControlMessages = theirDeleteControlMessages
+            theirMessage = JSON.stringify message
+          else
+            theirMessage = newMessage
 
           sendGcm = (gcmCallback) ->
             #send gcm message
@@ -759,6 +783,7 @@ else
             rc.hget userKey, "gcmId", (err, gcm_id) ->
               if err?
                 logger.error ("ERROR: Socket.io onmessage, " + err)
+
                 gcmCallback(err)
 
               if gcm_id?.length > 0
@@ -788,8 +813,8 @@ else
           sendGcm (err) ->
             return callback new MessageError(iv, 500) if err?
 
-            sio.sockets.to(to).emit "message", newMessage
-            sio.sockets.to(from).emit "message", newMessage
+            sio.sockets.to(to).emit "message", theirMessage
+            sio.sockets.to(from).emit "message", myMessage
 
             callback()
 
