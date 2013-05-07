@@ -697,6 +697,10 @@ else
       #we use a sorted set here so we can easily remove when message is deleted O(N) vs O(M*log(N))
       multi.zadd userMessagesKey, time, "m:#{room}:#{id}"
 
+      #make sure conversation is present
+      multi.sadd "c:" + from, room
+      multi.sadd "c:" + to, room
+
       #marketing wanted some stats
       #increment total user message / image counter
       if mimeType is "image/"
@@ -784,29 +788,10 @@ else
           sendGcm (err) ->
             return callback new MessageError(iv, 500) if err?
 
-            createConversations = (ccCallback) ->
-              if id is 1
-                #if this is the first message, add the "room" to the user's list of rooms
-                multi = rc.multi()
-                multi.sadd "c:" + from, room
-                multi.sadd "c:" + to, room
-                multi.exec (err, results) ->
-                  return ccCallback err if err?
-                  ccCallback()
-              else
-                ccCallback()
+            sio.sockets.to(to).emit "message", newMessage
+            sio.sockets.to(from).emit "message", newMessage
 
-            createConversations (err) ->
-              if err?
-                logger.error ("ERROR: Socket.io onmessage, " + err)
-                return callback new MessageError(iv, 500)
-
-
-
-              sio.sockets.to(to).emit "message", newMessage
-              sio.sockets.to(from).emit "message", newMessage
-
-              callback()
+            callback()
 
 
   getMessagePointerData = (from, messagePointer) ->
@@ -2317,8 +2302,6 @@ else
           next()
       else
         room = getRoomName username, theirUsername
-        #delete the set that held message ids of theirs that we deleted
-        multi.del "d:#{username}:#{room}"
 
         #delete the conversation with this user from the set of my conversations
         multi.srem "c:#{username}", room
@@ -2345,7 +2328,7 @@ else
               #handle no id
               deleteMessages = (messageId, callback) ->
                 if messageId?
-                  deleteMyMessages username, theirUsername, false, id, (err) ->
+                  deleteMyMessages username, theirUsername, true, id, (err) ->
                     callback err if err?
                     callback()
                 else
@@ -2366,7 +2349,7 @@ else
 
           #they've already deleted me
           else
-            #remove them from their deleted set (if they deleted their identity)
+            #remove them from their deleted set (if they deleted their identity) (don't use multi so we can check card post removal later)
             rc.srem "d:#{theirUsername}", username, (err, rCount) ->
               return next err if err?
               #if they have been deleted and we are the last person to delete them
@@ -2400,9 +2383,10 @@ else
                   #remove them from my deleted set
                   multi.srem "ud:#{username}", theirUsername
 
+                  #delete the set that held message ids of theirs that we deleted
+                  multi.del "d:#{username}:#{room}"
 
-                  #delete message data
-                  multi.del "#{room}:id"
+                  multi.del "m:#{room}:id"
                   multi.del "m:#{room}"
                   next()
 
