@@ -1031,27 +1031,36 @@ else
 
 
   #delete all messages
-  app.delete "/messages/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, (req, res, next) ->
+  app.delete "/messagesutai/:username/:id", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, (req, res, next) ->
 
     username = req.user.username
     otherUser = req.params.username
     room = getRoomName username, otherUser
+    id = req.params.id
 
-    deleteMyMessages username, otherUser, true, (err, lastMessageId) ->
+    return res.send 400 unless id?
+
+    logger.debug "deleting messages, user: #{username}, otherUser: #{otherUser}, utaiId: #{id}"
+    deleteMyMessages username, otherUser, true, id, (err, lastMessageId) ->
       return next err if err?
       createAndSendMessageControlMessage username, otherUser, room, "deleteAll", room, lastMessageId, (err) ->
         return next err if err?
         res.send 204
 
 
-  deleteMyMessages = (username, otherUser, markTheirsDeleted, callback) ->
+  deleteMyMessages = (username, otherUser, markTheirsDeleted, utaiId, callback) ->
     room = getRoomName username, otherUser
     getAllMessages room, (err, messages) ->
       return callback err if err?
 
       lastMessageId = null
       if messages?.length > 0
-        lastMessageId =  JSON.parse(messages[messages.length-1]).id
+        lastMessageId = JSON.parse(messages[messages.length-1]).id
+        logger.debug "lastMessageId: #{lastMessageId}"
+        #client could have passed anything in, dooming us for eternity, don't let this happen
+        if utaiId > lastMessageId
+          logger.debug "setting utaiId to lastMessageId: #{lastMessageId}"
+          utaiId = lastMessageId
 
       ourMessageIds = []
       theirMessageIds = []
@@ -1064,6 +1073,9 @@ else
             oMessage = JSON.parse(item)
           catch error
             return callback false
+
+          #don't delete newer messages than specified
+          return callback false if oMessage.id > utaiId
 
           if oMessage.from is username
             ourMessageIds.push oMessage.id
@@ -1099,7 +1111,7 @@ else
 
           multi.exec (err, mResults) ->
             return callback err if err?
-            callback(null, lastMessageId))
+            callback(null, utaiId))
 
 
   deleteMessage = (from, to, messageId, sendControlMessage, multi, callback) ->
@@ -2333,7 +2345,7 @@ else
               #handle no id
               deleteMessages = (messageId, callback) ->
                 if messageId?
-                  deleteMyMessages username, theirUsername, false, (err) ->
+                  deleteMyMessages username, theirUsername, false, id, (err) ->
                     callback err if err?
                     callback()
                 else

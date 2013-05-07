@@ -26,6 +26,9 @@ cleanup = (done) ->
     "ir:test0",
     "is:test1",
     "ir:test1",
+    "m:test1",
+    "d:test0:test0:test1",
+    "m:test0:test1:id"
     "test0:test1:id",
     "m:test0:test1",
     "c:test1",
@@ -208,7 +211,7 @@ describe "delete messages and friends test", () ->
     it 'should succeed', (done) ->
       request.del
         jar: jar0
-        url: baseUri + "/messages/test1"
+        url: baseUri + "/messagesutai/test1/100"
         (err, res, body) ->
           if err
             done err
@@ -274,7 +277,7 @@ describe "delete messages and friends test", () ->
     it 'the other user should be able to delete his messages', (done) ->
       request.del
         jar: jar1
-        url: baseUri + "/messages/test0"
+        url: baseUri + "/messagesutai/test0/100"
         (err, res, body) ->
           if err
             done err
