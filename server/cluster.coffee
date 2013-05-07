@@ -1026,14 +1026,14 @@ else
     return res.send 400 unless id?
 
     logger.debug "deleting messages, user: #{username}, otherUser: #{otherUser}, utaiId: #{id}"
-    deleteMyMessages username, otherUser, true, id, (err, lastMessageId) ->
+    deleteAllMessages username, otherUser, id, (err, lastMessageId) ->
       return next err if err?
       createAndSendMessageControlMessage username, otherUser, room, "deleteAll", room, lastMessageId, (err) ->
         return next err if err?
         res.send 204
 
 
-  deleteMyMessages = (username, otherUser, markTheirsDeleted, utaiId, callback) ->
+  deleteAllMessages = (username, otherUser, utaiId, callback) ->
     room = getRoomName username, otherUser
     getAllMessages room, (err, messages) ->
       return callback err if err?
@@ -1089,7 +1089,7 @@ else
 
           #todo remove the associated control messages
 
-          if theirMessageIds.length > 0 and markTheirsDeleted
+          if theirMessageIds.length > 0
             #add their message id's to our deleted message set
             multi.sadd "d:#{username}:#{room}", theirMessageIds
 
@@ -2328,7 +2328,7 @@ else
               #handle no id
               deleteMessages = (messageId, callback) ->
                 if messageId?
-                  deleteMyMessages username, theirUsername, true, id, (err) ->
+                  deleteAllMessages username, theirUsername, id, (err) ->
                     callback err if err?
                     callback()
                 else
