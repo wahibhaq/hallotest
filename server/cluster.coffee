@@ -2,7 +2,7 @@
 
   surespot node.js server
   copyright 2fours LLC
-  written by Adam Patacchiola
+  written by Adam Patacchiola adam@2fours.com
 
 ###
 
@@ -314,14 +314,18 @@ else
       return fn null, if isMember then true else false
 
 
-  userExistsOrDeleted = (username, fn) ->
+  userExistsOrDeleted = (username, checkReserved, fn) ->
     rc.sismember "u", username, (err, isMember) ->
       return fn err if err?
       return fn null, true if isMember
       rc.sismember "d", username, (err, isMember) ->
         return fn err if err?
         return fn null, true if isMember
-        fn null, false
+        return fn null, false if not checkReserved
+        rc.sismember "r", username, (err, isMember) ->
+          return fn err if err?
+          return fn null, true if isMember
+          fn null, false
 
 
   checkUser = (username) ->
@@ -344,7 +348,7 @@ else
   validateUsernameExists = (req, res, next) ->
     #pause and resume events - https://github.com/felixge/node-formidable/issues/213
     paused = pause req
-    userExistsOrDeleted req.params.username, (err, exists) ->
+    userExistsOrDeleted req.params.username, false, (err, exists) ->
       if err?
         paused.resume()
         return next err
@@ -1575,7 +1579,7 @@ else
     #return next new Error('username required') unless username?
     #return next new Error('password required') unless password?
 
-    userExistsOrDeleted username, (err, exists) ->
+    userExistsOrDeleted username, true, (err, exists) ->
       return next err if err?
       if exists
         logger.debug "user already exists"
@@ -1692,7 +1696,7 @@ else
       res.send 204
 
   app.get "/users/:username/exists", rateLimitByIp(RATE_LIMITING_EXISTS, ratelimiterexists, RATE_LIMIT_SECS_EXISTS, RATE_LIMIT_RATE_EXISTS), setNoCache, (req, res, next) ->
-    userExistsOrDeleted req.params.username, (err, exists) ->
+    userExistsOrDeleted req.params.username, true, (err, exists) ->
       return next err if err?
       res.send exists
 
