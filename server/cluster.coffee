@@ -1578,8 +1578,10 @@ else
 
     return 400 unless type in ["email", "sms", "social"]
 
-    redirectUrl = "https://play.google.com/store/apps/details?id=com.twofours.surespot&referrer=utm_source=surespot_android&utm_medium=#{type}&utm_content=#{username}"
-    res.redirect encodeURIComponent(redirectUrl)
+    redirectUrl = "https://play.google.com/store/apps/details?id=com.twofours.surespot&referrer="
+    query = "utm_source=surespot_android&utm_medium=#{type}&utm_content=#{username}"
+
+    res.redirect  redirectUrl + encodeURIComponent(query)
 
   createNewUser = (req, res, next) ->
     username = req.body.username
