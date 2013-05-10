@@ -214,75 +214,75 @@ describe "external invite tests", () ->
             done()
 
 
-  it 'login with auto invite user should send invite control message to auto invite user', (done) ->
-    receivedSignupResponse = false
-    gotControlMessage = false
-    jar3 = request.jar()
-    jar4 = request.jar()
+#  it 'login with auto invite user should send invite control message to auto invite user', (done) ->
+#    receivedSignupResponse = false
+#    gotControlMessage = false
+#    jar3 = request.jar()
+#    jar4 = request.jar()
+#
+#    signup 'test2', 'test2', jar3, keys[2].ecdh.pem_pub, keys[2].ecdsa.pem_pub, keys[2].sig, null, done, (res, body, cookie) ->
+#      client2 = io.connect baseUri, { 'force new connection': true}, cookie
+#      client2.once 'connect', ->
+#        signup 'test3', 'test3', jar4, keys[3].ecdh.pem_pub, keys[3].ecdsa.pem_pub, keys[3].sig, null, done, (res, body, cookie) ->
+#          request.get
+#            jar: jar4
+#            url: baseUri + "/logout"
+#            (err, res, body) ->
+#              if err
+#                done err
+#              else
+#                login "test3", "test3", jar4, keys[3].sig, JSON.stringify([{ utm_content: "test2"}]), done, (res, body) ->
+#                  receivedSignupResponse = true
+#                  done() if gotControlMessage
+#
+#      client2.once 'control', (data) ->
+#        receivedControlMessage = JSON.parse data
+#        receivedControlMessage.type.should.equal 'user'
+#        receivedControlMessage.action.should.equal 'invite'
+#        receivedControlMessage.data.should.equal 'test3'
+#        should.not.exist receivedControlMessage.localid
+#        should.not.exist receivedControlMessage.moredata
+#        gotControlMessage = true
+#        done() if receivedSignupResponse
 
-    signup 'test2', 'test2', jar3, keys[2].ecdh.pem_pub, keys[2].ecdsa.pem_pub, keys[2].sig, null, done, (res, body, cookie) ->
-      client2 = io.connect baseUri, { 'force new connection': true}, cookie
-      client2.once 'connect', ->
-        signup 'test3', 'test3', jar4, keys[3].ecdh.pem_pub, keys[3].ecdsa.pem_pub, keys[3].sig, null, done, (res, body, cookie) ->
-          request.get
-            jar: jar4
-            url: baseUri + "/logout"
-            (err, res, body) ->
-              if err
-                done err
-              else
-                login "test3", "test3", jar4, keys[3].sig, JSON.stringify([{ utm_content: "test2"}]), done, (res, body) ->
-                  receivedSignupResponse = true
-                  done() if gotControlMessage
-
-      client2.once 'control', (data) ->
-        receivedControlMessage = JSON.parse data
-        receivedControlMessage.type.should.equal 'user'
-        receivedControlMessage.action.should.equal 'invite'
-        receivedControlMessage.data.should.equal 'test3'
-        should.not.exist receivedControlMessage.localid
-        should.not.exist receivedControlMessage.moredata
-        gotControlMessage = true
-        done() if receivedSignupResponse
 
 
-
-  describe 'get friends after login', () ->
-    it 'should have user marked invited', (done) ->
-      request.get
-        jar: jar3
-        url: baseUri + "/friends"
-        (err, res, body) ->
-          if err
-            done err
-          else
-            res.statusCode.should.equal 200
-            messageData = JSON.parse(body)
-            messageData.friends[0].flags.should.equal 32
-            done()
-
-    it 'should have created an invite user control message', (done) ->
-      request.get
-        jar: jar3
-        url: baseUri + "/latestids/0"
-        (err, res, body) ->
-          if err
-            done err
-          else
-            res.statusCode.should.equal 200
-            messageData = JSON.parse(body)
-
-            controlData = messageData.userControlMessages
-            controlData.length.should.equal 1
-            receivedControlMessage = JSON.parse(controlData[0])
-            receivedControlMessage.type.should.equal "user"
-            receivedControlMessage.action.should.equal "invite"
-            receivedControlMessage.data.should.equal "test3"
-            receivedControlMessage.id.should.equal 1
-            should.not.exist receivedControlMessage.localid
-            should.not.exist receivedControlMessage.moredata
-            should.not.exist receivedControlMessage.from
-            done()
+#  describe 'get friends after login', () ->
+#    it 'should have user marked invited', (done) ->
+#      request.get
+#        jar: jar3
+#        url: baseUri + "/friends"
+#        (err, res, body) ->
+#          if err
+#            done err
+#          else
+#            res.statusCode.should.equal 200
+#            messageData = JSON.parse(body)
+#            messageData.friends[0].flags.should.equal 32
+#            done()
+#
+#    it 'should have created an invite user control message', (done) ->
+#      request.get
+#        jar: jar3
+#        url: baseUri + "/latestids/0"
+#        (err, res, body) ->
+#          if err
+#            done err
+#          else
+#            res.statusCode.should.equal 200
+#            messageData = JSON.parse(body)
+#
+#            controlData = messageData.userControlMessages
+#            controlData.length.should.equal 1
+#            receivedControlMessage = JSON.parse(controlData[0])
+#            receivedControlMessage.type.should.equal "user"
+#            receivedControlMessage.action.should.equal "invite"
+#            receivedControlMessage.data.should.equal "test3"
+#            receivedControlMessage.id.should.equal 1
+#            should.not.exist receivedControlMessage.localid
+#            should.not.exist receivedControlMessage.moredata
+#            should.not.exist receivedControlMessage.from
+#            done()
 
   after (done) ->
     client.disconnect()

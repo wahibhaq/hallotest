@@ -1571,6 +1571,16 @@ else
           callback())
 
 
+  #they didn't have surespot on their phone so they came here so direct them to the play store
+  app.get "/autoinvite/:username/:type", validateUsernameExists, (req, res, next) ->
+    username = req.params.username
+    type = req.params.type
+
+    return 400 unless type in ["email", "sms", "social"]
+
+    redirectUrl = "https://play.google.com/store/apps/details?id=com.twofours.surespot&referrer=utm_source=surespot_android&utm_medium=#{type}&utm_content=#{username}"
+    res.redirect encodeURIComponent(redirectUrl)
+
   createNewUser = (req, res, next) ->
     username = req.body.username
     password = req.body.password
@@ -1708,21 +1718,8 @@ else
 
   app.post "/login", passport.authenticate("local"), (req, res, next) ->
     username = req.user.username
-    logger.debug "/login post, user #{username}, referrers: #{req.body.referrers}"
-    if req.body?.referrers?
-
-      try
-        referrers = JSON.parse(req.body.referrers)
-        handleReferrers username, referrers, (err) ->
-          return next err if err?
-          res.send 204
-
-      catch error
-        return next error
-    else
-      res.send 204
-
-
+    logger.debug "/login post, user #{username}"
+    res.send 204
 
   app.post "/keytoken", setNoCache, (req, res, next) ->
     return res.send 400 unless req.body?.username?
