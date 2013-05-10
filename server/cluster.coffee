@@ -1,3 +1,11 @@
+###
+
+  surespot node.js server
+  copyright 2fours LLC
+  written by Adam Patacchiola
+
+###
+
 cluster = require('cluster')
 https = require('https')
 cookie = require("cookie")
@@ -32,11 +40,10 @@ CONTROL_MESSAGE_HISTORY = 100
 MAX_MESSAGE_LENGTH = 8096
 MAX_HTTP_REQUEST_LENGTH = 500000
 
-
+oneYear = 31536000000
+oneDay = 86400
 
 #config
-
-
 #rate limit to MESSAGE_RATE_LIMIT_RATE / MESSAGE_RATE_LIMIT_SECS (seconds) (allows us to get request specific on top of iptables)
 RATE_LIMITING_MESSAGE=process.env.SURESPOT_RATE_LIMITING_MESSAGE is "true"
 RATE_LIMITING_PING=process.env.SURESPOT_RATE_LIMITING_PING is "true"
@@ -223,6 +230,7 @@ else
     app.use express.session(
       secret: sessionSecret
       store: sessionStore
+      cookie: { maxAge: oneDay*3 }
     )
     app.use passport.initialize()
     app.use passport.session()
@@ -237,7 +245,6 @@ else
     app.use (err, req, res, next) ->
       res.send err.status or 500
 
-  oneYear = 31536000000
 
   https.globalAgent.maxSockets = Infinity;
 
@@ -1354,22 +1361,13 @@ else
     form.on 'error', (err) ->
       next new Error err
 
-#    form.on 'end', ->
-#      logger.debug 'form end'
-#      res.send 200
-
     form.parse req
 
 
   app.post "/images/:fromversion/:username/:toversion", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
     #upload image to rackspace then create a message with the image url and send it to chat recipients
-    #uris = []
-
-#    filenames = {}
- #   complete = false
-  #  formEnded = false
-   # resSent = false
     username = req.user.username
+    path = null
 
     form = new formidable.IncomingForm()
     form.onPart = (part) ->
@@ -1440,57 +1438,20 @@ else
               sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
               return #delete filenames[part.filename]
 
-            logger.debug 'uploaded completed'
+            logger.debug "upload completed #{path}"
             uri = rackspaceCdnBaseUrl + "/#{path}"
             #uris.push uri
             createAndSendMessage(req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, "image/", id, (err) ->
-              logger.error "error sending message on socket: #{err}" if err?
-              #return delete filenames[part.filename]
-
-              #filenames[part.filename] = uri
-
-#              allCompleted = true
-#              for filename in filenames
-#                if filenames[filename] is 'uploading'
-#                  allCompleted = false
-#                  break
-#
-#              complete = allCompleted
-#              if complete and formEnded and not resSent
-#                logger.debug 'uploads complete'
-#                res.send filenames
-#                resSent = true
-            )
-
-        #logger.debug 'stream piped'
-        #paused.resume()
-
+              logger.error "error sending message on socket: #{err}" if err?)
 
     form.on 'error', (err) ->
       next new Error err
 
     form.on 'end', ->
-      logger.debug 'form end'
-      #formEnded = true
-
-#      allCompleted = true
-#      for filename in filenames
-#        if filenames[filename] is 'uploading'
-#          allCompleted = false
-#          break
-#
-#      complete = allCompleted
-#      if complete and not resSent
-#
-#        logger.debug 'uploads complete'
+      logger.debug "form end #{path}"
       res.send 200
-        #resSent = true
-
-
 
     form.parse req
-
-
 
 
   getConversationIds = (username, callback) ->
@@ -1548,15 +1509,6 @@ else
               logger.debug "/latestids sending #{JSON.stringify(data)}"
               res.send data)
 
-
-
-            #get last x messages
-#  app.get "/messages/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
-#    #return last x messages
-#    getMessages req.user.username, getRoomName(req.user.username, req.params.username), 30, (err, data) ->
-#      #    rc.zrange "m:" + getRoomName(req.user.username, req.params.remoteuser), -50, -1, (err, data) ->
-#      return next err if err?
-#      res.send data
 
   #get remote messages before id
   app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
