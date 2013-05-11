@@ -1572,14 +1572,12 @@ else
 
 
   #they didn't have surespot on their phone so they came here so direct them to the play store
-  app.get "/autoinvite/:username/:type", validateUsernameExists, (req, res, next) ->
+  app.get "/autoinvite/:username/:source", validateUsernameExists, (req, res, next) ->
     username = req.params.username
-    type = req.params.type
-
-    return 400 unless type in ["email", "sms", "social"]
+    source = req.params.source
 
     redirectUrl = "https://play.google.com/store/apps/details?id=com.twofours.surespot&referrer="
-    query = "utm_source=surespot_android&utm_medium=#{type}&utm_content=#{username}"
+    query = "utm_source=surespot_android&utm_medium=#{source}&utm_content=#{username}"
 
     res.redirect  redirectUrl + encodeURIComponent(query)
 
