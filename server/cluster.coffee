@@ -230,7 +230,7 @@ else
     app.use express.session(
       secret: sessionSecret
       store: sessionStore
-      cookie: { maxAge: oneDay*3 }
+      cookie: { maxAge: (oneDay*3000) }
     )
     app.use passport.initialize()
     app.use passport.session()
