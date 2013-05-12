@@ -7,7 +7,8 @@
     "jade": "~0.27.7",
     "connect-redis": "~1.4.5",
     "bcrypt": "~0.7.3",
-    "socket.io": "https://github.com/2fours/socket.io/tarball/surespot",
+    "socket.io": "https://github.com/surespot/socket.io/tarball/surespot",
+    "passport": "https://github.com/surespot/passport/tarball/master",
     "chai": "~1.1.1",
     "fs.extra": "~1.2.0",
     "underscore": "~1.4.3",
@@ -31,7 +32,7 @@
     "cloudfiles": "~0.3.4",
     "throttle": "~1.0.3",
     "express-winston": "~0.2.0",
-    "socket.io-client": "https://github.com/2fours/socket.io-client/tarball/surespot-test",
+    "socket.io-client": "https://github.com/surespot/socket.io-client/tarball/surespot-test",
     "dateformat": "~1.0.6-1.2.3",
     "cryptostream": "0.0.1"
   },
