@@ -1,4 +1,3 @@
-web
 =======
 surespot
 =========
@@ -16,18 +15,6 @@ If you support this work and appreciate surespot please show it and consider don
 In turn, we will pass along support to the Electronic Frontier Foundation (EFF) who work tirelessly to defend your digital rights.
 
 [![donation](https://chatsecure.org/static/images/paypal_donate.png)](https://www.surespot.me/contribute.html)
-
-
-Localization
-=========
-
-If you would like to contribute/improve a translation:
-
- 1. Visit our [Transifex project page](https://www.transifex.com/projects/p/surespot) and make an account if you don't have one already.
- 2. Go to the resources tab [AppStore.strings](https://www.transifex.net/projects/p/surespot/resource/appstorestrings/) &
- [Localizable.strings](https://www.transifex.net/projects/p/surespot/resource/strings/) to add a new language or improve an existing translation.
-
-
 
 
 License
