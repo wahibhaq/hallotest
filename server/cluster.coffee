@@ -1337,7 +1337,7 @@ else
                 if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
                   logger.debug "received 401 from rackspace, retrying: #{err}"
                   retry++
-                  postFile callback, true
+                  postFile true, callback
                 else
                   callback err
 
