@@ -1940,7 +1940,7 @@ else
     multi.srem "ir:#{username}", friendname
     multi.srem "is:#{friendname}", username
     multi.exec (err, results) ->
-      callback new Error("[friend] srem failed for ir:#{username}:#{friendname}") if err?
+      return callback new Error("[friend] srem failed for ir:#{username}:#{friendname}") if err?
       callback null
 
   sendInviteResponseGcm = (username, friendname, action, callback) ->
