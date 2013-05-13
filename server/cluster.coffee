@@ -233,7 +233,7 @@ else
       cookie: { maxAge: (oneDay*3000) }
     )
     app.use passport.initialize()
-    app.use passport.session()
+    app.use passport.session({pauseStream: true})
     app.use expressWinston.logger({
     transports: transports
     })
