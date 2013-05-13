@@ -39,6 +39,7 @@ USERNAME_LENGTH = 20
 CONTROL_MESSAGE_HISTORY = 100
 MAX_MESSAGE_LENGTH = 8096
 MAX_HTTP_REQUEST_LENGTH = 500000
+NUM_CORES = 2
 
 oneYear = 31536000000
 oneDay = 86400
@@ -105,9 +106,9 @@ if env is 'Local'
 
 logger.debug "__dirname: #{__dirname}"
 
-if (cluster.isMaster && env isnt 'Local')
+if (cluster.isMaster)
   # Fork workers.
-  for i in [0..1 - (numCPUs-2)]
+  for i in [0..1 - (NUM_CORES)]
     cluster.fork();
 
   cluster.on 'online', (worker, code, signal) ->
