@@ -26,11 +26,11 @@ _ = require 'underscore'
 querystring = require 'querystring'
 formidable = require 'formidable'
 #request = require 'request'
-#pkgcloud = require 'pkgcloud'
+pkgcloud = require 'pkgcloud'
 utils = require('connect/lib/utils')
 pause = require 'pause'
 stream = require 'readable-stream'
-cloudfiles = require 'cloudfiles'
+#cloudfiles = require 'cloudfiles'
 redback = require('redback').createClient()
 
 
@@ -164,7 +164,8 @@ else
   app = undefined
   ssloptions = undefined
 
-  cfClient = cloudfiles.createClient {auth: { username: rackspaceUsername, apiKey: rackspaceApiKey}}
+  rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
+  #cfClient = cloudfiles.createClient {auth: { username: rackspaceUsername, apiKey: rackspaceApiKey}}
   createRedisClient = (callback, database, port, hostname, password) ->
     if port? and hostname? and password?
       client = require("redis").createClient(port, hostname)
@@ -1185,24 +1186,13 @@ else
     splits = uri.split('/')
     path = splits[splits.length - 1]
     logger.debug "removing file from rackspace: #{path}"
+    rackspace.removeFile rackspaceImageContainer, path, (err) ->
+      if err?
+        logger.error "could not remove file from rackspace: #{path}, error: #{err}"
+      else
+        logger.debug "removed file from rackspace: #{path}"
 
-    retry = 0
-    removeFile = (force, path) ->
-      ensureCfClientAuthorized force, (err) ->
-        return logger.error "could not remove file from rackspace: #{path}, error: #{err}" if err?
-        cfClient.destroyFile rackspaceImageContainer, path, (err) ->
-          if err?
-            #try to auth once
-            if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
-              logger.debug "received 401 from rackspace, retrying: #{err}"
-              retry++
-              removeFile true, path
-            else
-              logger.error "could not remove file from rackspace: #{path}, error: #{err}"
-          else
-            logger.debug "removed file from rackspace: #{path}"
 
-    removeFile false, path
 
 
 
@@ -1286,18 +1276,18 @@ else
 
 
 
-  ensureCfClientAuthorized = () ->
-    logger.debug "authorizing with rackspace"
-    cfClient.authorized = false
-    cfClient.setAuth (err) ->
-      return logger.error "Error authorizing with rackspace: #{err}" if err?
-      logger.debug "received rackspace authtoken"
+#  ensureCfClientAuthorized = () ->
+#    logger.debug "authorizing with rackspace"
+#    cfClient.authorized = false
+#    cfClient.setAuth (err) ->
+#      return logger.error "Error authorizing with rackspace: #{err}" if err?
+#      logger.debug "received rackspace authtoken"
 
 
   #refresh the rackspace session every twenty hours
-  twentyHours = 72000000
-  setInterval(ensureCfClientAuthorized, twentyHours )
-  ensureCfClientAuthorized()
+  #twentyHours = 72000000
+  #setInterval(ensureCfClientAuthorized, twentyHours )
+  #ensureCfClientAuthorized()
 
 
   app.post "/images/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
@@ -1333,7 +1323,8 @@ else
         path = bytes
         logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
-        cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
+        outStream.pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
+        #cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
           #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
           if err?
             logger.error err
@@ -1405,7 +1396,9 @@ else
           path = bytes
           logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
-          cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
+          outStream.pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
+
+#          cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
             #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
             if err?
               logger.error err
