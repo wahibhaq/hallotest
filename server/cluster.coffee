@@ -39,7 +39,7 @@ USERNAME_LENGTH = 20
 CONTROL_MESSAGE_HISTORY = 100
 MAX_MESSAGE_LENGTH = 8096
 MAX_HTTP_REQUEST_LENGTH = 500000
-NUM_CORES = 2
+NUM_CORES = process.env.SURESPOT_CORES ? 4
 
 oneYear = 31536000000
 oneDay = 86400
@@ -106,9 +106,9 @@ if env is 'Local'
 
 logger.debug "__dirname: #{__dirname}"
 
-if (cluster.isMaster)
+if (cluster.isMaster and env isnt 'Local')
   # Fork workers.
-  for i in [0..1 - (NUM_CORES)]
+  for i in [0..NUM_CORES]
     cluster.fork();
 
   cluster.on 'online', (worker, code, signal) ->
@@ -1284,14 +1284,20 @@ else
             return next err if err?
             res.send 204
 
-  ensureCfClientAuthorized = (force, callback) ->
-    if not cfClient.authorized or force
-      cfClient.authorized = false
-      cfClient.setAuth (err) ->
-        return callback err if err?
-        callback()
-    else
-      callback()
+
+
+  ensureCfClientAuthorized = () ->
+    logger.debug "authorizing with rackspace"
+    cfClient.authorized = false
+    cfClient.setAuth (err) ->
+      return logger.error "Error authorizing with rackspace: #{err}" if err?
+      logger.debug "received rackspace authtoken"
+
+
+  #refresh the rackspace session every twenty hours
+  twentyHours = 72000000
+  setInterval(ensureCfClientAuthorized, twentyHours )
+  ensureCfClientAuthorized()
 
 
   app.post "/images/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
@@ -1327,30 +1333,15 @@ else
         path = bytes
         logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
-        retry = 0
-        postFile = (force, callback) ->
-          ensureCfClientAuthorized force, (err) ->
-            return next err if err?
-            cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
-              #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
-              if err?
-                #try to auth once
-                if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
-                  logger.debug "received 401 from rackspace, retrying: #{err}"
-                  retry++
-                  postFile true, callback
-                else
-                  callback err
+        cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
+          #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
+          if err?
+            logger.error err
+            if err.message.indexOf ("Unauthorized") > -1
+              ensureCfClientAuthorized()
+            return next err #delete filenames[part.filename]
 
-              else
-                callback()
-
-
-
-        postFile false, (err) ->
-          return next err if err?
-
-          logger.debug 'uploaded completed'
+          logger.debug 'upload completed'
           url = rackspaceCdnBaseUrl + "/#{path}"
 
           getFriendImageData username, otherUser, (err, friend) ->
@@ -1368,7 +1359,6 @@ else
 
     form.parse req
 
-
   app.post "/images/:fromversion/:username/:toversion", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
     #upload image to rackspace then create a message with the image url and send it to chat recipients
     username = req.user.username
@@ -1381,6 +1371,7 @@ else
       iv = part.filename
 
       outStream = new stream.PassThrough()
+
 
       part.on 'data', (buffer) ->
         form.pause()
@@ -1399,49 +1390,29 @@ else
       getNextMessageId room, null, (id) ->
         #todo send message error on socket
         if not id?
-          logger.error new Error 'could not generate messageId'
+          err = new Error 'could not generate messageId'
+          logger.error err
           sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
-          return# delete filenames[part.filename]
+          return next err # delete filenames[part.filename]
 
         #no need for secure randoms for image paths
         generateRandomBytes 'hex', (err, bytes) ->
           if err?
             logger.error err
             sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
-            return #delete filenames[part.filename]
+            return next err #delete filenames[part.filename]
 
           path = bytes
           logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
-          retry = 0
-          postFile = (force, callback) ->
-            ensureCfClientAuthorized force, (err) ->
-              if err?
-                sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
-                return
-
-              cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
-                #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
-                #todo send messageerror on socket
-                if err?
-                  #try to auth once
-                  if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
-                    logger.debug "received 401 from rackspace, retrying: #{err}"
-                    retry++
-                    postFile true, callback
-                  else
-                    callback err
-
-                else
-                  callback()
-
-
-
-          postFile false, (err) ->
+          cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
+            #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
             if err?
               logger.error err
+              if err.message.indexOf ("Unauthorized") > -1
+                ensureCfClientAuthorized()
               sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
-              return #delete filenames[part.filename]
+              return next err #delete filenames[part.filename]
 
             logger.debug "upload completed #{path}"
             uri = rackspaceCdnBaseUrl + "/#{path}"
