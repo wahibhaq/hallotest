@@ -1336,8 +1336,6 @@ else
           #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
           if err?
             logger.error err
-            if err.message.indexOf ("Unauthorized") > -1
-              ensureCfClientAuthorized()
             return next err #delete filenames[part.filename]
 
           logger.debug 'upload completed'
@@ -1410,8 +1408,6 @@ else
             #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
             if err?
               logger.error err
-              if err.message.indexOf ("Unauthorized") > -1
-                ensureCfClientAuthorized()
               sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
               return next err #delete filenames[part.filename]
 
