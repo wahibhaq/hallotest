@@ -41,7 +41,7 @@
     "readable-stream": "~1.0.2",
     "redback": "~0.3.5",
     "redis": "~0.8.3",
-    "pkgcloud": "https://github.com/rackspace/pkgcloud/tarball/newBufferedStream"
+    "pkgcloud": "~0.7.2"
   },
   "subdomain": "2fours.com",
   "scripts": {
