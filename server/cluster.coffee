@@ -84,7 +84,7 @@ rackspaceCdnBaseUrl = process.env.SURESPOT_RACKSPACE_CDN_URL
 rackspaceImageContainer = process.env.SURESPOT_RACKSPACE_IMAGE_CONTAINER
 rackspaceUsername = process.env.SURESPOT_RACKSPACE_USERNAME
 sessionSecret = process.env.SURESPOT_SESSION_SECRET
-logConsole = process.env.SURESPOT_LOG_CONSOLE is "true" 
+logConsole = process.env.SURESPOT_LOG_CONSOLE is "true"
 
 
 logger.remove logger.transports.Console
@@ -100,10 +100,12 @@ logger.add transports[0], null, true
 
 numCPUs = require('os').cpus().length
 
-if env is 'Local'
+if NUM_CORES > numCPUs then NUM_CORES = numCPUs
+
+if env is 'Local' or logConsole
   transports.push new (logger.transports.Console)({colorize: true, timestamp: true, level: debugLevel, handleExceptions: true })
   logger.add transports[1], null, true
-  numCPUs = 1
+
 
 logger.debug "__dirname: #{__dirname}"
 
@@ -134,6 +136,8 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "rackspace image container: #{rackspaceImageContainer}"
   logger.info "rackspace username: #{rackspaceUsername}"
   logger.info "session secret: #{sessionSecret}"
+  logger.info "cores: #{NUM_CORES}"
+  logger.info "console logging: #{logConsole}"
 
 
 else
@@ -154,6 +158,9 @@ else
     logger.info "rackspace image container: #{rackspaceImageContainer}"
     logger.info "rackspace username: #{rackspaceUsername}"
     logger.info "session secret: #{sessionSecret}"
+    logger.info "cores: #{NUM_CORES}"
+    logger.info "console logging: #{logConsole}"
+
 
   sio = undefined
   sessionStore = undefined
