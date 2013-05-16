@@ -24,7 +24,6 @@
     "dcrypt": "0.0.2",
     "validator": "~0.4.25",
     "forever": "~0.10.0",
-    "pkgcloud": "~0.6.12",
     "express": "~3.2.0",
     "multiparty": "~2.1.5",
     "batch": "~0.3.2",
@@ -41,7 +40,8 @@
     "pause": "0.0.1",
     "readable-stream": "~1.0.2",
     "redback": "~0.3.5",
-    "redis": "~0.8.3"
+    "redis": "~0.8.3",
+    "pkgcloud": "~0.7.2"
   },
   "subdomain": "2fours.com",
   "scripts": {

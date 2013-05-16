@@ -26,11 +26,11 @@ _ = require 'underscore'
 querystring = require 'querystring'
 formidable = require 'formidable'
 #request = require 'request'
-#pkgcloud = require 'pkgcloud'
+pkgcloud = require 'pkgcloud'
 utils = require('connect/lib/utils')
 pause = require 'pause'
 stream = require 'readable-stream'
-cloudfiles = require 'cloudfiles'
+#cloudfiles = require 'cloudfiles'
 redback = require('redback').createClient()
 
 
@@ -84,6 +84,7 @@ rackspaceCdnBaseUrl = process.env.SURESPOT_RACKSPACE_CDN_URL
 rackspaceImageContainer = process.env.SURESPOT_RACKSPACE_IMAGE_CONTAINER
 rackspaceUsername = process.env.SURESPOT_RACKSPACE_USERNAME
 sessionSecret = process.env.SURESPOT_SESSION_SECRET
+logConsole = process.env.SURESPOT_LOG_CONSOLE is "true"
 
 
 logger.remove logger.transports.Console
@@ -99,16 +100,18 @@ logger.add transports[0], null, true
 
 numCPUs = require('os').cpus().length
 
-if env is 'Local'
+if NUM_CORES > numCPUs then NUM_CORES = numCPUs
+
+if env is 'Local' or logConsole
   transports.push new (logger.transports.Console)({colorize: true, timestamp: true, level: debugLevel, handleExceptions: true })
   logger.add transports[1], null, true
-  numCPUs = 1
+
 
 logger.debug "__dirname: #{__dirname}"
 
-if (cluster.isMaster and env isnt 'Local')
+if (cluster.isMaster and NUM_CORES > 1)
   # Fork workers.
-  for i in [0..NUM_CORES]
+  for i in [0..NUM_CORES-1]
     cluster.fork();
 
   cluster.on 'online', (worker, code, signal) ->
@@ -133,6 +136,8 @@ if (cluster.isMaster and env isnt 'Local')
   logger.info "rackspace image container: #{rackspaceImageContainer}"
   logger.info "rackspace username: #{rackspaceUsername}"
   logger.info "session secret: #{sessionSecret}"
+  logger.info "cores: #{NUM_CORES}"
+  logger.info "console logging: #{logConsole}"
 
 
 else
@@ -153,6 +158,9 @@ else
     logger.info "rackspace image container: #{rackspaceImageContainer}"
     logger.info "rackspace username: #{rackspaceUsername}"
     logger.info "session secret: #{sessionSecret}"
+    logger.info "cores: #{NUM_CORES}"
+    logger.info "console logging: #{logConsole}"
+
 
   sio = undefined
   sessionStore = undefined
@@ -164,7 +172,8 @@ else
   app = undefined
   ssloptions = undefined
 
-  cfClient = cloudfiles.createClient {auth: { username: rackspaceUsername, apiKey: rackspaceApiKey}}
+  rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
+  #cfClient = cloudfiles.createClient {auth: { username: rackspaceUsername, apiKey: rackspaceApiKey}}
   createRedisClient = (callback, database, port, hostname, password) ->
     if port? and hostname? and password?
       client = require("redis").createClient(port, hostname)
@@ -1185,24 +1194,13 @@ else
     splits = uri.split('/')
     path = splits[splits.length - 1]
     logger.debug "removing file from rackspace: #{path}"
+    rackspace.removeFile rackspaceImageContainer, path, (err) ->
+      if err?
+        logger.error "could not remove file from rackspace: #{path}, error: #{err}"
+      else
+        logger.debug "removed file from rackspace: #{path}"
 
-    retry = 0
-    removeFile = (force, path) ->
-      ensureCfClientAuthorized force, (err) ->
-        return logger.error "could not remove file from rackspace: #{path}, error: #{err}" if err?
-        cfClient.destroyFile rackspaceImageContainer, path, (err) ->
-          if err?
-            #try to auth once
-            if (err.message.indexOf ("Unauthorized") > -1) && (retry is 0)
-              logger.debug "received 401 from rackspace, retrying: #{err}"
-              retry++
-              removeFile true, path
-            else
-              logger.error "could not remove file from rackspace: #{path}, error: #{err}"
-          else
-            logger.debug "removed file from rackspace: #{path}"
 
-    removeFile false, path
 
 
 
@@ -1286,18 +1284,18 @@ else
 
 
 
-  ensureCfClientAuthorized = () ->
-    logger.debug "authorizing with rackspace"
-    cfClient.authorized = false
-    cfClient.setAuth (err) ->
-      return logger.error "Error authorizing with rackspace: #{err}" if err?
-      logger.debug "received rackspace authtoken"
+#  ensureCfClientAuthorized = () ->
+#    logger.debug "authorizing with rackspace"
+#    cfClient.authorized = false
+#    cfClient.setAuth (err) ->
+#      return logger.error "Error authorizing with rackspace: #{err}" if err?
+#      logger.debug "received rackspace authtoken"
 
 
   #refresh the rackspace session every twenty hours
-  twentyHours = 72000000
-  setInterval(ensureCfClientAuthorized, twentyHours )
-  ensureCfClientAuthorized()
+  #twentyHours = 72000000
+  #setInterval(ensureCfClientAuthorized, twentyHours )
+  #ensureCfClientAuthorized()
 
 
   app.post "/images/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
@@ -1333,12 +1331,11 @@ else
         path = bytes
         logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
-        cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
+        outStream.pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
+        #cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
           #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
           if err?
             logger.error err
-            if err.message.indexOf ("Unauthorized") > -1
-              ensureCfClientAuthorized()
             return next err #delete filenames[part.filename]
 
           logger.debug 'upload completed'
@@ -1405,12 +1402,12 @@ else
           path = bytes
           logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
-          cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
+          outStream.pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
+
+#          cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
             #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
             if err?
               logger.error err
-              if err.message.indexOf ("Unauthorized") > -1
-                ensureCfClientAuthorized()
               sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
               return next err #delete filenames[part.filename]
 
