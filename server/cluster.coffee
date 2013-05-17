@@ -1284,18 +1284,17 @@ else
 
 
 
-#  ensureCfClientAuthorized = () ->
-#    logger.debug "authorizing with rackspace"
-#    cfClient.authorized = false
-#    cfClient.setAuth (err) ->
-#      return logger.error "Error authorizing with rackspace: #{err}" if err?
-#      logger.debug "received rackspace authtoken"
+  ensureCfClientAuthorized = () ->
+    logger.debug "authorizing with rackspace"
+    rackspace.auth (err) ->
+      return logger.error "Error authorizing with rackspace: #{err}" if err?
+      logger.debug "re-auth'd with rackspace"
 
 
   #refresh the rackspace session every twenty hours
-  #twentyHours = 72000000
-  #setInterval(ensureCfClientAuthorized, twentyHours )
-  #ensureCfClientAuthorized()
+  twentyHours = 72000000
+  setInterval(ensureCfClientAuthorized, twentyHours )
+  ensureCfClientAuthorized()
 
 
   app.post "/images/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
