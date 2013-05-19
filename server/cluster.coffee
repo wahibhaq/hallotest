@@ -1293,7 +1293,8 @@ else
 
   #refresh the rackspace session every twenty hours
   twentyHours = 72000000
-  setInterval(ensureCfClientAuthorized, twentyHours )
+  twelveHours = 43200000
+  setInterval(ensureCfClientAuthorized, twelveHours )
   ensureCfClientAuthorized()
 
 
