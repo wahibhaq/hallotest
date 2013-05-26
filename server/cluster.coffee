@@ -1858,13 +1858,20 @@ else
     if friendname is username then return res.send 403
 
     logger.debug "#{username} inviting #{friendname} to be friends"
-    #check if friendname has blocked username
+
     multi = rc.multi()
+    #check if friendname has blocked username
     multi.sismember "b:#{friendname}", username
+
+    #if he's deleted me then 404
     multi.sismember "ud:#{username}", friendname
+
+    #if i've previously deleted the user and I invite him now then unmark me as deleted to him
+    multi.srem "ud:#{friendname}", username
+
     multi.exec (err, results) ->
       return next err if err?
-      return res.send 404 if 1 in results
+      return res.send 404 if 1 in [results[0],results[1]]
 
       #see if they are already friends
       isFriend username, friendname, (err, result) ->
