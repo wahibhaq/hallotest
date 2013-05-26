@@ -818,13 +818,13 @@ else
                 # gcmmessage.addData("data", message.data)
 
                 gcmmessage.addData("mimeType", message.mimeType)
-                gcmmessage.delayWhileIdle = true
-                gcmmessage.timeToLive = 3
-                gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
+                gcmmessage.delayWhileIdle = false
+                gcmmessage.timeToLive = 36000
+                #gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
                 regIds = [gcm_id]
 
-                sender.send gcmmessage, regIds, 4, (result) ->
-                  logger.debug "sendGcm result: #{result}"
+                sender.send gcmmessage, regIds, 4, (err, result) ->
+                  logger.debug "sendGcm result: #{JSON.stringify(result)}"
                   gcmCallback()
               else
                 logger.debug "no gcm id for #{to}"
@@ -1553,7 +1553,7 @@ else
   createNewUser = (req, res, next) ->
     username = req.body.username
     password = req.body.password
-    logger.debug "/users, username: #{username}, password: #{password}"
+    logger.debug "/users, username: #{username}"
 
     #return next new Error('username required') unless username?
     #return next new Error('password required') unless password?
@@ -1835,13 +1835,13 @@ else
                 gcmmessage.addData "type", "invite"
                 gcmmessage.addData "sentfrom", username
                 gcmmessage.addData "to", friendname
-                gcmmessage.delayWhileIdle = true
-                gcmmessage.timeToLive = 3
-                gcmmessage.collapseKey = "invite:#{friendname}"
+                gcmmessage.delayWhileIdle = false
+                gcmmessage.timeToLive = 36000
+                #gcmmessage.collapseKey = "invite:#{friendname}"
                 regIds = [gcmId]
 
-                sender.send gcmmessage, regIds, 4, (result) ->
-                  #logger.debug(result)
+                sender.send gcmmessage, regIds, 4, (err, result) ->
+                  logger.debug "sent gcm: #{JSON.stringify(result)}"
                   callback null, true
               else
                 logger.debug "gcmId not set for #{friendname}"
@@ -1928,12 +1928,13 @@ else
         gcmmessage.addData "sentfrom", username
         gcmmessage.addData "to", friendname
         gcmmessage.addData("response", action)
-        gcmmessage.delayWhileIdle = true
-        gcmmessage.timeToLive = 3
-        gcmmessage.collapseKey = "inviteResponse:#{friendname}"
+        gcmmessage.delayWhileIdle = false
+        gcmmessage.timeToLive = 36000
+        #gcmmessage.collapseKey = "inviteResponse:#{friendname}"
         regIds = [gcmId]
 
-        sender.send gcmmessage, regIds, 4, (result) ->
+        sender.send gcmmessage, regIds, 4, (err, result) ->
+          logger.debug "sendGcm result: #{JSON.stringify(result)}"
           callback result
       else
           callback null
