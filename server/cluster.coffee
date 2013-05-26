@@ -40,6 +40,7 @@ CONTROL_MESSAGE_HISTORY = 100
 MAX_MESSAGE_LENGTH = 8096
 MAX_HTTP_REQUEST_LENGTH = 500000
 NUM_CORES = process.env.SURESPOT_CORES ? 4
+GCM_TTL = 604800
 
 oneYear = 31536000000
 oneDay = 86400
@@ -819,7 +820,7 @@ else
 
                 gcmmessage.addData("mimeType", message.mimeType)
                 gcmmessage.delayWhileIdle = false
-                #gcmmessage.timeToLive = 36000
+                gcmmessage.timeToLive = GCM_TTL
                 #gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
                 regIds = [gcm_id]
 
@@ -1836,7 +1837,7 @@ else
                 gcmmessage.addData "sentfrom", username
                 gcmmessage.addData "to", friendname
                 gcmmessage.delayWhileIdle = false
-                #gcmmessage.timeToLive = 36000
+                gcmmessage.timeToLive = GCM_TTL
                 #gcmmessage.collapseKey = "invite:#{friendname}"
                 regIds = [gcmId]
 
@@ -1929,8 +1930,8 @@ else
         gcmmessage.addData "to", friendname
         gcmmessage.addData("response", action)
         gcmmessage.delayWhileIdle = false
-        #gcmmessage.timeToLive = 36000
-        #gcmmessage.collapseKey = "inviteResponse:#{friendname}"
+        gcmmessage.timeToLive = GCM_TTL
+        #gcmmessage.collapseKey = "inviteResponse"
         regIds = [gcmId]
 
         sender.send gcmmessage, regIds, 4, (err, result) ->
