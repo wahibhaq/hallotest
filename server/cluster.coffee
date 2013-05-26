@@ -819,7 +819,7 @@ else
 
                 gcmmessage.addData("mimeType", message.mimeType)
                 gcmmessage.delayWhileIdle = false
-                gcmmessage.timeToLive = 36000
+                #gcmmessage.timeToLive = 36000
                 #gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
                 regIds = [gcm_id]
 
@@ -1836,7 +1836,7 @@ else
                 gcmmessage.addData "sentfrom", username
                 gcmmessage.addData "to", friendname
                 gcmmessage.delayWhileIdle = false
-                gcmmessage.timeToLive = 36000
+                #gcmmessage.timeToLive = 36000
                 #gcmmessage.collapseKey = "invite:#{friendname}"
                 regIds = [gcmId]
 
@@ -1929,7 +1929,7 @@ else
         gcmmessage.addData "to", friendname
         gcmmessage.addData("response", action)
         gcmmessage.delayWhileIdle = false
-        gcmmessage.timeToLive = 36000
+        #gcmmessage.timeToLive = 36000
         #gcmmessage.collapseKey = "inviteResponse:#{friendname}"
         regIds = [gcmId]
 
