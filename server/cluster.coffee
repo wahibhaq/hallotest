@@ -1073,11 +1073,9 @@ else
     return res.send 400 unless id?
 
     logger.debug "deleting messages, user: #{username}, otherUser: #{otherUser}, utaiId: #{id}"
-    deleteAllMessages username, otherUser, id, (err, lastMessageId) ->
+    deleteAllMessages username, otherUser, id, (err) ->
       return next err if err?
-      createAndSendMessageControlMessage username, otherUser, room, "deleteAll", room, lastMessageId, (err) ->
-        return next err if err?
-        res.send 204
+      res.send 204
 
 
   deleteAllMessages = (username, otherUser, utaiId, callback) ->
@@ -1143,7 +1141,9 @@ else
 
           multi.exec (err, mResults) ->
             return callback err if err?
-            callback(null, utaiId))
+            createAndSendMessageControlMessage username, otherUser, room, "deleteAll", room, lastMessageId, (err) ->
+              return callback err if err?
+              callback())
 
 
   deleteMessage = (from, to, messageId, sendControlMessage, multi, callback) ->
