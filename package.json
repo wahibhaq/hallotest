@@ -41,7 +41,7 @@
     "readable-stream": "~1.0.2",
     "redback": "~0.3.5",
     "redis": "~0.8.3",
-    "pkgcloud": "~0.7.3",
+    "pkgcloud": "https://github.com/nodejitsu/pkgcloud/tarball/v0.8.0",
     "request": "~2.21.0"
   },
   "subdomain": "2fours.com",
