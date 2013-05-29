@@ -759,7 +759,7 @@ else
                   deletedFromSameSpot = room is deletedSpot
 
                   deleteMessage from, messageData.to, messageData.id, not deletedFromSameSpot, multi, (err, deleteControlMessage) ->
-                    if not err?
+                    if not err? and deleteControlMessage?
                       myDeleteControlMessages.push deleteControlMessage
 
                       #don't send control message to other user in the message if it pertains to a different conversation
@@ -1151,7 +1151,7 @@ else
     #get the message we're modifying
     getMessage room, messageId, (err, dMessage) ->
       return callback err if err?
-      return callback null, false unless dMessage?
+      return callback null, null unless dMessage?
 
       deleteMessageInternal = (callback) ->
         #if we sent it, delete the data
@@ -1285,19 +1285,19 @@ else
 
 
 
-  ensureCfClientAuthorized = () ->
-    logger.debug "authorizing with rackspace"
-    rackspace.auth (err) ->
-      return logger.error "Error authorizing with rackspace: #{err}" if err?
-      logger.debug "re-auth'd with rackspace"
-
-
-  #refresh the rackspace session every twenty hours
-  twentyHours = 72000000
-  twelveHours = 43200000
-  sixHours =    21600000
-  setInterval(ensureCfClientAuthorized, sixHours )
-  ensureCfClientAuthorized()
+#  ensureCfClientAuthorized = () ->
+#    logger.debug "authorizing with rackspace"
+#    rackspace.auth (err) ->
+#      return logger.error "Error authorizing with rackspace: #{err}" if err?
+#      logger.debug "re-auth'd with rackspace"
+#
+#
+#  #refresh the rackspace session every twenty hours
+#  twentyHours = 72000000
+#  twelveHours = 43200000
+#  sixHours =    21600000
+#  setInterval(ensureCfClientAuthorized, sixHours )
+#  ensureCfClientAuthorized()
 
 
   app.post "/images/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
