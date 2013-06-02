@@ -3,11 +3,12 @@ express = require("express")
 formidable = require 'formidable'
 pkgcloud = require 'pkgcloud'
 stream = require 'readable-stream'
+rc = require('redis').createClient()
 
-rackspaceApiKey = "5241b31d69d4ef97e2143c78836155c0"
-rackspaceImageContainer = "surespotImagesLocal"
+rackspaceApiKey = ""
+rackspaceImageContainer = "test"
 
-rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: 'adam2fours', apiKey: rackspaceApiKey}
+rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: '', apiKey: rackspaceApiKey}
 
 app = express()
 app.configure ->
@@ -23,7 +24,8 @@ app.post "/images", (req, res, next) ->
   form = new formidable.IncomingForm()
   form.onPart = (part) ->
     return form.handlePart part unless part.filename?
-    path = "somepath"
+    path = "testImage.png"
+    #rc.incr 'something', (err, incr) ->
     console.log "received part: #{part.filename}, uploading to rackspace at: #{path}"
     part.pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
       #todo send messageerror on socket

@@ -7,4 +7,4 @@ r = request.post baseUri + "/images", (err, res, body) ->
     console.log err
 
 form = r.form()
-form.append "image", fs.createReadStream("testImage")
+form.append "image", fs.createReadStream("testImage.png")
