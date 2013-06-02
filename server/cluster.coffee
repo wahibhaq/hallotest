@@ -1868,7 +1868,7 @@ else
     multi.sismember "ud:#{username}", friendname
 
     #if i've previously deleted the user and I invite him now then unmark me as deleted to him
-    multi.srem "ud:#{friendname}", username
+    #multi.srem "ud:#{friendname}", username
 
     multi.exec (err, results) ->
       return next err if err?
