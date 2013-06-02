@@ -359,7 +359,7 @@ else
   validateUsernameExists = (req, res, next) ->
     #pause and resume events - https://github.com/felixge/node-formidable/issues/213
     paused = pause req
-    userExistsOrDeleted req.params.username, false, (err, exists) ->
+    userExists req.params.username, (err, exists) ->
       if err?
         paused.resume()
         return next err
@@ -373,7 +373,22 @@ else
       next()
       paused.resume()
 
+  validateUsernameExistsOrDeleted = (req, res, next) ->
+    #pause and resume events - https://github.com/felixge/node-formidable/issues/213
+    paused = pause req
+    userExistsOrDeleted req.params.username, false, (err, exists) ->
+      if err?
+        paused.resume()
+        return next err
 
+
+      if not exists
+        paused.resume()
+        return res.send 404
+
+
+      next()
+      paused.resume()
 
   validateAreFriends = (req, res, next) ->
     #pause and resume events - https://github.com/felixge/node-formidable/issues/213
@@ -1063,7 +1078,7 @@ else
 
 
   #delete all messages
-  app.delete "/messagesutai/:username/:id", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, (req, res, next) ->
+  app.delete "/messagesutai/:username/:id", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, (req, res, next) ->
 
     username = req.user.username
     otherUser = req.params.username
@@ -1207,7 +1222,7 @@ else
 
 
   #delete single message
-  app.delete "/messages/:username/:id", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, (req, res, next) ->
+  app.delete "/messages/:username/:id", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, (req, res, next) ->
 
     messageId = req.params.id
     return next new Error 'id required' unless messageId?
@@ -1486,13 +1501,13 @@ else
 
 
   #get remote messages before id
-  app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
+  app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
     #return messages since id
     getMessagesBeforeId req.user.username, getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
       return next err if err?
       res.send data
 
-  app.get "/messagedata/:username/:messageid/:controlmessageid", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
+  app.get "/messagedata/:username/:messageid/:controlmessageid", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
     getMessagesAfterId req.user.username, getRoomName(req.user.username, req.params.username), parseInt(req.params.messageid), (err, messageData) ->
       return next err if err?
       #return messages since id
@@ -1508,9 +1523,9 @@ else
         logger.debug "sending: #{sData}"
         res.send sData
 
-  app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setNoCache, getPublicKeys
-  app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted, setCache(oneYear), getPublicKeys
-  app.get "/keyversion/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeleted,(req, res, next) ->
+  app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, getPublicKeys
+  app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setCache(oneYear), getPublicKeys
+  app.get "/keyversion/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted,(req, res, next) ->
     rc.get "kv:#{req.params.username}", (err, version) ->
       return callback err if err?
       res.send version
@@ -1861,7 +1876,7 @@ else
     logger.debug "#{username} inviting #{friendname} to be friends"
 
     multi = rc.multi()
-    #check if friendname has blocked username
+    #check if friendname has blocked username - 404
     multi.sismember "b:#{friendname}", username
 
     #if he's deleted me then 404
@@ -2222,7 +2237,7 @@ else
                   res.send 204
 
 
-  app.delete "/friends/:username", ensureAuthenticated, validateUsernameExists, validateAreFriendsOrDeletedOrInvited, (req, res, next) ->
+  app.delete "/friends/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeletedOrInvited, (req, res, next) ->
     username = req.user.username
     theirUsername = req.params.username
 
