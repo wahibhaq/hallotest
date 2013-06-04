@@ -32,6 +32,7 @@ pause = require 'pause'
 stream = require 'readable-stream'
 #cloudfiles = require 'cloudfiles'
 redback = require('redback').createClient()
+nodemailer = require('nodemailer')
 
 
 #constants
@@ -46,6 +47,7 @@ oneYear = 31536000000
 oneDay = 86400
 
 #config
+
 #rate limit to MESSAGE_RATE_LIMIT_RATE / MESSAGE_RATE_LIMIT_SECS (seconds) (allows us to get request specific on top of iptables)
 RATE_LIMITING_MESSAGE=process.env.SURESPOT_RATE_LIMITING_MESSAGE is "true"
 RATE_LIMITING_PING=process.env.SURESPOT_RATE_LIMITING_PING is "true"
@@ -86,6 +88,10 @@ rackspaceImageContainer = process.env.SURESPOT_RACKSPACE_IMAGE_CONTAINER
 rackspaceUsername = process.env.SURESPOT_RACKSPACE_USERNAME
 sessionSecret = process.env.SURESPOT_SESSION_SECRET
 logConsole = process.env.SURESPOT_LOG_CONSOLE is "true"
+gmailUser = process.env.SURESPOT_GMAIL_USER
+gmailPassword = process.env.SURESPOT_GMAIL_PASSWORD
+gmailTo = process.env.SURESPOT_GMAIL_TO
+
 
 
 logger.remove logger.transports.Console
@@ -196,10 +202,14 @@ else
       else
         callback null, client
 
+
+
+  smtpTransport = nodemailer.createTransport("SMTP", { service: "Gmail", auth: { user: gmailUser, pass: gmailPassword}})
+  mailOptions = { from: gmailUser, to: gmailTo, subject: "new surespot user created" }
+
+
+  #ssl & ec
   serverPrivateKey = undefined
-
-
-
   ssloptions = {
   key: fs.readFileSync("ssl#{env}/surespot.key"),
   cert: fs.readFileSync("ssl#{env}/surespot.crt")
@@ -1648,6 +1658,15 @@ else
               multi.exec (err,replies) ->
                 return next err if err?
                 logger.debug "created user: #{username}, uid: #{user.id}"
+
+                #send email notification
+                mailOptions.text = "user created, uid: #{user.id}"
+                smtpTransport.sendMail mailOptions, (err, response) ->
+                  if err?
+                    logger.error err
+                  else
+                    logger.debug "user created email sent: " + response.message
+
                 req.login user, ->
                   req.user = user
                   if referrers
