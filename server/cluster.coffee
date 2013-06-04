@@ -205,7 +205,7 @@ else
 
 
   smtpTransport = nodemailer.createTransport("SMTP", { service: "Gmail", auth: { user: gmailUser, pass: gmailPassword}})
-  mailOptions = { from: gmailUser, to: gmailTo, subject: "new surespot user created" }
+  mailOptions = { from: gmailUser, to: gmailTo, subject: "#{env}: new surespot user created" }
 
 
   #ssl & ec
@@ -1660,7 +1660,7 @@ else
                 logger.debug "created user: #{username}, uid: #{user.id}"
 
                 #send email notification
-                mailOptions.text = "user created, uid: #{user.id}"
+                mailOptions.text = "user created in env: #{env}, uid: #{user.id}"
                 smtpTransport.sendMail mailOptions, (err, response) ->
                   if err?
                     logger.error err
