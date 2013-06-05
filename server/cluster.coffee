@@ -25,12 +25,10 @@ async = require 'async'
 _ = require 'underscore'
 querystring = require 'querystring'
 formidable = require 'formidable'
-#request = require 'request'
 pkgcloud = require 'pkgcloud'
 utils = require('connect/lib/utils')
 pause = require 'pause'
 stream = require 'readable-stream'
-#cloudfiles = require 'cloudfiles'
 redback = require('redback').createClient()
 nodemailer = require('nodemailer')
 
