@@ -93,7 +93,7 @@ gmailTo = process.env.SURESPOT_GMAIL_TO
 
 
 logger.remove logger.transports.Console
-logger.setLevels logger.config.syslog.levels
+#logger.setLevels logger.config.syslog.levels
 logger.exitOnError = true
 logger.emitErrs = false
 
@@ -187,7 +187,6 @@ else
   ssloptions = undefined
 
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
-  #cfClient = cloudfiles.createClient {auth: { username: rackspaceUsername, apiKey: rackspaceApiKey}}
   createRedisClient = (callback, database, port, hostname, password) ->
     if port? and hostname? and password?
       client = require("redis").createClient(port, hostname)
@@ -1317,23 +1316,6 @@ else
           createAndSendMessageControlMessage username, otherUser, room, (if bShareable then "shareable" else "notshareable"), room, messageId, (err) ->
             return next err if err?
             res.send 204
-
-
-
-#  ensureCfClientAuthorized = () ->
-#    logger.debug "authorizing with rackspace"
-#    rackspace.auth (err) ->
-#      return logger.error "Error authorizing with rackspace: #{err}" if err?
-#      logger.debug "re-auth'd with rackspace"
-#
-#
-#  #refresh the rackspace session every twenty hours
-#  twentyHours = 72000000
-#  twelveHours = 43200000
-#  sixHours =    21600000
-#  setInterval(ensureCfClientAuthorized, sixHours )
-#  ensureCfClientAuthorized()
-
 
   app.post "/images/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
 
