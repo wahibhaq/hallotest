@@ -145,6 +145,11 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "session secret: #{sessionSecret}"
   logger.info "cores: #{NUM_CORES}"
   logger.info "console logging: #{logConsole}"
+  logger.info "gmail user: #{gmailUser}"
+  logger.info "gmail password: #{gmailPassword}"
+  logger.info "gmail to: #{gmailTo}"
+
+
 
 
 else
@@ -167,6 +172,10 @@ else
     logger.info "session secret: #{sessionSecret}"
     logger.info "cores: #{NUM_CORES}"
     logger.info "console logging: #{logConsole}"
+    logger.info "gmail user: #{gmailUser}"
+    logger.info "gmail password: #{gmailPassword}"
+    logger.info "gmail to: #{gmailTo}"
+
 
 
   sio = undefined
@@ -1116,6 +1125,9 @@ else
         if utaiId > lastMessageId
           logger.debug "setting utaiId to lastMessageId: #{lastMessageId}"
           utaiId = lastMessageId
+      else
+        return callback()
+
 
       ourMessageIds = []
       theirMessageIds = []
