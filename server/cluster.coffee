@@ -2369,6 +2369,9 @@ else
                   #delete the set that held message ids of theirs that we deleted
                   multi.del "d:#{username}:#{room}"
 
+                  #delete the set that held message ids of mine that they deleted
+                  multi.del "d:#{theirUsername}:#{room}"
+
                   multi.del "m:#{room}:id"
                   multi.del "m:#{room}"
                   next()
