@@ -549,7 +549,7 @@ else
             sendMessages.push item.message
           icallback()
         (err) ->
-          callback err if err?
+          return callback err if err?
           callback null, sendMessages)
 
   getAllMessages = (room, fn) ->
@@ -836,9 +836,8 @@ else
             userKey = "u:" + to
             rc.hget userKey, "gcmId", (err, gcm_id) ->
               if err?
-                logger.error ("ERROR: Socket.io onmessage, " + err)
-
-                gcmCallback(err)
+                logger.error "error getting gcm id for user: #{to}, error: #{err}"
+                return gcmCallback()
 
               if gcm_id?.length > 0
                 logger.debug "sending gcm message"
@@ -864,8 +863,7 @@ else
                 gcmCallback()
 
 
-          sendGcm (err) ->
-            return callback new MessageError(iv, 500) if err?
+          sendGcm () ->
 
             sio.sockets.to(to).emit "message", theirMessage
             sio.sockets.to(from).emit "message", myMessage
@@ -917,7 +915,7 @@ else
         logger.warn "delete earliest control message error: #{err}" if err?
         multi.zadd "cm:#{room}", id, sMessage
         multi.exec (err, results) ->
-          callback err if err?
+          return callback err if err?
           callback null, sMessage
 
 
@@ -1933,7 +1931,7 @@ else
     multi.srem "ud:#{username}", friendname
     multi.srem "ud:#{friendname}", username
     multi.exec (err, results) ->
-      callback next new Error("[friend] sadd failed for username: " + username + ", friendname" + friendname) if err?
+      return callback new Error("createFriendShip failed for username: " + username + ", friendname" + friendname) if err?
       createAndSendUserControlMessage username, "added", friendname, null, (err) ->
         return callback err if err?
         createAndSendUserControlMessage friendname, "added", username, null, (err) ->
@@ -2313,7 +2311,7 @@ else
               deleteMessages = (messageId, callback) ->
                 if messageId?
                   deleteAllMessages username, theirUsername, id, (err) ->
-                    callback err if err?
+                    return callback err if err?
                     callback()
                 else
                   callback()
@@ -2326,7 +2324,7 @@ else
 
                 #add me to their set of deleted users if they're not deleted
                 rc.sismember "d", theirUsername, (err, isDeleted) ->
-                  callback err if err?
+                  return next err if err?
                   if not isDeleted
                     multi.sadd "ud:#{theirUsername}", username
                   next()
@@ -2345,7 +2343,7 @@ else
 
                   if isDeleted
                     rc.scard "d:#{theirUsername}", (err, card) ->
-                      callback err if err?
+                      return callback err if err?
                       if card is 0
                         deleteRemainingIdentityData multi, theirUsername
                         callback()
@@ -2362,7 +2360,7 @@ else
                     deleteMessages = (callback) ->
                       if id?
                         deleteAllMessages username, theirUsername, id, (err) ->
-                          callback err if err?
+                          return callback err if err?
                           callback()
                       else
                         callback()
