@@ -2307,7 +2307,7 @@ else
             #delete our messages with the other user
             #get the latest id
             rc.get "m:#{room}:id", (err, id) ->
-
+              return next err if err?
               #handle no id
               deleteMessages = (messageId, callback) ->
                 if messageId?
@@ -2346,8 +2346,6 @@ else
                     rc.scard "d:#{theirUsername}", (err, card) ->
                       callback err if err?
                       if card is 0
-
-
                         deleteRemainingIdentityData multi, theirUsername
                         callback()
                       else
@@ -2358,23 +2356,35 @@ else
                 deleteLastUserScraps (err) ->
                   return next err if err?
 
+                  rc.get "m:#{room}:id", (err, id) ->
+                    return next err if err?
+                    deleteMessages = (callback) ->
+                      if id?
+                        deleteAllMessages username, theirUsername, id, (err) ->
+                          callback err if err?
+                          callback()
+                      else
+                        callback()
 
-                  #delete control message data
-                  multi.del "cm:#{room}"
-                  multi.del "cm:#{room}:id"
+                    deleteMessages (err) ->
+                      return next err if err?
 
-                  #remove them from my deleted set
-                  multi.srem "ud:#{username}", theirUsername
+                      #delete control message data
+                      multi.del "cm:#{room}"
+                      multi.del "cm:#{room}:id"
 
-                  #delete the set that held message ids of theirs that we deleted
-                  multi.del "d:#{username}:#{room}"
+                      #remove them from my deleted set
+                      multi.srem "ud:#{username}", theirUsername
 
-                  #delete the set that held message ids of mine that they deleted
-                  multi.del "d:#{theirUsername}:#{room}"
+                      #delete the set that held message ids of theirs that we deleted
+                      multi.del "d:#{username}:#{room}"
 
-                  multi.del "m:#{room}:id"
-                  multi.del "m:#{room}"
-                  next()
+                      #delete the set that held message ids of mine that they deleted
+                      multi.del "d:#{theirUsername}:#{room}"
+
+                      multi.del "m:#{room}:id"
+                      multi.del "m:#{room}"
+                      next()
 
 
   app.post "/logout", ensureAuthenticated, (req, res) ->
