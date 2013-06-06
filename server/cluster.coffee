@@ -1354,7 +1354,7 @@ else
         #cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
           #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
           if err?
-            logger.error err
+            logger.error "POST /images/:username/:version, error: #{err}"
             return next err #delete filenames[part.filename]
 
           logger.debug 'upload completed'
@@ -1407,14 +1407,14 @@ else
         #todo send message error on socket
         if not id?
           err = new Error 'could not generate messageId'
-          logger.error err
+          logger.error "POST /images/:fromversion/:username/:toversion, error: #{err}"
           sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
           return next err # delete filenames[part.filename]
 
         #no need for secure randoms for image paths
         generateRandomBytes 'hex', (err, bytes) ->
           if err?
-            logger.error err
+            logger.error "POST /images/:fromversion/:username/:toversion, error: #{err}"
             sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
             return next err #delete filenames[part.filename]
 
@@ -1426,7 +1426,7 @@ else
 #          cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
             #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
             if err?
-              logger.error err
+              logger.error "POST /images/:fromversion/:username/:toversion, error: #{err}"
               sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
               return next err #delete filenames[part.filename]
 
@@ -1554,7 +1554,7 @@ else
               if exists
                 #send invite
                 inviteUser username, usersToInvite[index], (err, inviteSent) ->
-                  logger.error err if err?
+                  logger.error "handleReferrers, error: #{err}" if err?
           )
           callback())
 
@@ -1611,7 +1611,7 @@ else
           try
             referrers = JSON.parse(req.body.referrers)
           catch error
-            logger.error error
+            logger.error "createNewUser, error: #{error}"
             return next error
 
 
@@ -1655,7 +1655,7 @@ else
                 mailOptions.text = "user created in env: #{env}, uid: #{user.id}"
                 smtpTransport.sendMail mailOptions, (err, response) ->
                   if err?
-                    logger.error err
+                    logger.error "createNewUser: #{err}"
                   else
                     logger.debug "user created email sent: " + response.message
 
@@ -1853,7 +1853,7 @@ else
             userKey = "u:" + friendname
             rc.hget userKey, "gcmId", (err, gcmId) ->
               if err?
-                logger.error ("ERROR: " + err)
+                logger.error "inviteUser, " + err
                 return callback new Error err
 
               if gcmId?.length > 0
@@ -1951,7 +1951,7 @@ else
     userKey = "u:" + friendname
     rc.hget userKey, "gcmId", (err, gcmId) ->
       if err?
-        logger.error ("ERROR: " + err)
+        logger.error "sendInviteResponseGcm, #{err}"
         return next new Error err
 
       if gcmId?.length > 0
