@@ -114,6 +114,7 @@ if env is 'Local' or logConsole
 
 logger.debug "__dirname: #{__dirname}"
 
+
 if (cluster.isMaster and NUM_CORES > 1)
   # Fork workers.
   for i in [0..NUM_CORES-1]
@@ -281,7 +282,7 @@ else
 
 
   #winston up some socket.io
-  sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warning, error: logger.error }
+  sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warn, error: logger.error }
 
 
   sioRedisStore = require("socket.io/lib/stores/redis")
@@ -800,7 +801,7 @@ else
 
                     callback()
                 (err) ->
-                  logger.warning "error getting old messages to delete: #{err}" if err?
+                  logger.warn "error getting old messages to delete: #{err}" if err?
                   callback null, myDeleteControlMessages, theirDeleteControlMessages)
 
           else
@@ -913,7 +914,7 @@ else
 
 
       deleteEarliestControlMessage (err) ->
-        logger.warning "delete earliest control message error: #{err}" if err?
+        logger.warn "delete earliest control message error: #{err}" if err?
         multi.zadd "cm:#{room}", id, sMessage
         multi.exec (err, results) ->
           callback err if err?
@@ -996,7 +997,7 @@ else
       ratelimitermessages.count user, RATE_LIMIT_SECS_MESSAGE, (err,requests) ->
 
         if requests > RATE_LIMIT_RATE_MESSAGE
-          logger.warning "rate limiting messages for user: #{user}, ip: #{socket.handshake.address.address}"
+          logger.warn "rate limiting messages for user: #{user}, ip: #{socket.handshake.address.address}"
           try
             message = JSON.parse(data)
 
@@ -1688,7 +1689,7 @@ else
       return next err if err?
       if requests > rate
         username = req.body.username
-        logger.warning "rate limiting ip: #{ip}" + if username? then ", user: #{username}" else "" #", port #{port}"
+        logger.warn "rate limiting ip: #{ip}" + if username? then ", user: #{username}" else "" #", port #{port}"
         return res.send 429
       else
         next()
