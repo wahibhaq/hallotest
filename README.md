@@ -52,7 +52,11 @@ terms of a separate license:
 
 * [redback](https://github.com/chriso/redback) - Copyright (c) 2010 Chris O'Hara cohara87@gmail.com
 * [request](https://github.com/mikeal/request) - Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
-* [underscore](https://github.com/documentcloud/underscore) - Copyright 2010 James Halliday mail@substack.net
+* [mkdirp](https://github/com/substack/node-mkdirp) - Copyright 2010 James Halliday <mail@substack.net>
+* [pkgcloud](https://github.com/nodejitsu/pkgcloud) - Copyright 2011 Nodejitsu Inc.
+* [nodemailer](https://github.com/andris9) - Copyright 2011-2012 Andris Reinman
+* [async](https://github.com/caolan/async) - Copyright 2010 Caolan McMahon
+* [underscore](https://github.com/documentcloud/underscore) - Copyright 2019-2013 Jeremy Ashkenas, Document Cloud
 * [dcrypt](https://github.com/dekz/dcrypt) - Copyright © 2011 by Feisty
 * [bcrypt](https://github.com/ncb000gt/node.bcrypt.js) - Copyright (c) 2010 Nicholas Campbell
 * [node-gcm](https://github.com/ToothlessGear/node-gcm) - Copyright (c) 2012 Marcus Farkas marcus.farkas@spaceteam.at
