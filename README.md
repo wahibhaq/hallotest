@@ -64,7 +64,7 @@ terms of a separate license:
 * [passport](https://github.com/jaredhanson/passport) - Copyright (c) 2011-2013 Jared Hanson
 * [cookie](https://github.com/shtylman/node-cookie) - Copyright (C) Roman Shtylman shtylman@gmail.com
 * [winston](https://github.com/flatiron/winston) - Copyright (c) 2010 Charlie Robbins
-* [express-winston](https://github.com/firebaseco/express-winston) - Copyright (c) 2012 Firebase.co
+* [express-winston](https://github.com/heapsource/express-winston) - Copyright (c) 2012 Firebase.co
 * [mocha](https://github.com/visionmedia/mocha) - Copyright (c) 2011-2013 TJ Holowaychuk  tj@vision-media.ca
 * [should](https://github.com/visionmedia/should.js) - Copyright (c) 2010-2011 TJ Holowaychuk tj@vision-media.ca  Copyright (c) 2011 Aseem Kishore aseem.kishore@gmail.com
 * [express](https://github.com/visionmedia/express) -  Copyright (c) 2009-2011 TJ Holowaychuk tj@vision-media.ca
