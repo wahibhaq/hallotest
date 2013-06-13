@@ -6,6 +6,11 @@
 
 ###
 
+NODETIME_API_KEY=process.env.SURESPOT_NODETIME_API_KEY
+require('nodetime').profile({
+  accountKey: NODETIME_API_KEY,
+  appName: 'surespot'
+});
 cluster = require('cluster')
 https = require('https')
 cookie = require("cookie")
@@ -147,6 +152,7 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "gmail user: #{gmailUser}"
   logger.info "gmail password: #{gmailPassword}"
   logger.info "gmail to: #{gmailTo}"
+  logger.info "nodetime api key: #{NODETIME_API_KEY}"
 
 
 
@@ -174,7 +180,7 @@ else
     logger.info "gmail user: #{gmailUser}"
     logger.info "gmail password: #{gmailPassword}"
     logger.info "gmail to: #{gmailTo}"
-
+    logger.info "nodetime api key: #{NODETIME_API_KEY}"
 
 
   sio = undefined
