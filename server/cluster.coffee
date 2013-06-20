@@ -5,12 +5,14 @@
   written by Adam Patacchiola adam@2fours.com
 
 ###
+env = process.env.SURESPOT_ENV ? 'Local' # one of "Local","Stage", "Prod"
+if env is 'Prod'
+  NODETIME_API_KEY=process.env.SURESPOT_NODETIME_API_KEY
+  require('nodetime').profile({
+    accountKey: NODETIME_API_KEY,
+    appName: 'surespot'
+  })
 
-NODETIME_API_KEY=process.env.SURESPOT_NODETIME_API_KEY
-require('nodetime').profile({
-  accountKey: NODETIME_API_KEY,
-  appName: 'surespot'
-});
 cluster = require('cluster')
 https = require('https')
 cookie = require("cookie")
@@ -80,10 +82,9 @@ ratelimitermessages = redback.createRateLimit('rlm', { bucket_interval: RATE_LIM
 
 
 MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 20
-debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'debug'
+debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'info'
 database = process.env.SURESPOT_DB ? 0
 socketPort = process.env.SURESPOT_SOCKET ? 443
-env = process.env.SURESPOT_ENV ? 'Local' # one of "Local","Stage", "Prod"
 googleApiKey = process.env.SURESPOT_GOOGLE_API_KEY
 rackspaceApiKey = process.env.SURESPOT_RACKSPACE_API_KEY
 rackspaceCdnBaseUrl = process.env.SURESPOT_RACKSPACE_CDN_URL
@@ -103,7 +104,7 @@ logger.exitOnError = true
 logger.emitErrs = false
 
 transports = []
-transports.push new (logger.transports.File)({ dirname: 'logs', filename: 'server.log', maxsize: 1024576, maxFiles: 20, json: false, level: debugLevel, handleExceptions: true })
+transports.push new (logger.transports.File)({ dirname: 'logs', filename: 'server.log', maxsize: 5000000, maxFiles: 20, json: false, level: debugLevel, handleExceptions: true })
 #always use file transport
 logger.add transports[0], null, true
 
@@ -270,10 +271,12 @@ else
     app.use passport.session({pauseStream: true})
     app.use expressWinston.logger({
     transports: transports
+    level: 'debug'
     })
     app.use app.router
     app.use expressWinston.errorLogger({
     transports: transports
+    level: 'debug'
     })
 
     app.use (err, req, res, next) ->
@@ -288,7 +291,7 @@ else
 
 
   #winston up some socket.io
-  sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warn, error: logger.error }
+  sio.set "logger", {debug: logger.debug, info: logger.debug, warn: logger.warn, error: logger.error }
 
 
   sioRedisStore = require("socket.io/lib/stores/redis")
@@ -744,7 +747,7 @@ else
       return callback new MessageError(iv, 500) unless id?
       message.id = id
 
-      logger.debug "sending message, id:  #{id}, iv: #{iv}, data: #{data}, to user: #{to}"
+      logger.info "sending message: #{from}->#{to}"
       newMessage = JSON.stringify(message)
 
       #store messages in sorted sets
@@ -1091,7 +1094,7 @@ else
     user = socket.handshake.session.passport.user
 
     #join user's room
-    logger.debug "user #{user} joining socket.io room"
+    logger.info "socket.io user joined: #{user}"
     socket.join user
 
     socket.on "message", (data) -> handleMessages socket, user, data
@@ -1577,7 +1580,7 @@ else
   createNewUser = (req, res, next) ->
     username = req.body.username
     password = req.body.password
-    logger.debug "/users, username: #{username}"
+    logger.info "creating user: #{username}"
 
     #return next new Error('username required') unless username?
     #return next new Error('password required') unless password?
@@ -1656,13 +1659,14 @@ else
                 return next err if err?
                 logger.debug "created user: #{username}, uid: #{user.id}"
 
-                #send email notification
-                mailOptions.text = "user created in env: #{env}, uid: #{user.id}"
-                smtpTransport.sendMail mailOptions, (err, response) ->
-                  if err?
-                    logger.error "createNewUser: #{err}"
-                  else
-                    logger.debug "user created email sent: " + response.message
+                if env is "Prod"
+                  #send email notification
+                  mailOptions.text = "user created in env: #{env}, uid: #{user.id}"
+                  smtpTransport.sendMail mailOptions, (err, response) ->
+                    if err?
+                      logger.error "createNewUser: #{err}"
+                    else
+                      logger.debug "user created email sent: " + response.message
 
                 req.login user, ->
                   req.user = user
