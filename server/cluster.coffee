@@ -1887,9 +1887,16 @@ else
       else
         callback null, false
 
-  app.post "/invite/:username", ensureAuthenticated, validateUsernameExists, (req, res, next) ->
+
+
+  handleInvite = (req,res,next) ->
     friendname = req.params.username
     username = req.user.username
+    source = req.params.source ? "manual"
+
+    #keep running count of autoinvites
+    if source?
+      rc.hincrby "ai", source, 1
 
     # the caller wants to add himself as a friend
     if friendname is username then return res.send 403
@@ -1934,6 +1941,11 @@ else
             else
               inviteUser username, friendname, (err, inviteSent) ->
                 res.send if inviteSent then 204 else 403
+
+
+  app.post "/invite/:username/:source", ensureAuthenticated, validateUsernameExists, handleInvite
+  app.post "/invite/:username", ensureAuthenticated, validateUsernameExists, handleInvite
+
 
   createFriendShip = (username, friendname, callback) ->
     multi = rc.multi()
