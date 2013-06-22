@@ -855,10 +855,11 @@ else
                 gcmmessage.addData("type", "message")
                 gcmmessage.addData("to", message.to)
                 gcmmessage.addData("sentfrom", message.from)
-                #todo add data? (won't be large when image is a url)
-                # gcmmessage.addData("data", message.data)
-
                 gcmmessage.addData("mimeType", message.mimeType)
+                #pop entire message into gcm message if it's small enough
+                if theirMessage.length <= 3800
+                  gcmmessage.addData("message", theirMessage)
+
                 gcmmessage.delayWhileIdle = false
                 gcmmessage.timeToLive = GCM_TTL
                 #gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
