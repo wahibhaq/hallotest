@@ -1896,6 +1896,7 @@ else
 
     #keep running count of autoinvites
     if source?
+      logger.info "#{username} invited #{friendname} via #{source}"
       rc.hincrby "ai", source, 1
 
     # the caller wants to add himself as a friend
