@@ -747,7 +747,7 @@ else
       return callback new MessageError(iv, 500) unless id?
       message.id = id
 
-      logger.info "sending message: #{from}->#{to}"
+      logger.info "#{from}->#{to}, image: #{mimeType is "image/"}"
       newMessage = JSON.stringify(message)
 
       #store messages in sorted sets
@@ -1094,11 +1094,17 @@ else
   sio.on "connection", (socket) ->
     user = socket.handshake.session.passport.user
 
-    #join user's room
-    logger.info "socket.io user joined: #{user}"
+    rc.incr "socketCount", (err, count) ->
+      #join user's room
+      logger.info "#{user} connected: #{count}"
+
     socket.join user
 
     socket.on "message", (data) -> handleMessages socket, user, data
+    socket.on "disconnect", ->
+      rc.decr "socketCount", (err, count) ->
+        #join user's room
+        logger.info "#{user} disconnected: #{count}"
 
 
 
@@ -1549,7 +1555,8 @@ else
       referrers,
       (referrer, callback) ->
         referralUserName = referrer.utm_content
-        usersToInvite.push referralUserName
+        referralSource = referrer.utm_medium
+        usersToInvite.push { username: referralUserName, source: referralSource }
         multi.sismember "u", referralUserName
         callback()
       (err) ->
@@ -1562,7 +1569,8 @@ else
             (exists, index, list) ->
               if exists
                 #send invite
-                inviteUser username, usersToInvite[index], (err, inviteSent) ->
+                ref = usersToInvite[index]
+                inviteUser username, ref.username, ref.source, (err, inviteSent) ->
                   logger.error "handleReferrers, error: #{err}" if err?
           )
           callback())
@@ -1581,7 +1589,6 @@ else
   createNewUser = (req, res, next) ->
     username = req.body.username
     password = req.body.password
-    logger.info "creating user: #{username}"
 
     #return next new Error('username required') unless username?
     #return next new Error('password required') unless password?
@@ -1625,7 +1632,7 @@ else
 
 
         logger.debug "gcmID: #{user.gcmId}"
-        logger.debug "referrers: #{referrers}"
+        logger.debug "referrers: #{req.body.referrers}"
 
         bcrypt.genSalt 10, 32, (err, salt) ->
           return next err if err?
@@ -1658,7 +1665,7 @@ else
               multi.sadd "u", username
               multi.exec (err,replies) ->
                 return next err if err?
-                logger.debug "created user: #{username}, uid: #{user.id}"
+                logger.info "#{username} created, uid: #{user.id}"
 
                 if env is "Prod"
                   #send email notification
@@ -1843,7 +1850,13 @@ else
       res.send 204
 
 
-  inviteUser = (username, friendname, callback) ->
+  inviteUser = (username, friendname, source, callback) ->
+    #keep running count of autoinvites
+    if source?
+      logger.info "#{username} invited #{friendname} via #{source}"
+      rc.hincrby "ai", source, 1
+
+
     multi = rc.multi()
     #remove you from my blocked set if you're blocked
     multi.srem "b:#{username}", friendname
@@ -1894,11 +1907,6 @@ else
     username = req.user.username
     source = req.params.source ? "manual"
 
-    #keep running count of autoinvites
-    if source?
-      logger.info "#{username} invited #{friendname} via #{source}"
-      rc.hincrby "ai", source, 1
-
     # the caller wants to add himself as a friend
     if friendname is username then return res.send 403
 
@@ -1940,7 +1948,7 @@ else
                         sendInviteResponseGcm friendname, username, 'accept', (result) ->
                           res.send 204
             else
-              inviteUser username, friendname, (err, inviteSent) ->
+              inviteUser username, friendname, source, (err, inviteSent) ->
                 res.send if inviteSent then 204 else 403
 
 
@@ -2000,15 +2008,18 @@ else
   app.post '/invites/:username/:action', ensureAuthenticated, validateUsernameExists, (req, res, next) ->
     return next new Error 'action required' unless req.params.action?
 
-    logger.debug 'POST /invites'
+
     username = req.user.username
     friendname = req.params.username
+    action = req.params.action
+
+    logger.info "#{username} #{action} #{friendname}"
 
     #make sure invite exists
     inviteExists friendname, username, (err, result) ->
       return next err if err?
       return res.send 404 if not result
-      action = req.params.action
+
       deleteInvites username, friendname, (err) ->
         return next err if err?
         switch action
@@ -2411,6 +2422,7 @@ else
 
 
   app.post "/logout", ensureAuthenticated, (req, res) ->
+    logger.info "#{req.user.username} logged out"
     req.logout()
     res.send 204
 
