@@ -269,6 +269,9 @@ else
     )
     app.use passport.initialize()
     app.use passport.session({pauseStream: true})
+    app.use (req,res,next) ->
+      res.contentType 'application/json'
+      next()
     app.use expressWinston.logger({
     transports: transports
     level: 'debug'
