@@ -268,17 +268,14 @@ else
     )
     app.use passport.initialize()
     app.use passport.session({pauseStream: true})
-#    app.use (req,res,next) ->
-#      res.contentType 'application/json'
-#      next()
-    app.use expressWinston.logger({
-    transports: transports
-    level: 'debug'
-    })
+#    app.use expressWinston.logger({
+#    transports: transports
+#    level: debugLevel
+#    })
     app.use app.router
     app.use expressWinston.errorLogger({
     transports: transports
-    level: 'debug'
+    level: "warn"
     })
 
     app.use (err, req, res, next) ->
@@ -293,7 +290,7 @@ else
 
 
   #winston up some socket.io
-  sio.set "logger", {debug: logger.debug, info: logger.debug, warn: logger.warn, error: logger.error }
+  sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warn, error: logger.error }
 
 
   sioRedisStore = require("socket.io/lib/stores/redis")
