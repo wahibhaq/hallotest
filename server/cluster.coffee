@@ -37,7 +37,6 @@ utils = require('connect/lib/utils')
 pause = require 'pause'
 stream = require 'readable-stream'
 redback = require('redback').createClient()
-nodemailer = require('nodemailer')
 
 
 #constants
@@ -218,8 +217,8 @@ else
 
 
 
-  smtpTransport = nodemailer.createTransport("SMTP", { service: "Gmail", auth: { user: gmailUser, pass: gmailPassword}})
-  mailOptions = { from: gmailUser, to: gmailTo, subject: "#{env}: new surespot user created" }
+  #smtpTransport = nodemailer.createTransport("SMTP", { service: "Gmail", auth: { user: gmailUser, pass: gmailPassword}})
+  #mailOptions = { from: gmailUser, to: gmailTo, subject: "#{env}: new surespot user created" }
 
 
   #ssl & ec
@@ -1669,16 +1668,6 @@ else
               multi.exec (err,replies) ->
                 return next err if err?
                 logger.info "#{username} created, uid: #{user.id}"
-
-                if env is "Prod"
-                  #send email notification
-                  mailOptions.text = "user created in env: #{env}, uid: #{user.id}"
-                  smtpTransport.sendMail mailOptions, (err, response) ->
-                    if err?
-                      logger.error "createNewUser: #{err}"
-                    else
-                      logger.debug "user created email sent: " + response.message
-
                 req.login user, ->
                   req.user = user
                   if referrers
