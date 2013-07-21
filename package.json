@@ -6,7 +6,7 @@
   "dependencies": {
     "connect-redis": "~1.4.5",
     "bcrypt": "~0.7.3",
-    "socket.io": "https://github.com/surespot/socket.io/tarball/surespot",
+    "socket.io": "https://github.com/surespot/socket.io/tarball/redis_improvements",
     "chai": "~1.1.1",
     "underscore": "~1.4.3",
     "coffee-script": "~1.4.0",

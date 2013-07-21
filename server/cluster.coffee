@@ -1588,7 +1588,9 @@ else
   createNewUser = (req, res, next) ->
     username = req.body.username
     password = req.body.password
+    version = req.body.version
 
+    logger.debug "version: #{version}"
     #return next new Error('username required') unless username?
     #return next new Error('password required') unless password?
 
@@ -1713,14 +1715,23 @@ else
       return next err if err?
       res.send exists
 
-  app.post "/users", validateUsernamePassword, rateLimitByIp(RATE_LIMITING_CREATE_USER, ratelimitercreateuser, RATE_LIMIT_SECS_CREATE_USER, RATE_LIMIT_RATE_CREATE_USER), createNewUser, passport.authenticate("local"), (req, res, next) ->
-    res.send 201
 
+
+  validateVersion = (req, res, next) ->
+    version = req.body.version ? "not sent"
+    logger.debug "validate version: #{version}"
+    #reserved for future use, will send 403 if version is not acceptable
+    #res.send 403
+    next()
+
+  app.post "/users", validateVersion, validateUsernamePassword, rateLimitByIp(RATE_LIMITING_CREATE_USER, ratelimitercreateuser, RATE_LIMIT_SECS_CREATE_USER, RATE_LIMIT_RATE_CREATE_USER), createNewUser, passport.authenticate("local"), (req, res, next) ->
+    res.send 201
 
   #end unauth'd methods
 
-  app.post "/login", passport.authenticate("local"), (req, res, next) ->
+  app.post "/login", passport.authenticate("local"), validateVersion, (req, res, next) ->
     username = req.user.username
+
     logger.debug "/login post, user #{username}"
     res.send 204
 
