@@ -1644,7 +1644,7 @@ else
             #sign the keys
             keys.dhPubSig = crypto.createSign('sha256').update(new Buffer(keys.dhPub)).sign(serverPrivateKey, 'base64')
             keys.dsaPubSig = crypto.createSign('sha256').update(new Buffer(keys.dsaPub)).sign(serverPrivateKey, 'base64')
-            logger.debug "#{keys.username}, dhPubSig: #{keys.dhPubSig}, dsaPubSig: #{keys.dsaPubSig}"
+            logger.debug "#{username}, dhPubSig: #{keys.dhPubSig}, dsaPubSig: #{keys.dsaPubSig}"
 
             multi2 = rc.multi()
             #user id
@@ -2098,6 +2098,7 @@ else
 
               sFriendState = JSON.stringify friendstate
               logger.debug ("friendstate: " + sFriendState)
+              res.setHeader('Content-Type', 'application/json');
               res.send sFriendState
 
   app.get "/friends", ensureAuthenticated, setNoCache, getFriends
