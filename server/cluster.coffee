@@ -1580,7 +1580,7 @@ else
     username = req.params.username
     source = req.params.source
 
-    redirectUrl = "https://play.google.com/store/apps/details?id=com.twofours.surespot&referrer="
+    redirectUrl = "market://details?id=com.twofours.surespot&referrer="
     query = "utm_source=surespot_android&utm_medium=#{source}&utm_content=#{username}"
 
     res.redirect  redirectUrl + encodeURIComponent(query)
