@@ -268,10 +268,10 @@ else
     )
     app.use passport.initialize()
     app.use passport.session({pauseStream: true})
-#    app.use expressWinston.logger({
-#    transports: transports
-#    level: debugLevel
-#    })
+    app.use expressWinston.logger({
+    transports: transports
+    level: debugLevel
+    })
     app.use app.router
     app.use expressWinston.errorLogger({
     transports: transports
@@ -1399,6 +1399,10 @@ else
       return form.handlePart part unless part.filename?
     #  filenames[part.filename] = "uploading"
       iv = part.filename
+      mimeType = part.mime
+
+      #todo check valid mimetypes
+      #todo validate versions
 
       outStream = new stream.PassThrough()
 
@@ -1421,14 +1425,14 @@ else
         #todo send message error on socket
         if not id?
           err = new Error 'could not generate messageId'
-          logger.error "POST /images/:fromversion/:username/:toversion, error: #{err}"
+          logger.error "fileupload, mimeType: #{mimeType} error: #{err}"
           sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
           return next err # delete filenames[part.filename]
 
         #no need for secure randoms for image paths
         generateRandomBytes 'hex', (err, bytes) ->
           if err?
-            logger.error "POST /images/:fromversion/:username/:toversion, error: #{err}"
+            logger.error "fileupload, mimeType: #{mimeType} error: #{err}"
             sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
             return next err #delete filenames[part.filename]
 
@@ -1440,14 +1444,14 @@ else
 #          cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
             #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
             if err?
-              logger.error "POST /images/:fromversion/:username/:toversion, error: #{err}"
+              logger.error "fileupload, mimeType: #{mimeType} error: #{err}"
               sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
               return next err #delete filenames[part.filename]
 
             logger.debug "upload completed #{path}"
             uri = rackspaceCdnBaseUrl + "/#{path}"
             #uris.push uri
-            createAndSendMessage(req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, "image/", id, (err) ->
+            createAndSendMessage(req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, mimeType, id, (err) ->
               logger.error "error sending message on socket: #{err}" if err?)
 
     form.on 'error', (err) ->
@@ -1541,7 +1545,7 @@ else
 
   app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, getPublicKeys
   app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setCache(oneYear), getPublicKeys
-  app.get "/keyversion/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted,(req, res, next) ->
+  app.get "/keyversion/:username",(req, res, next) ->
     rc.get "kv:#{req.params.username}", (err, version) ->
       return callback err if err?
       res.send version
