@@ -1160,7 +1160,7 @@ else
             multi.zrem "m:#{username}", "m:#{room}:#{oMessage.id}"
 
             #delete image from rackspace
-            if oMessage.mimeType is 'image/'
+            if oMessage.mimeType is 'image/' or oMessage.mimeType is 'audio/mp4'
               deleteImage oMessage.data
 
             callback true
@@ -1210,7 +1210,7 @@ else
             return callback err if err?
 
             #delete the file if it's a file
-            if dMessage.mimeType is "image/"
+            if dMessage.mimeType is "image/" or dMessage.mimeType is 'audio/mp4'
               deleteImage dMessage.data
 
             callback()
