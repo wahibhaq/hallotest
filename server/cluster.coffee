@@ -35,8 +35,9 @@ formidable = require 'formidable'
 pkgcloud = require 'pkgcloud'
 utils = require('connect/lib/utils')
 pause = require 'pause'
-stream = require 'readable-stream'
+rstream = require 'readable-stream'
 redback = require('redback').createClient()
+sbuff = require 'simple-bufferstream'
 
 
 #constants
@@ -725,7 +726,7 @@ else
     return friend
 
 
-  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, callback) ->
+  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, inlineData, callback) ->
     logger.debug "new message"
     time = Date.now()
 
@@ -746,7 +747,7 @@ else
       return callback new MessageError(iv, 500) unless id?
       message.id = id
 
-      logger.info "#{from}->#{to}, image: #{mimeType is "image/"}"
+      logger.info "#{from}->#{to}, mimeType: #{mimeType}"
       newMessage = JSON.stringify(message)
 
       #store messages in sorted sets
@@ -764,15 +765,22 @@ else
 
       #marketing wanted some stats
       #increment total user message / image counter
-      if mimeType is "image/"
-        multi.hincrby "u:#{from}", "ic", 1
-      else
-        multi.hincrby "u:#{from}", "mc", 1
+      switch mimeType
+        when "text/plain"
+          multi.hincrby "u:#{from}", "mc", 1
+          multi.incr "tmc"
 
-      if mimeType is "image/"
-        multi.incr "tic"
-      else
-        multi.incr "tmc"
+        when "image/"
+          multi.hincrby "u:#{from}", "ic", 1
+          multi.incr "tic"
+
+        when "audio/m4a"
+          multi.hincrby "u:#{from}", "vc", 1
+          multi.incr "tvc"
+
+
+
+
 
       deleteEarliestMessage = (callback) ->
         #check how many messages the user has total
@@ -823,8 +831,11 @@ else
             logger.error ("ERROR: Socket.io onmessage, " + err)
             return callback new MessageError(iv, 500)
 
+
           myMessage = null
           theirMessage = null
+
+
 
           #if we deleted messages, add the delete control message(s) to this message to save sending the delete control message separately
           if myDeleteControlMessages?.length > 0
@@ -837,7 +848,15 @@ else
             message.deleteControlMessages = theirDeleteControlMessages
             theirMessage = JSON.stringify message
           else
-            theirMessage = newMessage
+
+            #send inline data to them if we have it
+            #if we sent the message we already have it
+            if inlineData?
+              message.inlineData = inlineData
+              theirMessage = JSON.stringify message
+            else
+              theirMessage = newMessage
+
 
           sendGcm = (gcmCallback) ->
             #send gcm message
@@ -1045,7 +1064,7 @@ else
     logger.debug "received message from user #{user}"
 
     iv = message.iv
-    return callback new MessageError(data, 400) unless iv?
+    return callback new MessageError(user, 400) unless iv?
     to = message.to
     return callback new MessageError(iv, 400) unless to?
     from = message.from
@@ -1075,8 +1094,11 @@ else
 
             cipherdata = message.data
             resendId = message.resendId
-            mimeType = message.mimeType
             room = getRoomName(from, to)
+
+            mimeType = message.mimeType
+            #todo validate mimetype
+
 
             #check for dupes if message has been resent
             checkForDuplicateMessage resendId, user, room, message, (err, found) ->
@@ -1087,7 +1109,32 @@ else
                 sio.sockets.to(from).emit "message", found
                 callback()
               else
-                createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, callback
+                #if it's  a voice message send the data on the socket but store on rackspace and save url in db
+                if mimeType is "audio/mp4"
+
+                  #no need for secure randoms for image paths
+                  generateRandomBytes 'hex', (err, bytes) ->
+                    return next err if err?
+
+                    path = bytes
+                    logger.debug "received voice message, uploading to rackspace at: #{path}"
+
+                    uri = rackspaceCdnBaseUrl + "/#{path}"
+                    createAndSendMessage from, fromVersion, to, toVersion, iv, uri, mimeType, null, cipherdata, (err) ->
+                      logger.error "error sending message on socket: #{err}" if err?
+
+                      #stream the base64 decoded encrypted voice buffer to rackspace
+
+
+
+                      sbuff(new Buffer(cipherdata, 'base64')).pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
+                        if err?
+                          logger.error "fileupload, mimeType: #{mimeType} error: #{err}"
+                          return callback new MessageError(iv, 500)
+
+                        logger.debug "upload completed #{path}"
+                else
+                  createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, null, callback
 
 
   sio.on "connection", (socket) ->
@@ -1340,10 +1387,9 @@ else
     form = new formidable.IncomingForm()
     form.onPart = (part) ->
       return form.handlePart part unless part.filename?
-      #  filenames[part.filename] = "uploading"
       iv = part.filename
 
-      outStream = new stream.PassThrough()
+      outStream = new rstream.PassThrough()
 
       part.on 'data', (buffer) ->
         form.pause()
@@ -1365,8 +1411,6 @@ else
         logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
         outStream.pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
-        #cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
-          #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
           if err?
             logger.error "POST /images/:username/:version, error: #{err}"
             return next err #delete filenames[part.filename]
@@ -1404,7 +1448,7 @@ else
       #todo check valid mimetypes
       #todo validate versions
 
-      outStream = new stream.PassThrough()
+      outStream = new rstream.PassThrough()
 
 
       part.on 'data', (buffer) ->
@@ -1440,9 +1484,6 @@ else
           logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
           outStream.pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
-
-#          cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
-            #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
             if err?
               logger.error "fileupload, mimeType: #{mimeType} error: #{err}"
               sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
@@ -1451,7 +1492,7 @@ else
             logger.debug "upload completed #{path}"
             uri = rackspaceCdnBaseUrl + "/#{path}"
             #uris.push uri
-            createAndSendMessage(req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, mimeType, id, (err) ->
+            createAndSendMessage(req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, mimeType, id, null, (err) ->
               logger.error "error sending message on socket: #{err}" if err?)
 
     form.on 'error', (err) ->
