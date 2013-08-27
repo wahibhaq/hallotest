@@ -774,7 +774,7 @@ else
           multi.hincrby "u:#{from}", "ic", 1
           multi.incr "tic"
 
-        when "audio/m4a"
+        when "audio/mp4"
           multi.hincrby "u:#{from}", "vc", 1
           multi.incr "tvc"
 
