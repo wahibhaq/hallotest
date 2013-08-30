@@ -1024,7 +1024,7 @@ else
     try
       message = JSON.parse(data)
     catch error
-      return callback new MessageError(data, 500)
+      return socket.emit new MessageError(data, 500)
 
     if typeIsArray message
       async.each(
