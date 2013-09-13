@@ -726,7 +726,7 @@ else
     return friend
 
 
-  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, inlineData, callback) ->
+  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, callback) ->
     logger.debug "new message"
     time = Date.now()
 
@@ -848,14 +848,7 @@ else
             message.deleteControlMessages = theirDeleteControlMessages
             theirMessage = JSON.stringify message
           else
-
-            #send inline data to them if we have it
-            #if we sent the message we already have it
-            if inlineData?
-              message.inlineData = inlineData
-              theirMessage = JSON.stringify message
-            else
-              theirMessage = newMessage
+            theirMessage = newMessage
 
 
           sendGcm = (gcmCallback) ->
@@ -1109,32 +1102,7 @@ else
                 sio.sockets.to(from).emit "message", found
                 callback()
               else
-#                #if it's  a voice message send the data on the socket but store on rackspace and save url in db
-#                if mimeType is "audio/mp4"
-#
-#                  #no need for secure randoms for image paths
-#                  generateRandomBytes 'hex', (err, bytes) ->
-#                    return next err if err?
-#
-#                    path = bytes
-#                    logger.debug "received voice message, uploading to rackspace at: #{path}"
-#
-#                    uri = rackspaceCdnBaseUrl + "/#{path}"
-#                    createAndSendMessage from, fromVersion, to, toVersion, iv, uri, mimeType, null, cipherdata, (err) ->
-#                      logger.error "error sending message on socket: #{err}" if err?
-#
-#                      #stream the base64 decoded encrypted voice buffer to rackspace
-#
-#
-#
-#                      sbuff(new Buffer(cipherdata, 'base64')).pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
-#                        if err?
-#                          logger.error "fileupload, mimeType: #{mimeType} error: #{err}"
-#                          return callback new MessageError(iv, 500)
-#
-#                        logger.debug "upload completed #{path}"
-#                else
-                createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, null, callback
+                createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, callback
 
 
   sio.on "connection", (socket) ->
@@ -1492,7 +1460,7 @@ else
             logger.debug "upload completed #{path}"
             uri = rackspaceCdnBaseUrl + "/#{path}"
             #uris.push uri
-            createAndSendMessage(req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, mimeType, id, null, (err) ->
+            createAndSendMessage(req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, mimeType, id, (err) ->
               logger.error "error sending message on socket: #{err}" if err?)
 
     form.on 'error', (err) ->
