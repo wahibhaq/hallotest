@@ -1109,31 +1109,31 @@ else
                 sio.sockets.to(from).emit "message", found
                 callback()
               else
-                  #                #if it's  a voice message send the data on the socket but store on rackspace and save url in db
-                  #                if mimeType is "audio/mp4"
-                  #
-                  #                  #no need for secure randoms for image paths
-                  #                  generateRandomBytes 'hex', (err, bytes) ->
-                  #                    return next err if err?
-                  #
-                  #                    path = bytes
-                  #                    logger.debug "received voice message, uploading to rackspace at: #{path}"
-                  #
-                  #                    uri = rackspaceCdnBaseUrl + "/#{path}"
-                  #                    createAndSendMessage from, fromVersion, to, toVersion, iv, uri, mimeType, null, cipherdata, (err) ->
-                  #                      logger.error "error sending message on socket: #{err}" if err?
-                  #
-                  #                      #stream the base64 decoded encrypted voice buffer to rackspace
-                  #
-                  #
-                  #
-                  #                      sbuff(new Buffer(cipherdata, 'base64')).pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
-                  #                        if err?
-                  #                          logger.error "fileupload, mimeType: #{mimeType} error: #{err}"
-                  #                          return callback new MessageError(iv, 500)
-                  #
-                  #                        logger.debug "upload completed #{path}"
-                  #                else
+#                #if it's  a voice message send the data on the socket but store on rackspace and save url in db
+#                if mimeType is "audio/mp4"
+#
+#                  #no need for secure randoms for image paths
+#                  generateRandomBytes 'hex', (err, bytes) ->
+#                    return next err if err?
+#
+#                    path = bytes
+#                    logger.debug "received voice message, uploading to rackspace at: #{path}"
+#
+#                    uri = rackspaceCdnBaseUrl + "/#{path}"
+#                    createAndSendMessage from, fromVersion, to, toVersion, iv, uri, mimeType, null, cipherdata, (err) ->
+#                      logger.error "error sending message on socket: #{err}" if err?
+#
+#                      #stream the base64 decoded encrypted voice buffer to rackspace
+#
+#
+#
+#                      sbuff(new Buffer(cipherdata, 'base64')).pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
+#                        if err?
+#                          logger.error "fileupload, mimeType: #{mimeType} error: #{err}"
+#                          return callback new MessageError(iv, 500)
+#
+#                        logger.debug "upload completed #{path}"
+#                else
                 createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, null, callback
 
 
