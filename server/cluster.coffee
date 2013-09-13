@@ -45,7 +45,7 @@ USERNAME_LENGTH = 20
 CONTROL_MESSAGE_HISTORY = 100
 MAX_MESSAGE_LENGTH = 500000
 MAX_HTTP_REQUEST_LENGTH = 500000
-NUM_CORES = process.env.SURESPOT_CORES ? 4
+NUM_CORES =  parseInt(process.env.SURESPOT_CORES) ? 4
 GCM_TTL = 604800
 
 oneYear = 31536000000
@@ -726,7 +726,7 @@ else
     return friend
 
 
-  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, callback) ->
+  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, dataSize, callback) ->
     logger.debug "new message"
     time = Date.now()
 
@@ -739,6 +739,7 @@ else
     message.iv = iv
     message.data = data
     message.mimeType = mimeType
+    message.dataSize = dataSize if dataSize
     room = getRoomName(from,to)
 
 
@@ -1102,7 +1103,7 @@ else
                 sio.sockets.to(from).emit "message", found
                 callback()
               else
-                createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, callback
+                createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, null, callback
 
 
   sio.on "connection", (socket) ->
@@ -1405,6 +1406,7 @@ else
     #upload image to rackspace then create a message with the image url and send it to chat recipients
     username = req.user.username
     path = null
+    size = null
 
     form = new formidable.IncomingForm()
     form.onPart = (part) ->
@@ -1421,6 +1423,9 @@ else
 
       part.on 'data', (buffer) ->
         form.pause()
+
+        size += buffer.length
+        #logger.debug "received file data, length: #{buffer.length}, size: #{size}"
         #logger.debug 'received part data'
         outStream.write buffer, ->
           form.resume()
@@ -1457,10 +1462,10 @@ else
               sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
               return next err #delete filenames[part.filename]
 
-            logger.debug "upload completed #{path}"
+            logger.debug "upload completed #{path}, size: #{size}"
             uri = rackspaceCdnBaseUrl + "/#{path}"
             #uris.push uri
-            createAndSendMessage(req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, mimeType, id, (err) ->
+            createAndSendMessage(req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, mimeType, id, size, (err) ->
               logger.error "error sending message on socket: #{err}" if err?)
 
     form.on 'error', (err) ->
