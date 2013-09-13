@@ -160,7 +160,7 @@ if (cluster.isMaster and NUM_CORES > 1)
 
 else
 
-  if env is 'Local'
+  if NUM_CORES is 1
     logger.info "env: #{env}"
     logger.info "database: #{database}"
     logger.info "socket: #{socketPort}"
