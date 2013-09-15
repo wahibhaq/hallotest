@@ -92,9 +92,9 @@ rackspaceImageContainer = process.env.SURESPOT_RACKSPACE_IMAGE_CONTAINER
 rackspaceUsername = process.env.SURESPOT_RACKSPACE_USERNAME
 sessionSecret = process.env.SURESPOT_SESSION_SECRET
 logConsole = process.env.SURESPOT_LOG_CONSOLE is "true"
-gmailUser = process.env.SURESPOT_GMAIL_USER
-gmailPassword = process.env.SURESPOT_GMAIL_PASSWORD
-gmailTo = process.env.SURESPOT_GMAIL_TO
+redisPort = process.env.REDIS_PORT
+redisHostname = process.env.REDIS_HOSTNAME
+redisPassword = process.env.REDIS_PASSWORD ? null
 
 
 
@@ -150,10 +150,10 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "session secret: #{sessionSecret}"
   logger.info "cores: #{NUM_CORES}"
   logger.info "console logging: #{logConsole}"
-  logger.info "gmail user: #{gmailUser}"
-  logger.info "gmail password: #{gmailPassword}"
-  logger.info "gmail to: #{gmailTo}"
   logger.info "nodetime api key: #{NODETIME_API_KEY}"
+  logger.info "redis hostname: #{redisHostname}"
+  logger.info "redis port: #{redisPort}"
+  logger.info "redis password: #{redisPassword}"
 
 
 
@@ -178,10 +178,11 @@ else
     logger.info "session secret: #{sessionSecret}"
     logger.info "cores: #{NUM_CORES}"
     logger.info "console logging: #{logConsole}"
-    logger.info "gmail user: #{gmailUser}"
-    logger.info "gmail password: #{gmailPassword}"
-    logger.info "gmail to: #{gmailTo}"
     logger.info "nodetime api key: #{NODETIME_API_KEY}"
+    logger.info "redis hostname: #{redisHostname}"
+    logger.info "redis port: #{redisPort}"
+    logger.info "redis password: #{redisPassword}"
+
 
 
   sio = undefined
@@ -196,9 +197,10 @@ else
 
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
   createRedisClient = (callback, database, port, hostname, password) ->
-    if port? and hostname? and password?
+    if port? and hostname?
       client = require("redis").createClient(port, hostname)
-      client.auth password
+      if password?
+        client.auth password
       if database?
         client.select database, (err, res) ->
           return callback err if err?
@@ -249,11 +251,11 @@ else
   app = express()
   app.configure ->
     sessionStore = new RedisStore({db: database})
-    createRedisClient ((err, c) -> rc = c), database
-    createRedisClient ((err, c) -> rcs = c), database
-    createRedisClient ((err, c) -> pub = c), database
-    createRedisClient ((err, c) -> sub = c), database
-    createRedisClient ((err, c) -> client = c), database
+    createRedisClient ((err, c) -> rc = c), database, redisPort, redisHostname, redisPassword
+    createRedisClient ((err, c) -> rcs = c), database, redisPort, redisHostname, redisPassword
+    createRedisClient ((err, c) -> pub = c), database, redisPort, redisHostname, redisPassword
+    createRedisClient ((err, c) -> sub = c), database, redisPort, redisHostname, redisPassword
+    createRedisClient ((err, c) -> client = c), database, redisPort, redisHostname, redisPassword
 
 
     app.use express.limit(MAX_HTTP_REQUEST_LENGTH)
