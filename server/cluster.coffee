@@ -36,7 +36,7 @@ pkgcloud = require 'pkgcloud'
 utils = require('connect/lib/utils')
 pause = require 'pause'
 rstream = require 'readable-stream'
-redback = require('redback').createClient()
+redbacklib = require 'redback'
 
 #constants
 USERNAME_LENGTH = 20
@@ -72,12 +72,6 @@ RATE_LIMIT_RATE_EXISTS = process.env.SURESPOT_RATE_LIMIT_RATE_EXISTS ? 100
 RATE_LIMIT_BUCKET_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_BUCKET_CREATE_USER ? 600
 RATE_LIMIT_SECS_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_SECS_CREATE_USER ? 86400
 RATE_LIMIT_RATE_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_RATE_CREATE_USER ? 1000
-
-ratelimiterexists = redback.createRateLimit('rle', { bucket_interval: RATE_LIMIT_BUCKET_EXISTS } )
-ratelimiterping = redback.createRateLimit('rlp', { bucket_interval: RATE_LIMIT_BUCKET_PING })
-ratelimitercreateuser = redback.createRateLimit('rlu', { bucket_interval: RATE_LIMIT_BUCKET_CREATE_USER })
-ratelimitermessages = redback.createRateLimit('rlm', { bucket_interval: RATE_LIMIT_BUCKET_MESSAGE })
-
 
 MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 20
 debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'info'
@@ -189,32 +183,33 @@ else
   rcs = undefined
   pub = undefined
   sub = undefined
+  redback = undefined
   client = undefined
   app = undefined
   ssloptions = undefined
 
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
-  createRedisClient = (callback, database, port, hostname, password) ->
+
+
+  createRedisClient = (database, port, hostname, password) ->
     if port? and hostname?
-      client = require("redis").createClient(port, hostname)
+      tempclient = require("redis").createClient(port, hostname)
       if password?
-        client.auth password
+        tempclient.auth password
       if database?
-        client.select database, (err, res) ->
-          return callback err if err?
-
-          callback null, client
+        tempclient.select database
+        return tempclient
 
       else
-        callback null, client
+        return tempclient
     else
-      client = require("redis").createClient()
+      logger.debug "creating local redis client"
+      tempclient = require("redis").createClient()
       if database?
-        client.select database, (err, res) ->
-          return callback err if err?
-          callback null, client
+        tempclient.select database
+        return tempclient
       else
-        callback null, client
+        return tempclient
 
 
 
@@ -253,12 +248,6 @@ else
       host: redisHostname
       port: redisPort
     })
-    createRedisClient ((err, c) -> rc = c), database, redisPort, redisHostname, redisPassword
-    createRedisClient ((err, c) -> rcs = c), database, redisPort, redisHostname, redisPassword
-    createRedisClient ((err, c) -> pub = c), database, redisPort, redisHostname, redisPassword
-    createRedisClient ((err, c) -> sub = c), database, redisPort, redisHostname, redisPassword
-    createRedisClient ((err, c) -> client = c), database, redisPort, redisHostname, redisPassword
-
 
     app.use express.limit(MAX_HTTP_REQUEST_LENGTH)
     app.use express.compress()
@@ -287,7 +276,22 @@ else
       res.send err.status or 500
 
 
-  https.globalAgent.maxSockets = Infinity;
+  rc = createRedisClient database, redisPort, redisHostname, redisPassword
+  rcs = createRedisClient database, redisPort, redisHostname, redisPassword
+  pub = createRedisClient database, redisPort, redisHostname, redisPassword
+  sub = createRedisClient database, redisPort, redisHostname, redisPassword
+  client = createRedisClient database, redisPort, redisHostname, redisPassword
+
+
+  redback = redbacklib.use rc
+  ratelimiterexists = redback.createRateLimit('rle', { bucket_interval: RATE_LIMIT_BUCKET_EXISTS } )
+  ratelimiterping = redback.createRateLimit('rlp', { bucket_interval: RATE_LIMIT_BUCKET_PING })
+  ratelimitercreateuser = redback.createRateLimit('rlu', { bucket_interval: RATE_LIMIT_BUCKET_CREATE_USER })
+  ratelimitermessages = redback.createRateLimit('rlm', { bucket_interval: RATE_LIMIT_BUCKET_MESSAGE })
+
+
+
+  https.globalAgent.maxSockets = Infinity
 
   server = https.createServer ssloptions, app
   server.listen socketPort
