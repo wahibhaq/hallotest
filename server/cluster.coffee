@@ -250,7 +250,7 @@ else
 
   app = express()
   app.configure ->
-    sessionStore = new RedisStore({db: database})
+    sessionStore = new RedisStore({db: database, host: redisHostname, port: redisPort })
     createRedisClient ((err, c) -> rc = c), database, redisPort, redisHostname, redisPassword
     createRedisClient ((err, c) -> rcs = c), database, redisPort, redisHostname, redisPassword
     createRedisClient ((err, c) -> pub = c), database, redisPort, redisHostname, redisPassword
