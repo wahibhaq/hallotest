@@ -37,8 +37,6 @@ utils = require('connect/lib/utils')
 pause = require 'pause'
 rstream = require 'readable-stream'
 redback = require('redback').createClient()
-sbuff = require 'simple-bufferstream'
-
 
 #constants
 USERNAME_LENGTH = 20
@@ -250,7 +248,11 @@ else
 
   app = express()
   app.configure ->
-    sessionStore = new RedisStore({db: database, host: redisHostname, port: redisPort })
+    sessionStore = new RedisStore({
+      db: database
+      host: redisHostname
+      port: redisPort
+    })
     createRedisClient ((err, c) -> rc = c), database, redisPort, redisHostname, redisPassword
     createRedisClient ((err, c) -> rcs = c), database, redisPort, redisHostname, redisPassword
     createRedisClient ((err, c) -> pub = c), database, redisPort, redisHostname, redisPassword
