@@ -7,7 +7,8 @@ crypto = require 'crypto'
 dcrypt = require 'dcrypt'
 async = require 'async'
 fs = require("fs")
-rc = redis.createClient()
+redisSentinel = require 'redis-sentinel-client'
+rc = redisSentinel.createClient(26380,"127.0.0.1")
 port = 443
 baseUri = "https://localhost:" + port
 

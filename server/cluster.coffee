@@ -87,8 +87,8 @@ rackspaceUsername = process.env.SURESPOT_RACKSPACE_USERNAME
 sessionSecret = process.env.SURESPOT_SESSION_SECRET
 logConsole = process.env.SURESPOT_LOG_CONSOLE is "true"
 redisPort = process.env.REDIS_PORT
-redisHostname = process.env.REDIS_HOSTNAME
-redisHosts = process.env.REDIS_HOSTS ? "127.0.0.1:6379"
+redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 26379
+redisSentinelHostname = process.env.SURESPOT_REDIS_SENTINEL_HOSTNAME ? "127.0.0.1"
 redisPassword = process.env.REDIS_PASSWORD ? null
 
 
@@ -146,13 +146,9 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "cores: #{NUM_CORES}"
   logger.info "console logging: #{logConsole}"
   logger.info "nodetime api key: #{NODETIME_API_KEY}"
-  logger.info "redis hostname: #{redisHostname}"
-  logger.info "redis hosts: #{redisHosts}"
-  logger.info "redis port: #{redisPort}"
+  logger.info "redis sentinel hostname: #{redisSentinelHostname}"
+  logger.info "redis sentinel port: #{redisSentinelPort}"
   logger.info "redis password: #{redisPassword}"
-
-
-
 
 else
 
@@ -175,8 +171,10 @@ else
     logger.info "cores: #{NUM_CORES}"
     logger.info "console logging: #{logConsole}"
     logger.info "nodetime api key: #{NODETIME_API_KEY}"
-    logger.info "redis hosts: #{redisHosts}"
+    logger.info "redis sentinel hostname: #{redisSentinelHostname}"
+    logger.info "redis sentinel port: #{redisSentinelPort}"
     logger.info "redis password: #{redisPassword}"
+
 
 
 
@@ -194,20 +192,20 @@ else
 
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
 
-  createRedisClient = (database, hosts, password) ->
-    if hosts?
-      tempclient = require("haredis").createClient(hosts)
+  createRedisClient = (database, port, host, password) ->
+    if port? and host?
+      tempclient = redisSentinel.createClient(port, host)
       if password?
         tempclient.auth password
-      if database?
-        tempclient.select database
-        return tempclient
+      #if database?
+       # tempclient.select database
+        #return tempclient
 
       else
         return tempclient
     else
       logger.debug "creating local redis client"
-      tempclient = require("haredis").createClient()
+      tempclient = redisSentinel.createClient()
       if database?
         tempclient.select database
         return tempclient
@@ -243,15 +241,12 @@ else
   # verify signature like so
   # openssl dgst -sha256 -verify key -signature sig.bin data
 
-
-  rHosts = redisHosts.split ','
-
-  rc = createRedisClient database, rHosts, redisPassword
-  rcs = createRedisClient database, rHosts, redisPassword
-  pub = createRedisClient database, rHosts, redisPassword
-  sub = createRedisClient database, rHosts, redisPassword
-  client = createRedisClient database, rHosts, redisPassword
-  client2 = createRedisClient database, rHosts, redisPassword
+  rc = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
+  rcs = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
+  pub = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
+  sub = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
+  client = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
+  client2 = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
 
   redback = redbacklib.use rc
   ratelimiterexists = redback.createRateLimit('rle', { bucket_interval: RATE_LIMIT_BUCKET_EXISTS } )
