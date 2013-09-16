@@ -86,6 +86,7 @@ sessionSecret = process.env.SURESPOT_SESSION_SECRET
 logConsole = process.env.SURESPOT_LOG_CONSOLE is "true"
 redisPort = process.env.REDIS_PORT
 redisHostname = process.env.REDIS_HOSTNAME
+redisHosts = process.env.REDIS_HOSTS ? "127.0.0.1:6379"
 redisPassword = process.env.REDIS_PASSWORD ? null
 
 
@@ -144,6 +145,7 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "console logging: #{logConsole}"
   logger.info "nodetime api key: #{NODETIME_API_KEY}"
   logger.info "redis hostname: #{redisHostname}"
+  logger.info "redis hosts: #{redisHosts}"
   logger.info "redis port: #{redisPort}"
   logger.info "redis password: #{redisPassword}"
 
@@ -171,8 +173,7 @@ else
     logger.info "cores: #{NUM_CORES}"
     logger.info "console logging: #{logConsole}"
     logger.info "nodetime api key: #{NODETIME_API_KEY}"
-    logger.info "redis hostname: #{redisHostname}"
-    logger.info "redis port: #{redisPort}"
+    logger.info "redis hosts: #{redisHosts}"
     logger.info "redis password: #{redisPassword}"
 
 
@@ -185,15 +186,16 @@ else
   sub = undefined
   redback = undefined
   client = undefined
+  client2 = undefined
   app = undefined
   ssloptions = undefined
 
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
 
 
-  createRedisClient = (database, port, hostname, password) ->
-    if port? and hostname?
-      tempclient = require("redis").createClient(port, hostname)
+  createRedisClient = (database, hosts, password) ->
+    if hosts?
+      tempclient = require("haredis").createClient(hosts)
       if password?
         tempclient.auth password
       if database?
@@ -204,7 +206,7 @@ else
         return tempclient
     else
       logger.debug "creating local redis client"
-      tempclient = require("redis").createClient()
+      tempclient = require("haredis").createClient()
       if database?
         tempclient.select database
         return tempclient
@@ -241,12 +243,26 @@ else
   # openssl dgst -sha256 -verify key -signature sig.bin data
 
 
+  rHosts = redisHosts.split ','
+
+  rc = createRedisClient database, rHosts, redisPassword
+  rcs = createRedisClient database, rHosts, redisPassword
+  pub = createRedisClient database, rHosts, redisPassword
+  sub = createRedisClient database, rHosts, redisPassword
+  client = createRedisClient database, rHosts, redisPassword
+  client2 = createRedisClient database, rHosts, redisPassword
+
+  redback = redbacklib.use rc
+  ratelimiterexists = redback.createRateLimit('rle', { bucket_interval: RATE_LIMIT_BUCKET_EXISTS } )
+  ratelimiterping = redback.createRateLimit('rlp', { bucket_interval: RATE_LIMIT_BUCKET_PING })
+  ratelimitercreateuser = redback.createRateLimit('rlu', { bucket_interval: RATE_LIMIT_BUCKET_CREATE_USER })
+  ratelimitermessages = redback.createRateLimit('rlm', { bucket_interval: RATE_LIMIT_BUCKET_MESSAGE })
+
+
   app = express()
   app.configure ->
     sessionStore = new RedisStore({
-      db: database
-      host: redisHostname
-      port: redisPort
+      client: client
     })
 
     app.use express.limit(MAX_HTTP_REQUEST_LENGTH)
@@ -276,18 +292,7 @@ else
       res.send err.status or 500
 
 
-  rc = createRedisClient database, redisPort, redisHostname, redisPassword
-  rcs = createRedisClient database, redisPort, redisHostname, redisPassword
-  pub = createRedisClient database, redisPort, redisHostname, redisPassword
-  sub = createRedisClient database, redisPort, redisHostname, redisPassword
-  client = createRedisClient database, redisPort, redisHostname, redisPassword
 
-
-  redback = redbacklib.use rc
-  ratelimiterexists = redback.createRateLimit('rle', { bucket_interval: RATE_LIMIT_BUCKET_EXISTS } )
-  ratelimiterping = redback.createRateLimit('rlp', { bucket_interval: RATE_LIMIT_BUCKET_PING })
-  ratelimitercreateuser = redback.createRateLimit('rlu', { bucket_interval: RATE_LIMIT_BUCKET_CREATE_USER })
-  ratelimitermessages = redback.createRateLimit('rlm', { bucket_interval: RATE_LIMIT_BUCKET_MESSAGE })
 
 
 
@@ -306,7 +311,7 @@ else
   sio.set "store", new sioRedisStore(
     redisPub: pub
     redisSub: sub
-    redisClient: client
+    redisClient: client2
   )
 
   sio.set 'transports', ['websocket']

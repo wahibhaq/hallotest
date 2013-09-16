@@ -35,7 +35,8 @@
     "pkgcloud": "~0.8.1",
     "nodemailer": "~0.4.4",
     "request": "~2.21.0",
-    "nodetime": "~0.8.13"
+    "nodetime": "~0.8.13",
+    "haredis": "~0.2.14"
   },
   "subdomain": "2fours.com",
   "scripts": {
