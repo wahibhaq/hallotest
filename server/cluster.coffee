@@ -37,6 +37,8 @@ utils = require('connect/lib/utils')
 pause = require 'pause'
 rstream = require 'readable-stream'
 redbacklib = require 'redback'
+sbuff = require 'simple-bufferstream'
+redisSentinel = require 'redis-sentinel-client'
 
 #constants
 USERNAME_LENGTH = 20
@@ -191,7 +193,6 @@ else
   ssloptions = undefined
 
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
-
 
   createRedisClient = (database, hosts, password) ->
     if hosts?
