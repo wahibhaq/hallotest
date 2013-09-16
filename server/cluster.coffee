@@ -37,7 +37,6 @@ utils = require('connect/lib/utils')
 pause = require 'pause'
 rstream = require 'readable-stream'
 redbacklib = require 'redback'
-sbuff = require 'simple-bufferstream'
 redisSentinel = require 'redis-sentinel-client'
 
 #constants
