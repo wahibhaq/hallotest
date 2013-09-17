@@ -37,7 +37,6 @@ utils = require('connect/lib/utils')
 pause = require 'pause'
 rstream = require 'readable-stream'
 redbacklib = require 'redback'
-redisSentinel = require 'redis-sentinel-client'
 
 #constants
 USERNAME_LENGTH = 20
@@ -75,7 +74,7 @@ RATE_LIMIT_SECS_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_SECS_CREATE_USER ?
 RATE_LIMIT_RATE_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_RATE_CREATE_USER ? 1000
 
 MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 20
-debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'info'
+debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'debug'
 database = process.env.SURESPOT_DB ? 0
 socketPort = process.env.SURESPOT_SOCKET ? 443
 googleApiKey = process.env.SURESPOT_GOOGLE_API_KEY
@@ -88,9 +87,14 @@ logConsole = process.env.SURESPOT_LOG_CONSOLE is "true"
 redisPort = process.env.REDIS_PORT
 redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 26379
 redisSentinelHostname = process.env.SURESPOT_REDIS_SENTINEL_HOSTNAME ? "127.0.0.1"
-redisPassword = process.env.REDIS_PASSWORD ? null
+redisPassword = process.env.SURESPOT_REDIS_PASSWORD ? null
+useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
 
-
+redis = undefined
+if useRedisSentinel
+  redis = require 'redis-sentinel-client'
+else
+  redis = require 'redis'
 
 logger.remove logger.transports.Console
 #logger.setLevels logger.config.syslog.levels
@@ -145,6 +149,7 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "cores: #{NUM_CORES}"
   logger.info "console logging: #{logConsole}"
   logger.info "nodetime api key: #{NODETIME_API_KEY}"
+  logger.info "use redis sentinel: #{useRedisSentinel}"
   logger.info "redis sentinel hostname: #{redisSentinelHostname}"
   logger.info "redis sentinel port: #{redisSentinelPort}"
   logger.info "redis password: #{redisPassword}"
@@ -173,6 +178,7 @@ else
     logger.info "redis sentinel hostname: #{redisSentinelHostname}"
     logger.info "redis sentinel port: #{redisSentinelPort}"
     logger.info "redis password: #{redisPassword}"
+    logger.info "use redis sentinel: #{useRedisSentinel}"
 
 
 
@@ -193,7 +199,9 @@ else
 
   createRedisClient = (database, port, host, password) ->
     if port? and host?
-      tempclient = redisSentinel.createClient(port, host)
+      tempclient = null
+      tempclient = redis.createClient(port,host)
+
       if password?
         tempclient.auth password
       #if database?
@@ -204,7 +212,13 @@ else
         return tempclient
     else
       logger.debug "creating local redis client"
-      tempclient = redisSentinel.createClient()
+      tempclient = null
+
+      if useRedisSentinel
+        tempclient = redis.createClient(26379, "127.0.0.1")
+      else
+        tempclient = redis.createClient()
+
       if database?
         tempclient.select database
         return tempclient
