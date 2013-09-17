@@ -14,7 +14,7 @@ if env is 'Prod'
   })
 
 cluster = require('cluster')
-https = require('http')
+http = require('http')
 cookie = require("cookie")
 express = require("express")
 passport = require("passport")
@@ -239,23 +239,8 @@ else
       else
         return tempclient
 
-
-
-  #smtpTransport = nodemailer.createTransport("SMTP", { service: "Gmail", auth: { user: gmailUser, pass: gmailPassword}})
-  #mailOptions = { from: gmailUser, to: gmailTo, subject: "#{env}: new surespot user created" }
-
-
-  #ssl & ec
+  #ec
   serverPrivateKey = undefined
-  ssloptions = {
-  key: fs.readFileSync("ssl#{env}/surespot.key"),
-  cert: fs.readFileSync("ssl#{env}/surespot.crt")
-  }
-
-  peerCertPath = "ssl#{env}/PositiveSSLCA2.crt"
-  if fs.existsSync(peerCertPath)
-    ssloptions["ca"] = fs.readFileSync(peerCertPath)
-
   serverPrivateKey = fs.readFileSync("ec#{env}/priv.pem")
 
 
@@ -298,6 +283,7 @@ else
       secret: sessionSecret
       store: sessionStore
       cookie: { maxAge: (oneDay*3000) }
+      proxy: true
     )
     app.use passport.initialize()
     app.use passport.session({pauseStream: true})
@@ -319,9 +305,9 @@ else
 
 
 
-  https.globalAgent.maxSockets = Infinity
+  http.globalAgent.maxSockets = Infinity
 
-  server = https.createServer app
+  server = http.createServer app
   server.listen socketPort
   sio = require("socket.io").listen server
 
@@ -1055,7 +1041,8 @@ else
       ratelimitermessages.count user, RATE_LIMIT_SECS_MESSAGE, (err,requests) ->
 
         if requests > RATE_LIMIT_RATE_MESSAGE
-          logger.warn "rate limiting messages for user: #{user}, ip: #{socket.handshake.address.address}"
+          ip = client.handshake.headers['x-forwarded-for'] or client.handshake.address.address
+          logger.warn "rate limiting messages for user: #{user}, ip: #{ip}"
           try
             message = JSON.parse(data)
 
@@ -1737,8 +1724,7 @@ else
   rateLimitByIp = (limit, limiter, seconds, rate) -> (req, res, next) ->
     return next() unless limit
 
-
-    ip = req.header('x-forwarded-for') || req.connection.remoteAddress;
+    ip = req.header('x-forwarded-for') or req.connection.remoteAddress
     #port = req.connection.remotePort
 
     #if we use this before stream we need to pause req
@@ -2558,6 +2544,7 @@ else
 
 
   passport.use new LocalStrategy ({passReqToCallback: true}), (req, username, password, done) ->
+    logger.debug "client ip: #{req.connection.remoteAddress}"
     signature = req.body.authSig
     validateUser username, password, signature, req.body.gcmId, (err, status, user) ->
       return done(err) if err?
