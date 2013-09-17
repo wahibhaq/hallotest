@@ -1,12 +1,12 @@
 {
   "name": "surespot",
   "version": "0.0.1",
-  "node": "0.8.1",
+  "node": "0.8.25",
   "private": true,
   "dependencies": {
     "connect-redis": "~1.4.5",
     "bcrypt": "~0.7.3",
-    "socket.io": "https://github.com/surespot/socket.io/tarball/redis_improvements",
+    "socket.io": "https://github.com/surespot/socket.io/tarball/sentinel",
     "chai": "~1.1.1",
     "underscore": "~1.4.3",
     "coffee-script": "~1.4.0",
