@@ -14,7 +14,7 @@ if env is 'Prod'
   })
 
 cluster = require('cluster')
-https = require('https')
+https = require('http')
 cookie = require("cookie")
 express = require("express")
 passport = require("passport")
@@ -85,7 +85,7 @@ rackspaceUsername = process.env.SURESPOT_RACKSPACE_USERNAME
 sessionSecret = process.env.SURESPOT_SESSION_SECRET
 logConsole = process.env.SURESPOT_LOG_CONSOLE is "true"
 redisPort = process.env.REDIS_PORT
-redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 26379
+redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 6379
 redisSentinelHostname = process.env.SURESPOT_REDIS_SENTINEL_HOSTNAME ? "127.0.0.1"
 redisPassword = process.env.SURESPOT_REDIS_PASSWORD ? null
 useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
@@ -321,7 +321,7 @@ else
 
   https.globalAgent.maxSockets = Infinity
 
-  server = https.createServer ssloptions, app
+  server = https.createServer app
   server.listen socketPort
   sio = require("socket.io").listen server
 
