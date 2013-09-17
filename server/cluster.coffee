@@ -89,6 +89,7 @@ redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 6379
 redisSentinelHostname = process.env.SURESPOT_REDIS_SENTINEL_HOSTNAME ? "127.0.0.1"
 redisPassword = process.env.SURESPOT_REDIS_PASSWORD ? null
 useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
+bindAddress = process.env.SURESPOT_BIND_ADDRESS ? "127.0.0.1"
 
 logger.remove logger.transports.Console
 #logger.setLevels logger.config.syslog.levels
@@ -128,6 +129,7 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "env: #{env}"
   logger.info "database: #{database}"
   logger.info "socket: #{socketPort}"
+  logger.info "address: #{bindAddress}"
   logger.info "rate limiting messages: #{RATE_LIMITING_MESSAGE}, int: #{RATE_LIMIT_BUCKET_MESSAGE}, secs: #{RATE_LIMIT_SECS_MESSAGE}, rate: #{RATE_LIMIT_RATE_MESSAGE}"
   logger.info "rate limiting ping: #{RATE_LIMITING_PING}, int: #{RATE_LIMIT_BUCKET_PING}, secs: #{RATE_LIMIT_SECS_PING}, rate: #{RATE_LIMIT_RATE_PING}"
   logger.info "rate limiting exists: #{RATE_LIMITING_EXISTS}, int: #{RATE_LIMIT_BUCKET_EXISTS}, secs: #{RATE_LIMIT_SECS_EXISTS}, rate: #{RATE_LIMIT_RATE_EXISTS}"
@@ -154,6 +156,7 @@ else
     logger.info "env: #{env}"
     logger.info "database: #{database}"
     logger.info "socket: #{socketPort}"
+    logger.info "address: #{bindAddress}"
     logger.info "rate limiting messages: #{RATE_LIMITING_MESSAGE}, secs: #{RATE_LIMIT_SECS_MESSAGE}, rate: #{RATE_LIMIT_RATE_MESSAGE}"
     logger.info "rate limiting ping: #{RATE_LIMITING_PING}, secs: #{RATE_LIMIT_SECS_PING}, rate: #{RATE_LIMIT_SECS_MESSAGE}"
     logger.info "rate limiting exists: #{RATE_LIMITING_EXISTS}, secs: #{RATE_LIMIT_SECS_EXISTS}, rate: #{RATE_LIMIT_RATE_EXISTS}"
@@ -308,7 +311,7 @@ else
   http.globalAgent.maxSockets = Infinity
 
   server = http.createServer app
-  server.listen socketPort
+  server.listen socketPort, bindAddress
   sio = require("socket.io").listen server
 
 
