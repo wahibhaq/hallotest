@@ -204,7 +204,11 @@ else
     if port? and host?
       tempclient = null
       if useRedisSentinel
-        tempclient = redis.createClient(port,host).getMaster()
+        sentinel = redis.createClient(port,host)
+        tempclient = sentinel.getMaster()
+
+        sentinel.on 'error', (err) -> logger.error err
+        tempclient.on 'error', (err) -> logger.error err
       else
         tempclient = redis.createClient(port,host)
 
@@ -221,7 +225,11 @@ else
       tempclient = null
 
       if useRedisSentinel
-        tempclient = redis.createClient(26379, "127.0.0.1").getMaster()
+        sentinel = redis.createClient(26379, "127.0.0.1")
+        tempclient = sentinel.getMaster()
+
+        sentinel.on 'error', (err) -> logger.error err
+        tempclient.on 'error', (err) -> logger.error err
       else
         tempclient = redis.createClient()
 
