@@ -76,7 +76,7 @@ RATE_LIMIT_RATE_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_RATE_CREATE_USER ?
 MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 20
 debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'debug'
 database = process.env.SURESPOT_DB ? 0
-socketPort = process.env.SURESPOT_SOCKET ? 443
+socketPort = process.env.SURESPOT_SOCKET ? 8080
 googleApiKey = process.env.SURESPOT_GOOGLE_API_KEY
 rackspaceApiKey = process.env.SURESPOT_RACKSPACE_API_KEY
 rackspaceCdnBaseUrl = process.env.SURESPOT_RACKSPACE_CDN_URL
@@ -94,7 +94,8 @@ redis = undefined
 if useRedisSentinel
   redis = require 'redis-sentinel-client'
 else
-  redis = require 'redis'
+  #use forked redis
+  redis = require 'redis-sentinel-client/node_modules/redis'
 
 logger.remove logger.transports.Console
 #logger.setLevels logger.config.syslog.levels
@@ -318,6 +319,7 @@ else
 
   sioRedisStore = require("socket.io/lib/stores/redis")
   sio.set "store", new sioRedisStore(
+    redis: redis
     redisPub: pub
     redisSub: sub
     redisClient: client2
