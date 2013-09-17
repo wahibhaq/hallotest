@@ -90,12 +90,14 @@ redisSentinelHostname = process.env.SURESPOT_REDIS_SENTINEL_HOSTNAME ? "127.0.0.
 redisPassword = process.env.SURESPOT_REDIS_PASSWORD ? null
 useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
 
+
+
 redis = undefined
 if useRedisSentinel
   redis = require 'redis-sentinel-client'
 else
   #use forked redis
-  redis = require 'redis-sentinel-client/node_modules/redis'
+  redis = require 'redis'
 
 logger.remove logger.transports.Console
 #logger.setLevels logger.config.syslog.levels
@@ -319,7 +321,8 @@ else
 
   sioRedisStore = require("socket.io/lib/stores/redis")
   sio.set "store", new sioRedisStore(
-    redis: redis
+    #use forked redis 
+    redis: require 'redis-sentinel-client/node_modules/redis'
     redisPub: pub
     redisSub: sub
     redisClient: client2
