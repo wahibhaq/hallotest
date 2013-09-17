@@ -90,15 +90,6 @@ redisSentinelHostname = process.env.SURESPOT_REDIS_SENTINEL_HOSTNAME ? "127.0.0.
 redisPassword = process.env.SURESPOT_REDIS_PASSWORD ? null
 useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
 
-
-
-redis = undefined
-if useRedisSentinel
-  redis = require 'redis-sentinel-client'
-else
-  #use forked redis
-  redis = require 'redis'
-
 logger.remove logger.transports.Console
 #logger.setLevels logger.config.syslog.levels
 logger.exitOnError = true
@@ -200,10 +191,22 @@ else
 
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
 
+
+
+  redis = undefined
+  if useRedisSentinel
+    redis = require 'redis-sentinel-client'
+  else
+    #use forked redis
+    redis = require 'redis'
+
   createRedisClient = (database, port, host, password) ->
     if port? and host?
       tempclient = null
-      tempclient = redis.createClient(port,host)
+      if useRedisSentinel
+        tempclient = redis.createClient(port,host).getMaster()
+      else
+        tempclient = redis.createClient(port,host)
 
       if password?
         tempclient.auth password
@@ -218,7 +221,7 @@ else
       tempclient = null
 
       if useRedisSentinel
-        tempclient = redis.createClient(26379, "127.0.0.1")
+        tempclient = redis.createClient(26379, "127.0.0.1").getMaster()
       else
         tempclient = redis.createClient()
 
@@ -321,7 +324,7 @@ else
 
   sioRedisStore = require("socket.io/lib/stores/redis")
   sio.set "store", new sioRedisStore(
-    #use forked redis 
+    #use forked redis
     redis: require 'redis-sentinel-client/node_modules/redis'
     redisPub: pub
     redisSub: sub
