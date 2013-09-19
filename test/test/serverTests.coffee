@@ -8,9 +8,18 @@ dcrypt = require 'dcrypt'
 async = require 'async'
 fs = require("fs")
 redisSentinel = require 'redis-sentinel-client'
-rc = redisSentinel.createClient(26380,"127.0.0.1")
-port = 443
-baseUri = "https://localhost:" + port
+
+socketPort = process.env.SURESPOT_SOCKET ? 8080
+redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 6379
+redisSentinelHostname = process.env.SURESPOT_REDIS_SENTINEL_HOSTNAME ? "127.0.0.1"
+dontUseSSL = process.env.SURESPOT_DONT_USE_SSL is "true"
+baseUri = process.env.SURESPOT_TEST_BASEURI
+cleanupDb = process.env.SURESPOT_TEST_CLEANDB is "true"
+useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
+
+rc = if useRedisSentinel then redisSentinel.createClient(redisSentinelPort, redisSentinelHostname) else redis.createClient(redisSentinelPort, redisSentinelHostname)
+port = socketPort
+
 
 cleanup = (done) ->
   keys = [
@@ -138,7 +147,10 @@ describe "surespot server", () ->
   before (done) ->
     createKeys 3, (err, keyss) ->
       keys = keyss
-      cleanup done
+      if cleanupDb
+        cleanup done
+      else
+        done()
 
   describe "create user", () ->
     it "should respond with 400 if username invalid", (done) ->
@@ -481,6 +493,7 @@ describe "surespot server", () ->
     it "should not be allowed", (done) ->
       login "test2", "test2", keys[2].sig, done, (res, body) ->
         res.statusCode.should.equal 204
+
         r = http.post baseUri + "/images/1/test1/1", (err, res, body) ->
           if err
             done err
@@ -489,8 +502,12 @@ describe "surespot server", () ->
             done()
 
         form = r.form()
-        form.append "image", fs.createReadStream "test/testImage"
+        form.append "image", fs.createReadStream "test/testImage", { contentType: "image/"}
 
 
   #todo set filename explicitly
-  after (done) -> cleanup done
+  after (done) ->
+    if cleanupDb
+      cleanup done
+    else
+      done()
