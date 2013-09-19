@@ -575,7 +575,7 @@ else
   #oauth crap
   #code = "4/wes40DoudPlswVgl8EV4ihpGcuef.sq7QN70kr3QYmmS0T3UFEsMgH4BtggI"
   getAccessToken = (oauth2client, callback) ->
-    code = "4/U9d1h9YdNRCkysQtUjXBfR7udSCy.4nL-EjcxeRYTmmS0T3UFEsOeSrtuggI"
+    code = "4/_WG8RORi_pbcjqlCJ4Hxf1-mjRh_.QqoHn5LeZtYTmmS0T3UFEsMa2o5wggI"
     oauth2client.getToken code, (err, tokens) ->
       if err?
         logger.error err
@@ -598,27 +598,30 @@ else
         logger.error err
         return
 
-      unless valid is "true"
-        logger.debug "validatingVoiceToken, username: #{username}, token: #{token}"
-        #check token with google
-        googleapis.discover("androidpublisher", "v1.1").execute (err, client) ->
-          return if err?
+      logger.debug "validatingVoiceToken, username: #{username}, token: #{token}"
+      #check token with google
+      googleapis.discover("androidpublisher", "v1.1").execute (err, client) ->
+        if err?
+          oauth2Client = null
+          logger.error err
+          return
 
-          checkClient = (callback) ->
-            if not oauth2Client?
-              oauth2Client = new googleapis.OAuth2Client googleClientId, googleClientSecret, googleRedirectUrl
-              getAccessToken oauth2Client, callback
-            else
-              callback()
+        checkClient = (callback) ->
+          if not oauth2Client?
+            oauth2Client = new googleapis.OAuth2Client googleClientId, googleClientSecret, googleRedirectUrl
+            getAccessToken oauth2Client, callback
+          else
+            callback()
 
-          checkClient ->
-            getPurchaseInfo client, oauth2Client, token, (err, data) ->
-              if err?
-                logger.error err
-                return
-              return unless data?.purchaseState?
-              logger.debug "validated voice_messaging purchase token #{token}"
-              rc.hset "t", "v:vm:#{token}", if data.purchaseState is 0 then "true" else "false"
+        checkClient ->
+          getPurchaseInfo client, oauth2Client, token, (err, data) ->
+            if err?
+              oauth2Client = null
+              logger.error err
+              return
+            return unless data?.purchaseState?
+            logger.debug "validated voice_messaging purchase token #{token}"
+            rc.hset "t", "v:vm:#{token}", if data.purchaseState is 0 then "true" else "false"
 
 
   updatePurchaseTokens = (username, purchaseTokens) ->
@@ -1587,6 +1590,8 @@ else
       iv = part.filename
       mimeType = part.mime
 
+      logger.debug "checking mimeType: #{mimeType}"
+
       #check valid mimetypes
       return res.send 400 unless mimeType in ['text/plain', 'image/','audio/mp4']
 
@@ -1597,14 +1602,14 @@ else
           hasValidVoiceMessageToken username, (err, valid) ->
             return next err if err?
             #yes it's a 402
-            return res.send 402 if not valid
+            return res.send 402 unless valid is "true"
             callback()
         else
           callback()
 
-
+      #paused = pause req
       checkPermissions ->
-
+        #paused.resume()
 
         #todo validate versions
 
@@ -1624,6 +1629,7 @@ else
         part.on 'end', ->
           form.pause()
           #logger.debug 'received part end'
+
           outStream.end ->
             form.resume()
 
