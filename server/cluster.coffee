@@ -307,6 +307,7 @@ else
     app.use express.session(
       secret: sessionSecret
       store: sessionStore
+      #set cookie expiration in ms
       cookie: { maxAge: (oneDay*3000) }
       proxy: true
     )
@@ -638,12 +639,12 @@ else
               logger.error err
               return
             return unless data?.purchaseState?
-            logger.debug "validated voice_messaging purchase token #{token}"
+            logger.debug "validated voice_messaging, purchaseState: #{data.purchaseState}, token: #{token}"
             rc.hset "t", "v:vm:#{token}", if data.purchaseState is 0 then "true" else "false"
 
 
   updatePurchaseTokens = (username, purchaseTokens) ->
-    voiceToken = purchaseTokens.voice_messaging ? null
+    voiceToken = purchaseTokens?.voice_messaging ? null
 
     #if we have something to update, update, otherwise wipe
     userKey = "u:#{username}"
@@ -678,6 +679,7 @@ else
           #no token uploaded so remove old token if there was one assigned
           if currtoken?
             multi.hdel "t", "u:vm:#{currtoken}"
+            multi.hdel "t", "v:vm:#{currtoken}"
           #delete token from user
           multi.hdel userKey, "vm"
           callback()
@@ -692,15 +694,14 @@ else
           validateVoiceToken username, voiceToken
 
   updatePurchaseTokensMiddleware = (req, res, next) ->
-    return next() unless req.body?.purchaseTokens?
     logger.debug "received purchaseTokens #{req.body.purchaseTokens}"
     purchaseTokens = null
     try
       purchaseTokens = JSON.parse req.body.purchaseTokens
-      updatePurchaseTokens(req.user.username, purchaseTokens)
-      next()
     catch error
-      next()
+
+    updatePurchaseTokens(req.user.username, purchaseTokens)
+    next()
 
 
 
@@ -1611,7 +1612,6 @@ else
     username = req.user.username
     path = null
     size = null
-    responseSent = false
 
     form = new formidable.IncomingForm()
     form.onPart = (part) ->
@@ -1624,7 +1624,6 @@ else
 
       #check valid mimetypes
       unless mimeType in ['text/plain', 'image/','audio/mp4']
-        responseSent = true
         return res.send 400
 
       checkPermissions = (callback) ->
@@ -1635,12 +1634,14 @@ else
             if err?
               paused.resume()
               return next err
+
+            logger.debug "validated voice purchase for #{username}, valid: #{valid}"
             #yes it's a 402
             if not valid
               paused.resume()
-              responseSent = true
               return res.send 402
-            logger.debug "validated voice purchase for #{username}"
+
+
             callback()
             paused.resume()
         else
@@ -1698,6 +1699,7 @@ else
               createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, mimeType, id, size, (err) ->
                 logger.error "error sending message on socket: #{err}" if err?
                 return next err if err?
+                res.send 200
 
 
     form.on 'error', (err) ->
@@ -1705,8 +1707,6 @@ else
 
     form.on 'end', ->
       logger.debug "form end"
-      if not responseSent
-        res.send 200
 
     form.parse req
 
