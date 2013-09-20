@@ -150,6 +150,10 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "messages per user: #{MESSAGES_PER_USER}"
   logger.info "debug level: #{debugLevel}"
   logger.info "google api key: #{googleApiKey}"
+  logger.info "google client id: #{googleClientId}"
+  logger.info "google client secret: #{googleClientSecret}"
+  logger.info "google redirect url: #{googleRedirectUrl}"
+  logger.info "google oauth2 code: #{googleOauth2Code}"
   logger.info "rackspace api key: #{rackspaceApiKey}"
   logger.info "rackspace cdn url: #{rackspaceCdnBaseUrl}"
   logger.info "rackspace image container: #{rackspaceImageContainer}"
@@ -162,6 +166,7 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "redis sentinel hostname: #{redisSentinelHostname}"
   logger.info "redis sentinel port: #{redisSentinelPort}"
   logger.info "redis password: #{redisPassword}"
+
 
 else
 
@@ -178,6 +183,10 @@ else
     logger.info "messages per user: #{MESSAGES_PER_USER}"
     logger.info "debug level: #{debugLevel}"
     logger.info "google api key: #{googleApiKey}"
+    logger.info "google client id: #{googleClientId}"
+    logger.info "google client secret: #{googleClientSecret}"
+    logger.info "google redirect url: #{googleRedirectUrl}"
+    logger.info "google oauth2 code: #{googleOauth2Code}"
     logger.info "rackspace api key: #{rackspaceApiKey}"
     logger.info "rackspace cdn url: #{rackspaceCdnBaseUrl}"
     logger.info "rackspace image container: #{rackspaceImageContainer}"
