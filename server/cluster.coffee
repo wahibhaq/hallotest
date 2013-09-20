@@ -83,6 +83,7 @@ googleApiKey = process.env.SURESPOT_GOOGLE_API_KEY
 googleClientId = process.env.SURESPOT_GOOGLE_CLIENT_ID
 googleClientSecret = process.env.SURESPOT_GOOGLE_CLIENT_SECRET
 googleRedirectUrl = process.env.SURESPOT_GOOGLE_REDIRECT_URL
+googleOauth2Code = process.env.SURESPOT_GOOGLE_OAUTH2_CODE
 rackspaceApiKey = process.env.SURESPOT_RACKSPACE_API_KEY
 rackspaceCdnBaseUrl = process.env.SURESPOT_RACKSPACE_CDN_URL
 rackspaceImageContainer = process.env.SURESPOT_RACKSPACE_IMAGE_CONTAINER
@@ -573,15 +574,32 @@ else
 
 
   #oauth crap
-  #code = "4/wes40DoudPlswVgl8EV4ihpGcuef.sq7QN70kr3QYmmS0T3UFEsMgH4BtggI"
-  getAccessToken = (oauth2client, callback) ->
-    code = "4/_WG8RORi_pbcjqlCJ4Hxf1-mjRh_.QqoHn5LeZtYTmmS0T3UFEsMa2o5wggI"
-    oauth2client.getToken code, (err, tokens) ->
-      if err?
-        logger.error err
-        return
-      oauth2client.credentials = tokens
-      callback()
+  getAuthToken = (oauth2client, callback) ->
+    #see if we have refresh token
+    rc.hget "oauth2google", "refresh_token", (err, refreshToken) ->
+      return if err?
+      if refreshToken?
+        oauth2client.credentials = { refresh_token: refreshToken }
+        callback()
+      else
+        if not googleOauth2Code?
+          logger.error 'no refresh token or oauth2 code available, exiting'
+          process.exit(1)
+        else
+          oauth2client.getToken googleOauth2Code, (err, tokens) ->
+            if err?
+              logger.error err
+              return
+
+            if not tokens?
+              logger.error "oauth2: no tokens return from google"
+              return
+
+            oauth2client.credentials = tokens
+            if tokens.refresh_token?
+              rc.hset "oauth2google", "refresh_token", tokens.refresh_token, (err, result) ->
+                return if err?
+                callback()
 
 
   getPurchaseInfo = (client, authClient, token, callback) ->
@@ -609,7 +627,7 @@ else
         checkClient = (callback) ->
           if not oauth2Client?
             oauth2Client = new googleapis.OAuth2Client googleClientId, googleClientSecret, googleRedirectUrl
-            getAccessToken oauth2Client, callback
+            getAuthToken oauth2Client, callback
           else
             callback()
 
@@ -633,25 +651,36 @@ else
     #single floating license implementation
     #map username to token
 
-    #if we have a voice token assign it to the user and the user to it
+    #update token information
     updateLicense = (callback) ->
-      if voiceToken?
-        #get current user with token
-        rc.hget "t", "u:vm:#{voiceToken}", (err, currentuser) ->
-          return if err?
-          #if user is different remove from previous user and update mappings
-          if username != currentuser
-            if currentuser?
+      #get this user's current token
+      rc.hget userKey, "vm", (err, currtoken) ->
+        return if err?
+        if voiceToken?
+          #get current user with token
+          rc.hget "t", "u:vm:#{voiceToken}", (err, currentuser) ->
+            return if err?
+            #if user is different remove from previous user and update mappings
+            if currentuser? and username != currentuser
               multi.hdel "u:#{currentuser}", "vm"
+
+            else
+              #if token is different, remove old token
+              if currtoken? and voiceToken != currtoken
+                multi.hdel "t", "u:vm:#{currtoken}"
+
+            #set token to user
             multi.hset userKey, "vm", voiceToken
+            #update token mapping to user
             multi.hset "t", "u:vm:#{voiceToken}", username
             callback()
-          else
-            callback()
-      else
-        #delete token from user
-        multi.hdel userKey, "vm"
-        callback()
+        else
+          #no token uploaded so remove old token if there was one assigned
+          if currtoken?
+            multi.hdel "t", "u:vm:#{currtoken}"
+          #delete token from user
+          multi.hdel userKey, "vm"
+          callback()
 
     updateLicense ->
       #map token to username
@@ -1582,39 +1611,44 @@ else
     username = req.user.username
     path = null
     size = null
+    responseSent = false
 
     form = new formidable.IncomingForm()
     form.onPart = (part) ->
       return form.handlePart part unless part.filename?
     #  filenames[part.filename] = "uploading"
-      iv = part.filename
+      ##iv = part.filename
       mimeType = part.mime
 
       logger.debug "checking mimeType: #{mimeType}"
 
       #check valid mimetypes
-      return res.send 400 unless mimeType in ['text/plain', 'image/','audio/mp4']
-
+      unless mimeType in ['text/plain', 'image/','audio/mp4']
+        responseSent = true
+        return res.send 400
 
       checkPermissions = (callback) ->
         #if it's audio make sure we have permission
         if mimeType is "audio/mp4"
+          paused = pause req
           hasValidVoiceMessageToken username, (err, valid) ->
-            return next err if err?
+            if err?
+              paused.resume()
+              return next err
             #yes it's a 402
-            return res.send 402 unless valid is "true"
+            if not valid
+              paused.resume()
+              responseSent = true
+              return res.send 402
+            logger.debug "validated voice purchase for #{username}"
             callback()
+            paused.resume()
         else
           callback()
 
-      #paused = pause req
       checkPermissions ->
-        #paused.resume()
-
         #todo validate versions
-
         outStream = new rstream.PassThrough()
-
 
         part.on 'data', (buffer) ->
           form.pause()
@@ -1664,14 +1698,15 @@ else
               createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, mimeType, id, size, (err) ->
                 logger.error "error sending message on socket: #{err}" if err?
                 return next err if err?
-                res.send 200
+
 
     form.on 'error', (err) ->
-      next new Error err
+      return next new Error err
 
     form.on 'end', ->
-      logger.debug "form end #{path}"
-      #res.send 200
+      logger.debug "form end"
+      if not responseSent
+        res.send 200
 
     form.parse req
 
