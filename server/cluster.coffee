@@ -34,7 +34,7 @@ formidable = require 'formidable'
 pkgcloud = require 'pkgcloud'
 utils = require('connect/lib/utils')
 pause = require 'pause'
-rstream = require 'readable-stream'
+stream = require 'stream'
 redbacklib = require 'redback'
 googleapis = require 'googleapis'
 
@@ -1562,7 +1562,7 @@ else
       return form.handlePart part unless part.filename?
       iv = part.filename
 
-      outStream = new rstream.PassThrough()
+      outStream = new stream.PassThrough()
 
       part.on 'data', (buffer) ->
         form.pause()
@@ -1621,52 +1621,48 @@ else
       mimeType = part.mime
 
       logger.debug "checking mimeType: #{mimeType}"
-
       #check valid mimetypes
       unless mimeType in ['text/plain', 'image/','audio/mp4']
         return res.send 400
 
+      outStream = new stream.PassThrough()
+
+      part.on 'data', (buffer) ->
+        form.pause()
+
+        size += buffer.length
+        logger.debug "received file data, length: #{buffer.length}, size: #{size}"
+        #logger.debug 'received part data'
+        outStream.write buffer, ->
+          form.resume()
+
+
+      part.on 'end', ->
+        form.pause()
+        logger.debug 'received part end'
+
+        outStream.end ->
+          form.resume()
+
       checkPermissions = (callback) ->
         #if it's audio make sure we have permission
         if mimeType is "audio/mp4"
-          paused = pause req
           hasValidVoiceMessageToken username, (err, valid) ->
             if err?
-              paused.resume()
               return next err
 
             logger.debug "validated voice purchase for #{username}, valid: #{valid}"
             #yes it's a 402
             if not valid
-              paused.resume()
               return res.send 402
 
-
             callback()
-            paused.resume()
         else
           callback()
 
+
       checkPermissions ->
         #todo validate versions
-        outStream = new rstream.PassThrough()
-
-        part.on 'data', (buffer) ->
-          form.pause()
-
-          size += buffer.length
-          #logger.debug "received file data, length: #{buffer.length}, size: #{size}"
-          #logger.debug 'received part data'
-          outStream.write buffer, ->
-            form.resume()
-
-
-        part.on 'end', ->
-          form.pause()
-          #logger.debug 'received part end'
-
-          outStream.end ->
-            form.resume()
 
         room = getRoomName username, req.params.username
         getNextMessageId room, null, (id) ->
@@ -1707,6 +1703,7 @@ else
 
     form.on 'end', ->
       logger.debug "form end"
+
 
     form.parse req
 
