@@ -10,13 +10,12 @@ async = require 'async'
 _ = require 'underscore'
 crypto = require 'crypto'
 
-rc = redis.createClient()
-#rc.select 1
+
 
 testkeydir = '../testkeys'
-baseUri = "https://localhost:443"
+baseUri = "https://96.126.119.175:443"
 minclient = 0
-maxclient = 9
+maxclient = 199
 clients = maxclient - minclient + 1
 jars = []
 http.globalAgent.maxSockets = 20000
@@ -86,7 +85,7 @@ makeConnect = (cookie) ->
 
 
 connectChats = (cookie, callback) ->
-  client = io.connect baseUri, { 'force new connection': true, 'reconnect': false, 'connect timeout':   120000}, cookie
+  client = io.connect baseUri, { 'force new connection': true, 'reconnect': false, 'connect timeout':   1200000 }, cookie
   client.on 'connect', ->
     callback null, client
 
@@ -140,7 +139,7 @@ makeFriendUser = (i) ->
 
 
 describe "surespot chat test", () ->
-  before (done) -> cleanup done
+  #before (done) -> cleanup done
 
   sigs = []
   tasks = []
@@ -206,4 +205,6 @@ describe "surespot chat test", () ->
         _.every results, (result) -> result.should.be.true
         done()
 
-  after (done) -> cleanup done
+  #after (done) -> cleanup done
+
+

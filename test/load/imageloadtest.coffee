@@ -17,7 +17,7 @@ testImageLocation = "../testImage"
 testkeydir = '../testkeys'
 baseUri = "https://localhost:443"
 minclient = 0
-maxclient = 599
+maxclient = 999
 clients = maxclient - minclient + 1
 jars = []
 http.globalAgent.maxSockets = 20000
@@ -141,7 +141,7 @@ makeFriendUser = (i) ->
 
 
 describe "surespot image load test", () ->
-  before (done) -> cleanup done
+  #before (done) -> cleanup done
 
   sigs = []
   tasks = []
@@ -252,4 +252,4 @@ describe "surespot image load test", () ->
         _.every results, (result) -> result.should.be.true
         done()
 
-  after (done) -> cleanup done
+  #after (done) -> cleanup done

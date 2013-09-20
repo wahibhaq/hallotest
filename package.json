@@ -31,7 +31,7 @@
     "readable-stream": "~1.0.2",
     "redback": "~0.3.5",
     "redis": "~0.8.3",
-    "pkgcloud": "0.8.1",
+    "pkgcloud": "~0.8.1",
     "nodemailer": "~0.4.4",
     "nodetime": "~0.8.13",
     "redis-sentinel-client": "~0.1.3",

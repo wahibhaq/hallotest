@@ -1631,7 +1631,7 @@ else
         form.pause()
 
         size += buffer.length
-        logger.debug "received file data, length: #{buffer.length}, size: #{size}"
+        #logger.debug "received file data, length: #{buffer.length}, size: #{size}"
         #logger.debug 'received part data'
         outStream.write buffer, ->
           form.resume()
@@ -1639,7 +1639,7 @@ else
 
       part.on 'end', ->
         form.pause()
-        logger.debug 'received part end'
+        #logger.debug 'received part end'
 
         outStream.end ->
           form.resume()
