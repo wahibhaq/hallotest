@@ -75,10 +75,10 @@ RATE_LIMIT_BUCKET_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_BUCKET_CREATE_US
 RATE_LIMIT_SECS_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_SECS_CREATE_USER ? 86400
 RATE_LIMIT_RATE_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_RATE_CREATE_USER ? 1000
 
-MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 20
+MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 500
 debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'debug'
 database = process.env.SURESPOT_DB ? 0
-socketPort = process.env.SURESPOT_SOCKET ? 443
+socketPort = process.env.SURESPOT_SOCKET ? 8080
 googleApiKey = process.env.SURESPOT_GOOGLE_API_KEY
 googleClientId = process.env.SURESPOT_GOOGLE_CLIENT_ID
 googleClientSecret = process.env.SURESPOT_GOOGLE_CLIENT_SECRET
@@ -1631,8 +1631,8 @@ else
 
       logger.debug "checking mimeType: #{mimeType}"
       #check valid mimetypes
-      #unless mimeType in ['text/plain', 'image/','audio/mp4']
-       # return res.send 400
+      unless mimeType in ['text/plain', 'image/','audio/mp4']
+        return res.send 400
 
       outStream = new stream.PassThrough()
 
