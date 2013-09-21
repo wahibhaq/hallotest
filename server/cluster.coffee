@@ -229,7 +229,7 @@ else
     if port? and host?
       tempclient = null
       if useRedisSentinel
-        sentinel = redis.createClient(port,host)
+        sentinel = redis.createClient(port,host, {logger: logger})
         tempclient = sentinel.getMaster()
 
         sentinel.on 'error', (err) -> logger.error err
@@ -250,7 +250,7 @@ else
       tempclient = null
 
       if useRedisSentinel
-        sentinel = redis.createClient(26379, "127.0.0.1")
+        sentinel = redis.createClient(26379, "127.0.0.1", {logger: logger})
         tempclient = sentinel.getMaster()
 
         sentinel.on 'error', (err) -> logger.error err
@@ -1631,8 +1631,8 @@ else
 
       logger.debug "checking mimeType: #{mimeType}"
       #check valid mimetypes
-      unless mimeType in ['text/plain', 'image/','audio/mp4']
-        return res.send 400
+      #unless mimeType in ['text/plain', 'image/','audio/mp4']
+       # return res.send 400
 
       outStream = new stream.PassThrough()
 
