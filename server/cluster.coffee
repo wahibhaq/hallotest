@@ -1084,7 +1084,7 @@ else
 
                 sender.send gcmmessage, regIds, 4, (err, result) ->
                   logger.debug "sendGcm result: #{JSON.stringify(result)}"
-                  gcmCallback()
+                gcmCallback()
               else
                 logger.debug "no gcm id for #{to}"
                 gcmCallback()
@@ -2157,7 +2157,7 @@ else
 
                 sender.send gcmmessage, regIds, 4, (err, result) ->
                   logger.debug "sent gcm: #{JSON.stringify(result)}"
-                  callback null, true
+                callback null, true
               else
                 logger.debug "gcmId not set for #{friendname}"
                 callback null, true
@@ -2203,14 +2203,9 @@ else
                 return next err if err?
                 createFriendShip username, friendname, (err) ->
                   return next err if err?
-
-                  createAndSendUserControlMessage username, "added", friendname, null, (err) ->
-                    return next err if err?
-                    sendInviteResponseGcm username, friendname, 'accept', (result) ->
-                      createAndSendUserControlMessage friendname, "added", username, null, (err) ->
-                        return next err if err?
-                        sendInviteResponseGcm friendname, username, 'accept', (result) ->
-                          res.send 204
+                  sendInviteResponseGcm username, friendname, 'accept'
+                  sendInviteResponseGcm friendname, username, 'accept'
+                  res.send 204
             else
               inviteUser username, friendname, source, (err, inviteSent) ->
                 res.send if inviteSent then 204 else 403
@@ -2242,7 +2237,7 @@ else
       return callback new Error("[friend] srem failed for ir:#{username}:#{friendname}") if err?
       callback null
 
-  sendInviteResponseGcm = (username, friendname, action, callback) ->
+  sendInviteResponseGcm = (username, friendname, action) ->
     userKey = "u:" + friendname
     rc.hget userKey, "gcmId", (err, gcmId) ->
       if err?
@@ -2265,9 +2260,6 @@ else
 
         sender.send gcmmessage, regIds, 4, (err, result) ->
           logger.debug "sendGcm result: #{JSON.stringify(result)}"
-          callback result
-      else
-          callback null
 
   app.post '/invites/:username/:action', ensureAuthenticated, validateUsernameExists, (req, res, next) ->
     return next new Error 'action required' unless req.params.action?
@@ -2290,8 +2282,8 @@ else
           when 'accept'
             createFriendShip username, friendname, (err) ->
               return next err if err?
-              sendInviteResponseGcm username, friendname, action, (result) ->
-                res.send 204
+              sendInviteResponseGcm username, friendname, action
+              res.send 204
           when 'ignore'
             createAndSendUserControlMessage friendname, 'ignore', username, null, (err) ->
               return next err if err?
