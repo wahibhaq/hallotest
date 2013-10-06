@@ -822,12 +822,9 @@ else
             catch error
               return callback error
 
-            if checkMessage.id? and message.id?
-              logger.debug "comparing ids"
-              checkMessage.id == message.id
-            else
-              logger.debug "comparing ivs"
-              checkMessage.iv == message.iv
+            logger.debug "comparing ivs"
+            checkMessage.iv == message.iv
+
           callback null, found
       else
         logger.debug "searching 30 messages from room: #{room} for duplicates"
@@ -840,12 +837,9 @@ else
             catch error
               return callback error
 
-            if checkMessage.id? and message.id?
-              logger.debug "comparing ids"
-              checkMessage.id == message.id
-            else
-              logger.debug "comparing ivs"
-              checkMessage.iv == message.iv
+            logger.debug "comparing ivs"
+            checkMessage.iv == message.iv
+
           callback null, found
     else
       callback null, false
