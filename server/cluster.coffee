@@ -87,6 +87,7 @@ googleOauth2Code = process.env.SURESPOT_GOOGLE_OAUTH2_CODE
 rackspaceApiKey = process.env.SURESPOT_RACKSPACE_API_KEY
 rackspaceCdnBaseUrl = process.env.SURESPOT_RACKSPACE_CDN_URL
 rackspaceImageContainer = process.env.SURESPOT_RACKSPACE_IMAGE_CONTAINER
+rackspaceVoiceContainer = process.env.SURESPOT_RACKSPACE_VOICE_CONTAINER
 rackspaceUsername = process.env.SURESPOT_RACKSPACE_USERNAME
 sessionSecret = process.env.SURESPOT_SESSION_SECRET
 logConsole = process.env.SURESPOT_LOG_CONSOLE is "true"
@@ -157,6 +158,7 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "rackspace api key: #{rackspaceApiKey}"
   logger.info "rackspace cdn url: #{rackspaceCdnBaseUrl}"
   logger.info "rackspace image container: #{rackspaceImageContainer}"
+  logger.info "rackspace voice container: #{rackspaceVoiceContainer}"
   logger.info "rackspace username: #{rackspaceUsername}"
   logger.info "session secret: #{sessionSecret}"
   logger.info "cores: #{NUM_CORES}"
@@ -190,6 +192,7 @@ else
     logger.info "rackspace api key: #{rackspaceApiKey}"
     logger.info "rackspace cdn url: #{rackspaceCdnBaseUrl}"
     logger.info "rackspace image container: #{rackspaceImageContainer}"
+    logger.info "rackspace voice container: #{rackspaceVoiceContainer}"
     logger.info "rackspace username: #{rackspaceUsername}"
     logger.info "session secret: #{sessionSecret}"
     logger.info "cores: #{NUM_CORES}"
@@ -1381,10 +1384,8 @@ else
             ourMessageIds.push oMessage.id
             multi.zrem "m:#{username}", "m:#{room}:#{oMessage.id}"
 
-            #delete image from rackspace
-            if oMessage.mimeType is 'image/' or oMessage.mimeType is 'audio/mp4'
-              deleteImage oMessage.data
-
+            #delete file from rackspace if necessary
+            deleteFile oMessage.data, oMessage.mimeType
             callback true
           else
             theirMessageIds.push oMessage.id
@@ -1431,10 +1432,8 @@ else
           removeMessage dMessage.to, room, messageId, multi, (err, count) ->
             return callback err if err?
 
-            #delete the file if it's a file
-            if dMessage.mimeType is "image/" or dMessage.mimeType is 'audio/mp4'
-              deleteImage dMessage.data
-
+            #delete the file from the cloud if necessary
+            deleteFile dMessage.data, dMessage.mimeType
             callback()
         else
           #check if user is a user (ie. not deleted) before adding deleted message ids to the set
@@ -1459,22 +1458,24 @@ else
             return callback err if err?
             callback null, message
 
+  deleteFile = (uri, mimeType) ->
+    container = null
+    if mimeType is "image/"
+      container = rackspaceImageContainer
+    else
+      if mimeType is "audio/mp4"
+        container = rackspaceVoiceContainer
 
+    return unless container?
 
-  deleteImage = (uri) ->
     splits = uri.split('/')
     path = splits[splits.length - 1]
     logger.debug "removing file from rackspace: #{path}"
-    rackspace.removeFile rackspaceImageContainer, path, (err) ->
+    rackspace.removeFile container, path, (err) ->
       if err?
         logger.error "could not remove file from rackspace: #{path}, error: #{err}"
       else
         logger.debug "removed file from rackspace: #{path}"
-
-
-
-
-
 
   #delete single message
   app.delete "/messages/:username/:id", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, (req, res, next) ->
@@ -1598,7 +1599,7 @@ else
             return next err if err?
 
             if friend.imageUrl?
-              deleteImage friend.imageUrl
+              deleteFile friend.imageUrl, "image/"
 
             rc.hmset "fi:#{username}", "#{otherUser}:imageUrl", url, "#{otherUser}:imageVersion", version, "#{otherUser}:imageIv", iv, (err, status) ->
               return next err if err?
@@ -1615,6 +1616,7 @@ else
     username = req.user.username
     path = null
     size = null
+    container = null
 
     form = new formidable.IncomingForm()
     form.onPart = (part) ->
@@ -1658,9 +1660,10 @@ else
             #yes it's a 402
             if not valid
               return res.send 402
-
+            container = rackspaceVoiceContainer
             callback()
         else
+          container = rackspaceImageContainer
           callback()
 
 
@@ -1686,7 +1689,7 @@ else
             path = bytes
             logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
-            outStream.pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
+            outStream.pipe rackspace.upload {container: container, remote: path}, (err) ->
               if err?
                 logger.error "fileupload, mimeType: #{mimeType} error: #{err}"
                 #sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
@@ -2583,7 +2586,7 @@ else
 
         getFriendImageData username, theirUsername, (err, friend) ->
           if friend.imageUrl?
-            deleteImage friend.imageUrl
+            deleteFile friend.imageUrl, "image/"
 
         multi.hdel "fi:#{username}", "#{theirUsername}:imageUrl", "#{theirUsername}:imageVersion", "#{theirUsername}:imageIv"
 
