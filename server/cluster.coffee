@@ -7,10 +7,11 @@
 ###
 env = process.env.SURESPOT_ENV ? 'Local' # one of "Local","Stage", "Prod"
 if env is 'Prod'
+  NODETIME_APP=process.env.SURESPOT_NODETIME_APP
   NODETIME_API_KEY=process.env.SURESPOT_NODETIME_API_KEY
   require('nodetime').profile({
     accountKey: NODETIME_API_KEY,
-    appName: 'surespot-test'
+    appName: NODETIME_APP
   })
 
 cluster = require('cluster')
@@ -165,6 +166,7 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "session secret: #{sessionSecret}"
   logger.info "cores: #{NUM_CORES}"
   logger.info "console logging: #{logConsole}"
+  logger.info "nodetime app: #{NODETIME_APP}"
   logger.info "nodetime api key: #{NODETIME_API_KEY}"
   logger.info "use redis sentinel: #{useRedisSentinel}"
   logger.info "redis sentinel hostname: #{redisSentinelHostname}"
@@ -200,6 +202,7 @@ else
     logger.info "session secret: #{sessionSecret}"
     logger.info "cores: #{NUM_CORES}"
     logger.info "console logging: #{logConsole}"
+    logger.info "nodetime app: #{NODETIME_APP}"
     logger.info "nodetime api key: #{NODETIME_API_KEY}"
     logger.info "redis sentinel hostname: #{redisSentinelHostname}"
     logger.info "redis sentinel port: #{redisSentinelPort}"
