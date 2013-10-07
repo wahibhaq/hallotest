@@ -8,9 +8,19 @@ io = require 'socket.io-client'
 crypto = require 'crypto'
 dcrypt = require 'dcrypt'
 async = require 'async'
-rc = redis.createClient()
-port = 443
-baseUri = "https://localhost:" + port
+
+redisSentinel = require 'redis-sentinel-client'
+socketPort = process.env.SURESPOT_SOCKET ? 8080
+redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 6379
+redisSentinelHostname = process.env.SURESPOT_REDIS_SENTINEL_HOSTNAME ? "127.0.0.1"
+dontUseSSL = process.env.SURESPOT_DONT_USE_SSL is "true"
+baseUri = process.env.SURESPOT_TEST_BASEURI
+cleanupDb = process.env.SURESPOT_TEST_CLEANDB is "true"
+useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
+
+rc = if useRedisSentinel then redisSentinel.createClient(redisSentinelPort, redisSentinelHostname) else redis.createClient(redisSentinelPort, redisSentinelHostname)
+port = socketPort
+
 jar0 = undefined
 jar1 = undefined
 cookie0 = undefined
@@ -166,7 +176,10 @@ describe "delete messages and friends test", () ->
   before (done) ->
     createKeys 2, (err, keyss) ->
       keys = keyss
-      cleanup done
+      if cleanupDb
+        cleanup done
+      else
+        done()
 
 
   it 'client 1 connect', (done) ->
@@ -468,5 +481,7 @@ describe "delete messages and friends test", () ->
   after (done) ->
     client.disconnect()
     client1.disconnect()
-    cleanup done
-    #done()
+    if cleanupDb
+      cleanup done
+    else
+      done()

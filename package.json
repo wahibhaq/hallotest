@@ -1,12 +1,12 @@
 {
   "name": "surespot",
   "version": "0.0.1",
-  "node": "0.8.1",
+  "node": "~0.10.18",
   "private": true,
   "dependencies": {
     "connect-redis": "~1.4.5",
     "bcrypt": "~0.7.3",
-    "socket.io": "https://github.com/surespot/socket.io/tarball/redis_improvements",
+    "socket.io": "https://github.com/surespot/socket.io/tarball/sentinel",
     "chai": "~1.1.1",
     "underscore": "~1.4.3",
     "coffee-script": "~1.4.0",
@@ -17,7 +17,6 @@
     "winston": "~0.7.2",
     "should": "~1.2.1",
     "async": "~0.2.5",
-    "dcrypt": "0.0.2",
     "forever": "~0.10.0",
     "express": "~3.2.6",
     "throttle": "~1.0.3",
@@ -34,16 +33,18 @@
     "redis": "~0.8.3",
     "pkgcloud": "~0.8.1",
     "nodemailer": "~0.4.4",
-    "request": "~2.21.0",
-    "nodetime": "~0.8.13"
+    "nodetime": "~0.8.13",
+    "redis-sentinel-client": "~0.1.3",
+    "googleapis": "~0.4.5",
+    "dcrypt": "https://github.com/surespot/dcrypt/tarball/master"
   },
   "subdomain": "2fours.com",
   "scripts": {
     "start": "app.js"
   },
   "engines": {
-    "node": "0.8.x",
-    "npm": "1.1.x"
+    "node": "~0.10.18",
+    "npm": "~1.3.8"
   },
   "main": "app.js",
   "license": "BSD",

@@ -10,14 +10,12 @@ async = require 'async'
 _ = require 'underscore'
 crypto = require 'crypto'
 
-rc = redis.createClient()
-#rc.select 1
 
-testImageLocation = "../testImage"
+
 testkeydir = '../testkeys'
-baseUri = "https://localhost:443"
+baseUri = "http://localhost:8080"
 minclient = 0
-maxclient = 999
+maxclient = 199
 clients = maxclient - minclient + 1
 jars = []
 http.globalAgent.maxSockets = 20000
@@ -48,7 +46,7 @@ clean1up = (max ,i, done) ->
 
 
 cleanup = (done) ->
-  clean1up clients, 0, done
+  #clean1up clients, 0, done
 
 login = (username, password, jar, authSig, done, callback) ->
   request.post
@@ -87,7 +85,7 @@ makeConnect = (cookie) ->
 
 
 connectChats = (cookie, callback) ->
-  client = io.connect baseUri, { 'force new connection': true, 'reconnect': false, 'connect timeout':   120000}, cookie
+  client = io.connect baseUri, { 'force new connection': true, 'reconnect': false, 'connect timeout':   1200000 }, cookie
   client.on 'connect', ->
     callback null, client
 
@@ -140,7 +138,7 @@ makeFriendUser = (i) ->
     friendUser i, callback
 
 
-describe "surespot image load test", () ->
+describe "surespot chat test", () ->
   #before (done) -> cleanup done
 
   sigs = []
@@ -207,49 +205,6 @@ describe "surespot image load test", () ->
         _.every results, (result) -> result.should.be.true
         done()
 
+  after (done) -> cleanup done
 
 
-  it "upload an image", (done) ->
-
-    upload = (i, callback) ->
-      if i % 2 is 0
-        r = request.post
-          agent: false
-          #maxSockets: 6000
-          jar: jars[i - minclient]
-          url: baseUri + "/images/1/test#{i+1}/1"
-          (err, res, body) ->
-            if err
-              callback err
-            else
-              res.statusCode.should.equal 200
-              callback null, true
-
-        form = r.form()
-        form.append "image", fs.createReadStream "#{testImageLocation}"
-
-
-      else
-        socket.once "message", (message) ->
-          #receivedMessage = JSON.parse message
-          callback null, true
-
-
-    makeUploads = (i) ->
-      return (callback) ->
-        upload i, callback
-
-
-    uploads = []
-    i = 0
-    for socket in sockets
-      uploads.push makeUploads(minclient + i++)
-
-    async.parallel uploads, (err, results) ->
-      if err?
-        done err
-      else
-        _.every results, (result) -> result.should.be.true
-        done()
-
-  #after (done) -> cleanup done

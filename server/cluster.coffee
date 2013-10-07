@@ -7,14 +7,14 @@
 ###
 env = process.env.SURESPOT_ENV ? 'Local' # one of "Local","Stage", "Prod"
 if env is 'Prod'
+  NODETIME_APP=process.env.SURESPOT_NODETIME_APP
   NODETIME_API_KEY=process.env.SURESPOT_NODETIME_API_KEY
   require('nodetime').profile({
     accountKey: NODETIME_API_KEY,
-    appName: 'surespot'
+    appName: NODETIME_APP
   })
 
 cluster = require('cluster')
-https = require('https')
 cookie = require("cookie")
 express = require("express")
 passport = require("passport")
@@ -35,16 +35,18 @@ formidable = require 'formidable'
 pkgcloud = require 'pkgcloud'
 utils = require('connect/lib/utils')
 pause = require 'pause'
-stream = require 'readable-stream'
-redback = require('redback').createClient()
+stream = require 'stream'
+redbacklib = require 'redback'
+googleapis = require 'googleapis'
+
 
 
 #constants
 USERNAME_LENGTH = 20
 CONTROL_MESSAGE_HISTORY = 100
-MAX_MESSAGE_LENGTH = 8096
+MAX_MESSAGE_LENGTH = 500000
 MAX_HTTP_REQUEST_LENGTH = 500000
-NUM_CORES = process.env.SURESPOT_CORES ? 4
+NUM_CORES =  parseInt(process.env.SURESPOT_CORES) ? 4
 GCM_TTL = 604800
 
 oneYear = 31536000000
@@ -74,27 +76,34 @@ RATE_LIMIT_BUCKET_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_BUCKET_CREATE_US
 RATE_LIMIT_SECS_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_SECS_CREATE_USER ? 86400
 RATE_LIMIT_RATE_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_RATE_CREATE_USER ? 1000
 
-ratelimiterexists = redback.createRateLimit('rle', { bucket_interval: RATE_LIMIT_BUCKET_EXISTS } )
-ratelimiterping = redback.createRateLimit('rlp', { bucket_interval: RATE_LIMIT_BUCKET_PING })
-ratelimitercreateuser = redback.createRateLimit('rlu', { bucket_interval: RATE_LIMIT_BUCKET_CREATE_USER })
-ratelimitermessages = redback.createRateLimit('rlm', { bucket_interval: RATE_LIMIT_BUCKET_MESSAGE })
-
-
-MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 20
-debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'info'
+MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 500
+debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'debug'
 database = process.env.SURESPOT_DB ? 0
-socketPort = process.env.SURESPOT_SOCKET ? 443
+socketPort = process.env.SURESPOT_SOCKET ? 8080
 googleApiKey = process.env.SURESPOT_GOOGLE_API_KEY
+googleClientId = process.env.SURESPOT_GOOGLE_CLIENT_ID
+googleClientSecret = process.env.SURESPOT_GOOGLE_CLIENT_SECRET
+googleRedirectUrl = process.env.SURESPOT_GOOGLE_REDIRECT_URL
+googleOauth2Code = process.env.SURESPOT_GOOGLE_OAUTH2_CODE
 rackspaceApiKey = process.env.SURESPOT_RACKSPACE_API_KEY
-rackspaceCdnBaseUrl = process.env.SURESPOT_RACKSPACE_CDN_URL
+rackspaceCdnImageBaseUrl = process.env.SURESPOT_RACKSPACE_IMAGE_CDN_URL
+rackspaceCdnVoiceBaseUrl = process.env.SURESPOT_RACKSPACE_VOICE_CDN_URL
 rackspaceImageContainer = process.env.SURESPOT_RACKSPACE_IMAGE_CONTAINER
+rackspaceVoiceContainer = process.env.SURESPOT_RACKSPACE_VOICE_CONTAINER
 rackspaceUsername = process.env.SURESPOT_RACKSPACE_USERNAME
 sessionSecret = process.env.SURESPOT_SESSION_SECRET
 logConsole = process.env.SURESPOT_LOG_CONSOLE is "true"
-gmailUser = process.env.SURESPOT_GMAIL_USER
-gmailPassword = process.env.SURESPOT_GMAIL_PASSWORD
-gmailTo = process.env.SURESPOT_GMAIL_TO
+redisPort = process.env.REDIS_PORT
+redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 6379
+redisSentinelHostname = process.env.SURESPOT_REDIS_SENTINEL_HOSTNAME ? "127.0.0.1"
+redisPassword = process.env.SURESPOT_REDIS_PASSWORD ? null
+useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
+bindAddress = process.env.SURESPOT_BIND_ADDRESS ? "0.0.0.0"
+dontUseSSL = process.env.SURESPOT_DONT_USE_SSL is "true"
+useSSL = not dontUseSSL
 
+
+http = if useSSL then require 'https' else require 'http'
 
 
 logger.remove logger.transports.Console
@@ -135,6 +144,8 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "env: #{env}"
   logger.info "database: #{database}"
   logger.info "socket: #{socketPort}"
+  logger.info "address: #{bindAddress}"
+  logger.info "ssl: #{useSSL}"
   logger.info "rate limiting messages: #{RATE_LIMITING_MESSAGE}, int: #{RATE_LIMIT_BUCKET_MESSAGE}, secs: #{RATE_LIMIT_SECS_MESSAGE}, rate: #{RATE_LIMIT_RATE_MESSAGE}"
   logger.info "rate limiting ping: #{RATE_LIMITING_PING}, int: #{RATE_LIMIT_BUCKET_PING}, secs: #{RATE_LIMIT_SECS_PING}, rate: #{RATE_LIMIT_RATE_PING}"
   logger.info "rate limiting exists: #{RATE_LIMITING_EXISTS}, int: #{RATE_LIMIT_BUCKET_EXISTS}, secs: #{RATE_LIMIT_SECS_EXISTS}, rate: #{RATE_LIMIT_RATE_EXISTS}"
@@ -142,27 +153,35 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "messages per user: #{MESSAGES_PER_USER}"
   logger.info "debug level: #{debugLevel}"
   logger.info "google api key: #{googleApiKey}"
+  logger.info "google client id: #{googleClientId}"
+  logger.info "google client secret: #{googleClientSecret}"
+  logger.info "google redirect url: #{googleRedirectUrl}"
+  logger.info "google oauth2 code: #{googleOauth2Code}"
   logger.info "rackspace api key: #{rackspaceApiKey}"
-  logger.info "rackspace cdn url: #{rackspaceCdnBaseUrl}"
+  logger.info "rackspace image cdn url: #{rackspaceCdnImageBaseUrl}"
   logger.info "rackspace image container: #{rackspaceImageContainer}"
+  logger.info "rackspace voice cdn url: #{rackspaceCdnVoiceBaseUrl}"
+  logger.info "rackspace voice container: #{rackspaceVoiceContainer}"
   logger.info "rackspace username: #{rackspaceUsername}"
   logger.info "session secret: #{sessionSecret}"
   logger.info "cores: #{NUM_CORES}"
   logger.info "console logging: #{logConsole}"
-  logger.info "gmail user: #{gmailUser}"
-  logger.info "gmail password: #{gmailPassword}"
-  logger.info "gmail to: #{gmailTo}"
+  logger.info "nodetime app: #{NODETIME_APP}"
   logger.info "nodetime api key: #{NODETIME_API_KEY}"
-
-
+  logger.info "use redis sentinel: #{useRedisSentinel}"
+  logger.info "redis sentinel hostname: #{redisSentinelHostname}"
+  logger.info "redis sentinel port: #{redisSentinelPort}"
+  logger.info "redis password: #{redisPassword}"
 
 
 else
 
-  if env is 'Local'
+  if NUM_CORES is 1
     logger.info "env: #{env}"
     logger.info "database: #{database}"
     logger.info "socket: #{socketPort}"
+    logger.info "address: #{bindAddress}"
+    logger.info "ssl: #{useSSL}"
     logger.info "rate limiting messages: #{RATE_LIMITING_MESSAGE}, secs: #{RATE_LIMIT_SECS_MESSAGE}, rate: #{RATE_LIMIT_RATE_MESSAGE}"
     logger.info "rate limiting ping: #{RATE_LIMITING_PING}, secs: #{RATE_LIMIT_SECS_PING}, rate: #{RATE_LIMIT_SECS_MESSAGE}"
     logger.info "rate limiting exists: #{RATE_LIMITING_EXISTS}, secs: #{RATE_LIMIT_SECS_EXISTS}, rate: #{RATE_LIMIT_RATE_EXISTS}"
@@ -170,17 +189,25 @@ else
     logger.info "messages per user: #{MESSAGES_PER_USER}"
     logger.info "debug level: #{debugLevel}"
     logger.info "google api key: #{googleApiKey}"
+    logger.info "google client id: #{googleClientId}"
+    logger.info "google client secret: #{googleClientSecret}"
+    logger.info "google redirect url: #{googleRedirectUrl}"
+    logger.info "google oauth2 code: #{googleOauth2Code}"
     logger.info "rackspace api key: #{rackspaceApiKey}"
-    logger.info "rackspace cdn url: #{rackspaceCdnBaseUrl}"
+    logger.info "rackspace image cdn url: #{rackspaceCdnImageBaseUrl}"
     logger.info "rackspace image container: #{rackspaceImageContainer}"
+    logger.info "rackspace voice cdn url: #{rackspaceCdnVoiceBaseUrl}"
+    logger.info "rackspace voice container: #{rackspaceVoiceContainer}"
     logger.info "rackspace username: #{rackspaceUsername}"
     logger.info "session secret: #{sessionSecret}"
     logger.info "cores: #{NUM_CORES}"
     logger.info "console logging: #{logConsole}"
-    logger.info "gmail user: #{gmailUser}"
-    logger.info "gmail password: #{gmailPassword}"
-    logger.info "gmail to: #{gmailTo}"
+    logger.info "nodetime app: #{NODETIME_APP}"
     logger.info "nodetime api key: #{NODETIME_API_KEY}"
+    logger.info "redis sentinel hostname: #{redisSentinelHostname}"
+    logger.info "redis sentinel port: #{redisSentinelPort}"
+    logger.info "redis password: #{redisPassword}"
+    logger.info "use redis sentinel: #{useRedisSentinel}"
 
 
   sio = undefined
@@ -189,51 +216,76 @@ else
   rcs = undefined
   pub = undefined
   sub = undefined
+  redback = undefined
   client = undefined
+  client2 = undefined
   app = undefined
   ssloptions = undefined
+  oauth2Client = undefined
 
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
-  createRedisClient = (callback, database, port, hostname, password) ->
-    if port? and hostname? and password?
-      client = require("redis").createClient(port, hostname)
-      client.auth password
-      if database?
-        client.select database, (err, res) ->
-          return callback err if err?
 
-          callback null, client
+
+
+  redis = undefined
+  if useRedisSentinel
+    redis = require 'redis-sentinel-client'
+  else
+    #use forked redis
+    redis = require 'redis'
+
+  createRedisClient = (database, port, host, password) ->
+    if port? and host?
+      tempclient = null
+      if useRedisSentinel
+        sentinel = redis.createClient(port,host, {logger: logger})
+        tempclient = sentinel.getMaster()
+
+        sentinel.on 'error', (err) -> logger.error err
+        tempclient.on 'error', (err) -> logger.error err
+      else
+        tempclient = redis.createClient(port,host)
+
+      if password?
+        tempclient.auth password
+      #if database?
+       # tempclient.select database
+        #return tempclient
 
       else
-        callback null, client
+        return tempclient
     else
-      client = require("redis").createClient()
-      if database?
-        client.select database, (err, res) ->
-          return callback err if err?
-          callback null, client
+      logger.debug "creating local redis client"
+      tempclient = null
+
+      if useRedisSentinel
+        sentinel = redis.createClient(26379, "127.0.0.1", {logger: logger})
+        tempclient = sentinel.getMaster()
+
+        sentinel.on 'error', (err) -> logger.error err
+        tempclient.on 'error', (err) -> logger.error err
       else
-        callback null, client
+        tempclient = redis.createClient()
 
-
-
-  #smtpTransport = nodemailer.createTransport("SMTP", { service: "Gmail", auth: { user: gmailUser, pass: gmailPassword}})
-  #mailOptions = { from: gmailUser, to: gmailTo, subject: "#{env}: new surespot user created" }
-
-
-  #ssl & ec
+      if database?
+        tempclient.select database
+        return tempclient
+      else
+        return tempclient
+  #ec
   serverPrivateKey = undefined
-  ssloptions = {
-  key: fs.readFileSync("ssl#{env}/surespot.key"),
-  cert: fs.readFileSync("ssl#{env}/surespot.crt")
-  }
-
-  peerCertPath = "ssl#{env}/PositiveSSLCA2.crt"
-  if fs.existsSync(peerCertPath)
-    ssloptions["ca"] = fs.readFileSync(peerCertPath)
-
   serverPrivateKey = fs.readFileSync("ec#{env}/priv.pem")
 
+  #ssl
+  if useSSL
+    ssloptions = {
+    key: fs.readFileSync("ssl#{env}/surespot.key"),
+    cert: fs.readFileSync("ssl#{env}/surespot.crt")
+    }
+
+    peerCertPath = "ssl#{env}/PositiveSSLCA2.crt"
+    if fs.existsSync(peerCertPath)
+      ssloptions["ca"] = fs.readFileSync(peerCertPath)
 
   # create EC keys like so
   # priv key
@@ -244,16 +296,25 @@ else
   # verify signature like so
   # openssl dgst -sha256 -verify key -signature sig.bin data
 
+  rc = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
+  rcs = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
+  pub = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
+  sub = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
+  client = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
+  client2 = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
+
+  redback = redbacklib.use rc
+  ratelimiterexists = redback.createRateLimit('rle', { bucket_interval: RATE_LIMIT_BUCKET_EXISTS } )
+  ratelimiterping = redback.createRateLimit('rlp', { bucket_interval: RATE_LIMIT_BUCKET_PING })
+  ratelimitercreateuser = redback.createRateLimit('rlu', { bucket_interval: RATE_LIMIT_BUCKET_CREATE_USER })
+  ratelimitermessages = redback.createRateLimit('rlm', { bucket_interval: RATE_LIMIT_BUCKET_MESSAGE })
+
 
   app = express()
   app.configure ->
-    sessionStore = new RedisStore({db: database})
-    createRedisClient ((err, c) -> rc = c), database
-    createRedisClient ((err, c) -> rcs = c), database
-    createRedisClient ((err, c) -> pub = c), database
-    createRedisClient ((err, c) -> sub = c), database
-    createRedisClient ((err, c) -> client = c), database
-
+    sessionStore = new RedisStore({
+      client: client
+    })
 
     app.use express.limit(MAX_HTTP_REQUEST_LENGTH)
     app.use express.compress()
@@ -264,14 +325,16 @@ else
     app.use express.session(
       secret: sessionSecret
       store: sessionStore
+      #set cookie expiration in ms
       cookie: { maxAge: (oneDay*3000) }
+      proxy: true
     )
     app.use passport.initialize()
     app.use passport.session({pauseStream: true})
-#    app.use expressWinston.logger({
-#    transports: transports
-#    level: debugLevel
-#    })
+    app.use expressWinston.logger({
+    transports: transports
+    level: debugLevel
+    })
     app.use app.router
     app.use expressWinston.errorLogger({
     transports: transports
@@ -282,10 +345,14 @@ else
       res.send err.status or 500
 
 
-  https.globalAgent.maxSockets = Infinity;
 
-  server = https.createServer ssloptions, app
-  server.listen socketPort
+
+
+
+  http.globalAgent.maxSockets = Infinity
+
+  server = if useSSL then http.createServer ssloptions, app else http.createServer app
+  server.listen socketPort, bindAddress
   sio = require("socket.io").listen server
 
 
@@ -295,9 +362,11 @@ else
 
   sioRedisStore = require("socket.io/lib/stores/redis")
   sio.set "store", new sioRedisStore(
+    #use forked redis
+    redis: require 'redis-sentinel-client/node_modules/redis'
     redisPub: pub
     redisSub: sub
-    redisClient: client
+    redisClient: client2
   )
 
   sio.set 'transports', ['websocket']
@@ -507,6 +576,7 @@ else
         return next err if err
         res.send keys
 
+
   getMessage = (room, id, fn) ->
     rc.zrangebyscore "m:" + room, id, id, (err, data) ->
       return fn err if err?
@@ -521,6 +591,161 @@ else
       else
         fn null, null
 
+
+  #oauth crap
+  getAuthToken = (oauth2client, callback) ->
+    #see if we have refresh token
+    rc.hget "oauth2google", "refresh_token", (err, refreshToken) ->
+      return if err?
+      if refreshToken?
+        oauth2client.credentials = { refresh_token: refreshToken }
+        callback()
+      else
+        if not googleOauth2Code?
+          logger.error 'no refresh token or oauth2 code available, exiting'
+          process.exit(1)
+        else
+          oauth2client.getToken googleOauth2Code, (err, tokens) ->
+            if err?
+              logger.error err
+              return
+
+            if not tokens?
+              logger.error "oauth2: no tokens return from google"
+              return
+
+            oauth2client.credentials = tokens
+            if tokens.refresh_token?
+              rc.hset "oauth2google", "refresh_token", tokens.refresh_token, (err, result) ->
+                return if err?
+                callback()
+
+
+  getPurchaseInfo = (client, authClient, token, callback) ->
+    if authClient.credentials?
+      client.androidpublisher.inapppurchases.get({ packageName: "com.twofours.surespot", productId: "voice_messaging", token: token }).withAuthClient(authClient).execute(callback)
+
+  #purchase handling
+  validateVoiceToken = (username, token) ->
+    return unless username? and token?
+
+    #get validation flag for this voice message token
+    rc.hget "t", "v:vm:#{token}", (err, valid) ->
+      if err?
+        logger.error err
+        return
+
+      logger.debug "validatingVoiceToken, username: #{username}, token: #{token}"
+      #check token with google
+      googleapis.discover("androidpublisher", "v1.1").execute (err, client) ->
+        if err?
+          oauth2Client = null
+          logger.error err
+          return
+
+        checkClient = (callback) ->
+          if not oauth2Client?
+            oauth2Client = new googleapis.OAuth2Client googleClientId, googleClientSecret, googleRedirectUrl
+            getAuthToken oauth2Client, callback
+          else
+            callback()
+
+        checkClient ->
+          getPurchaseInfo client, oauth2Client, token, (err, data) ->
+            if err?
+              oauth2Client = null
+              logger.error err
+              return
+            return unless data?.purchaseState?
+            logger.debug "validated voice_messaging, purchaseState: #{data.purchaseState}, token: #{token}"
+            rc.hset "t", "v:vm:#{token}", if data.purchaseState is 0 then "true" else "false"
+
+
+  updatePurchaseTokens = (username, purchaseTokens) ->
+    voiceToken = purchaseTokens?.voice_messaging ? null
+
+    #if we have something to update, update, otherwise wipe
+    userKey = "u:#{username}"
+    multi = rc.multi()
+    #single floating license implementation
+    #map username to token
+
+    #update token information
+    updateLicense = (callback) ->
+      #get this user's current token
+      rc.hget userKey, "vm", (err, currtoken) ->
+        return if err?
+        if voiceToken?
+          #get current user with token
+          rc.hget "t", "u:vm:#{voiceToken}", (err, currentuser) ->
+            return if err?
+            #if user is different remove from previous user and update mappings
+            if currentuser? and username != currentuser
+              multi.hdel "u:#{currentuser}", "vm"
+
+            else
+              #if token is different, remove old token
+              if currtoken? and voiceToken != currtoken
+                multi.hdel "t", "u:vm:#{currtoken}"
+
+            #set token to user
+            multi.hset userKey, "vm", voiceToken
+            #update token mapping to user
+            multi.hset "t", "u:vm:#{voiceToken}", username
+            callback()
+        else
+          #no token uploaded so remove old token if there was one assigned
+          if currtoken?
+            multi.hdel "t", "u:vm:#{currtoken}"
+            multi.hdel "t", "v:vm:#{currtoken}"
+          #delete token from user
+          multi.hdel userKey, "vm"
+          callback()
+
+    updateLicense ->
+      #map token to username
+      multi.exec (err, results) ->
+        return if err?
+
+        #validate token with google and set on return
+        if voiceToken?
+          validateVoiceToken username, voiceToken
+
+  updatePurchaseTokensMiddleware = (req, res, next) ->
+    logger.debug "received purchaseTokens #{req.body.purchaseTokens}"
+    purchaseTokens = null
+    try
+      purchaseTokens = JSON.parse req.body.purchaseTokens
+    catch error
+
+    updatePurchaseTokens(req.user.username, purchaseTokens)
+    next()
+
+
+
+  hasValidVoiceMessageToken = (username, callback) ->
+    rc.hget "u:#{username}", "vm", (err, token) ->
+      return callback err if err?
+      return callback null, false unless token?
+
+      rc.hget "t", "v:vm:#{token}", (err, valid) ->
+        return callback err if err?
+        return callback null, valid is "true"
+
+
+  app.post "/updatePurchaseTokens", ensureAuthenticated, (req, res, next) ->
+    return res.send 400 unless req.body.purchaseTokens?
+    logger.debug "received purchaseTokens #{req.body.purchaseTokens}"
+    purchaseTokens = null
+    try
+      purchaseTokens = JSON.parse req.body.purchaseTokens
+    catch error
+     return next error
+
+    return res.send 400 unless purchaseTokens?
+
+    updatePurchaseTokens(req.user.username, purchaseTokens)
+    res.send 204
 
 
   removeRoomMessage = (room, id, fn) ->
@@ -606,12 +831,9 @@ else
             catch error
               return callback error
 
-            if checkMessage.id? and message.id?
-              logger.debug "comparing ids"
-              checkMessage.id == message.id
-            else
-              logger.debug "comparing ivs"
-              checkMessage.iv == message.iv
+            logger.debug "comparing ivs"
+            checkMessage.iv == message.iv
+
           callback null, found
       else
         logger.debug "searching 30 messages from room: #{room} for duplicates"
@@ -624,12 +846,9 @@ else
             catch error
               return callback error
 
-            if checkMessage.id? and message.id?
-              logger.debug "comparing ids"
-              checkMessage.id == message.id
-            else
-              logger.debug "comparing ivs"
-              checkMessage.iv == message.iv
+            logger.debug "comparing ivs"
+            checkMessage.iv == message.iv
+
           callback null, found
     else
       callback null, false
@@ -725,7 +944,7 @@ else
     return friend
 
 
-  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, callback) ->
+  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, dataSize, callback) ->
     logger.debug "new message"
     time = Date.now()
 
@@ -738,6 +957,7 @@ else
     message.iv = iv
     message.data = data
     message.mimeType = mimeType
+    message.dataSize = dataSize if dataSize
     room = getRoomName(from,to)
 
 
@@ -746,7 +966,7 @@ else
       return callback new MessageError(iv, 500) unless id?
       message.id = id
 
-      logger.info "#{from}->#{to}, image: #{mimeType is "image/"}"
+      logger.info "#{from}->#{to}, mimeType: #{mimeType}"
       newMessage = JSON.stringify(message)
 
       #store messages in sorted sets
@@ -764,15 +984,22 @@ else
 
       #marketing wanted some stats
       #increment total user message / image counter
-      if mimeType is "image/"
-        multi.hincrby "u:#{from}", "ic", 1
-      else
-        multi.hincrby "u:#{from}", "mc", 1
+      switch mimeType
+        when "text/plain"
+          multi.hincrby "u:#{from}", "mc", 1
+          multi.incr "tmc"
 
-      if mimeType is "image/"
-        multi.incr "tic"
-      else
-        multi.incr "tmc"
+        when "image/"
+          multi.hincrby "u:#{from}", "ic", 1
+          multi.incr "tic"
+
+        when "audio/mp4"
+          multi.hincrby "u:#{from}", "vc", 1
+          multi.incr "tvc"
+
+
+
+
 
       deleteEarliestMessage = (callback) ->
         #check how many messages the user has total
@@ -866,7 +1093,7 @@ else
 
                 sender.send gcmmessage, regIds, 4, (err, result) ->
                   logger.debug "sendGcm result: #{JSON.stringify(result)}"
-                  gcmCallback()
+                gcmCallback()
               else
                 logger.debug "no gcm id for #{to}"
                 gcmCallback()
@@ -1004,7 +1231,8 @@ else
       ratelimitermessages.count user, RATE_LIMIT_SECS_MESSAGE, (err,requests) ->
 
         if requests > RATE_LIMIT_RATE_MESSAGE
-          logger.warn "rate limiting messages for user: #{user}, ip: #{socket.handshake.address.address}"
+          ip = client.handshake.headers['x-forwarded-for'] or client.handshake.address.address
+          logger.warn "rate limiting messages for user: #{user}, ip: #{ip}"
           try
             message = JSON.parse(data)
 
@@ -1045,7 +1273,7 @@ else
     logger.debug "received message from user #{user}"
 
     iv = message.iv
-    return callback new MessageError(data, 400) unless iv?
+    return callback new MessageError(user, 400) unless iv?
     to = message.to
     return callback new MessageError(iv, 400) unless to?
     from = message.from
@@ -1075,8 +1303,11 @@ else
 
             cipherdata = message.data
             resendId = message.resendId
-            mimeType = message.mimeType
             room = getRoomName(from, to)
+
+            mimeType = message.mimeType
+            #todo validate mimetype
+
 
             #check for dupes if message has been resent
             checkForDuplicateMessage resendId, user, room, message, (err, found) ->
@@ -1087,7 +1318,7 @@ else
                 sio.sockets.to(from).emit "message", found
                 callback()
               else
-                createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, callback
+                createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, null, callback
 
 
   sio.on "connection", (socket) ->
@@ -1159,10 +1390,8 @@ else
             ourMessageIds.push oMessage.id
             multi.zrem "m:#{username}", "m:#{room}:#{oMessage.id}"
 
-            #delete image from rackspace
-            if oMessage.mimeType is 'image/'
-              deleteImage oMessage.data
-
+            #delete file from rackspace if necessary
+            deleteFile oMessage.data, oMessage.mimeType
             callback true
           else
             theirMessageIds.push oMessage.id
@@ -1209,10 +1438,8 @@ else
           removeMessage dMessage.to, room, messageId, multi, (err, count) ->
             return callback err if err?
 
-            #delete the file if it's a file
-            if dMessage.mimeType is "image/"
-              deleteImage dMessage.data
-
+            #delete the file from the cloud if necessary
+            deleteFile dMessage.data, dMessage.mimeType
             callback()
         else
           #check if user is a user (ie. not deleted) before adding deleted message ids to the set
@@ -1237,22 +1464,24 @@ else
             return callback err if err?
             callback null, message
 
+  deleteFile = (uri, mimeType) ->
+    container = null
+    if mimeType is "image/"
+      container = rackspaceImageContainer
+    else
+      if mimeType is "audio/mp4"
+        container = rackspaceVoiceContainer
 
+    return unless container?
 
-  deleteImage = (uri) ->
     splits = uri.split('/')
     path = splits[splits.length - 1]
     logger.debug "removing file from rackspace: #{path}"
-    rackspace.removeFile rackspaceImageContainer, path, (err) ->
+    rackspace.removeFile container, path, (err) ->
       if err?
         logger.error "could not remove file from rackspace: #{path}, error: #{err}"
       else
         logger.debug "removed file from rackspace: #{path}"
-
-
-
-
-
 
   #delete single message
   app.delete "/messages/:username/:id", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, (req, res, next) ->
@@ -1331,6 +1560,7 @@ else
             return next err if err?
             res.send 204
 
+
   app.post "/images/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
 
     username = req.user.username
@@ -1340,7 +1570,6 @@ else
     form = new formidable.IncomingForm()
     form.onPart = (part) ->
       return form.handlePart part unless part.filename?
-      #  filenames[part.filename] = "uploading"
       iv = part.filename
 
       outStream = new stream.PassThrough()
@@ -1365,20 +1594,18 @@ else
         logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
         outStream.pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
-        #cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
-          #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
           if err?
             logger.error "POST /images/:username/:version, error: #{err}"
             return next err #delete filenames[part.filename]
 
           logger.debug 'upload completed'
-          url = rackspaceCdnBaseUrl + "/#{path}"
+          url = rackspaceCdnImageBaseUrl + "/#{path}"
 
           getFriendImageData username, otherUser, (err, friend) ->
             return next err if err?
 
             if friend.imageUrl?
-              deleteImage friend.imageUrl
+              deleteFile friend.imageUrl, "image/"
 
             rc.hmset "fi:#{username}", "#{otherUser}:imageUrl", url, "#{otherUser}:imageVersion", version, "#{otherUser}:imageIv", iv, (err, status) ->
               return next err if err?
@@ -1389,22 +1616,34 @@ else
 
     form.parse req
 
+  #doing more than images now, don't feel like changing the api though..yet
   app.post "/images/:fromversion/:username/:toversion", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
     #upload image to rackspace then create a message with the image url and send it to chat recipients
     username = req.user.username
     path = null
+    size = null
+    container = null
+    cdn = null
 
     form = new formidable.IncomingForm()
     form.onPart = (part) ->
       return form.handlePart part unless part.filename?
     #  filenames[part.filename] = "uploading"
-      iv = part.filename
+      ##iv = part.filename
+      mimeType = part.mime
+
+      logger.debug "checking mimeType: #{mimeType}"
+      #check valid mimetypes
+      unless mimeType in ['text/plain', 'image/','audio/mp4']
+        return res.send 400
 
       outStream = new stream.PassThrough()
 
-
       part.on 'data', (buffer) ->
         form.pause()
+
+        size += buffer.length
+        #logger.debug "received file data, length: #{buffer.length}, size: #{size}"
         #logger.debug 'received part data'
         outStream.write buffer, ->
           form.resume()
@@ -1413,49 +1652,73 @@ else
       part.on 'end', ->
         form.pause()
         #logger.debug 'received part end'
+
         outStream.end ->
           form.resume()
 
-      room = getRoomName username, req.params.username
-      getNextMessageId room, null, (id) ->
-        #todo send message error on socket
-        if not id?
-          err = new Error 'could not generate messageId'
-          logger.error "POST /images/:fromversion/:username/:toversion, error: #{err}"
-          sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
-          return next err # delete filenames[part.filename]
-
-        #no need for secure randoms for image paths
-        generateRandomBytes 'hex', (err, bytes) ->
-          if err?
-            logger.error "POST /images/:fromversion/:username/:toversion, error: #{err}"
-            sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
-            return next err #delete filenames[part.filename]
-
-          path = bytes
-          logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
-
-          outStream.pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
-
-#          cfClient.addFile rackspaceImageContainer, {remote: path, stream: outStream}, (err, uploaded) ->
-            #    rackspace.upload({container: rackspaceImageContainer, remote: path, stream: outStream }, (err) ->
+      checkPermissions = (callback) ->
+        #if it's audio make sure we have permission
+        if mimeType is "audio/mp4"
+          hasValidVoiceMessageToken username, (err, valid) ->
             if err?
-              logger.error "POST /images/:fromversion/:username/:toversion, error: #{err}"
-              sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
+              return next err
+
+            logger.debug "validated voice purchase for #{username}, valid: #{valid}"
+            #yes it's a 402
+            if not valid
+              return res.send 402
+            cdn = rackspaceCdnVoiceBaseUrl
+            container = rackspaceVoiceContainer
+            callback()
+        else
+          cdn = rackspaceCdnImageBaseUrl
+          container = rackspaceImageContainer
+          callback()
+
+
+      checkPermissions ->
+        #todo validate versions
+
+        room = getRoomName username, req.params.username
+        getNextMessageId room, null, (id) ->
+          #todo send message error on socket
+          if not id?
+            err = new Error 'could not generate messageId'
+            logger.error "fileupload, mimeType: #{mimeType} error: #{err}"
+            #sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
+            return next err # delete filenames[part.filename]
+
+          #no need for secure randoms for image paths
+          generateRandomBytes 'hex', (err, bytes) ->
+            if err?
+              logger.error "fileupload, mimeType: #{mimeType} error: #{err}"
+              #sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
               return next err #delete filenames[part.filename]
 
-            logger.debug "upload completed #{path}"
-            uri = rackspaceCdnBaseUrl + "/#{path}"
-            #uris.push uri
-            createAndSendMessage(req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, "image/", id, (err) ->
-              logger.error "error sending message on socket: #{err}" if err?)
+            path = bytes
+            logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
+
+            outStream.pipe rackspace.upload {container: container, remote: path}, (err) ->
+              if err?
+                logger.error "fileupload, mimeType: #{mimeType} error: #{err}"
+                #sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
+                return next err #delete filenames[part.filename]
+
+              logger.debug "upload completed #{path}, size: #{size}"
+              uri = cdn + "/#{path}"
+              #uris.push uri
+              createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, mimeType, id, size, (err) ->
+                logger.error "error sending message on socket: #{err}" if err?
+                return next err if err?
+                res.send 200
+
 
     form.on 'error', (err) ->
-      next new Error err
+      return next new Error err
 
     form.on 'end', ->
-      logger.debug "form end #{path}"
-      res.send 200
+      logger.debug "form end"
+
 
     form.parse req
 
@@ -1543,7 +1806,7 @@ else
   app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setCache(oneYear), getPublicKeys
   app.get "/keyversion/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted,(req, res, next) ->
     rc.get "kv:#{req.params.username}", (err, version) ->
-      return callback err if err?
+      return next err if err?
       res.send version
 
   handleReferrers = (username, referrers, callback) ->
@@ -1681,8 +1944,7 @@ else
   rateLimitByIp = (limit, limiter, seconds, rate) -> (req, res, next) ->
     return next() unless limit
 
-
-    ip = req.header('x-forwarded-for') || req.connection.remoteAddress;
+    ip = req.header('x-forwarded-for') or req.connection.remoteAddress
     #port = req.connection.remotePort
 
     #if we use this before stream we need to pause req
@@ -1724,15 +1986,29 @@ else
     #res.send 403
     next()
 
-  app.post "/users", validateVersion, validateUsernamePassword, rateLimitByIp(RATE_LIMITING_CREATE_USER, ratelimitercreateuser, RATE_LIMIT_SECS_CREATE_USER, RATE_LIMIT_RATE_CREATE_USER), createNewUser, passport.authenticate("local"), (req, res, next) ->
-    res.send 201
+  app.post "/users",
+    validateVersion,
+    validateUsernamePassword,
+    rateLimitByIp(RATE_LIMITING_CREATE_USER, ratelimitercreateuser, RATE_LIMIT_SECS_CREATE_USER, RATE_LIMIT_RATE_CREATE_USER),
+    createNewUser,
+    passport.authenticate("local"),
+    updatePurchaseTokensMiddleware,
+    (req, res, next) ->
+      res.send 201
+
+
+
 
   #end unauth'd methods
 
-  app.post "/login", passport.authenticate("local"), validateVersion, (req, res, next) ->
+
+
+
+  app.post "/login", passport.authenticate("local"), validateVersion, updatePurchaseTokensMiddleware, (req, res, next) ->
     username = req.user.username
 
     logger.debug "/login post, user #{username}"
+
     res.send 204
 
   app.post "/keytoken", setNoCache, (req, res, next) ->
@@ -1893,7 +2169,7 @@ else
 
                 sender.send gcmmessage, regIds, 4, (err, result) ->
                   logger.debug "sent gcm: #{JSON.stringify(result)}"
-                  callback null, true
+                callback null, true
               else
                 logger.debug "gcmId not set for #{friendname}"
                 callback null, true
@@ -1939,14 +2215,9 @@ else
                 return next err if err?
                 createFriendShip username, friendname, (err) ->
                   return next err if err?
-
-                  createAndSendUserControlMessage username, "added", friendname, null, (err) ->
-                    return next err if err?
-                    sendInviteResponseGcm username, friendname, 'accept', (result) ->
-                      createAndSendUserControlMessage friendname, "added", username, null, (err) ->
-                        return next err if err?
-                        sendInviteResponseGcm friendname, username, 'accept', (result) ->
-                          res.send 204
+                  sendInviteResponseGcm username, friendname, 'accept'
+                  sendInviteResponseGcm friendname, username, 'accept'
+                  res.send 204
             else
               inviteUser username, friendname, source, (err, inviteSent) ->
                 res.send if inviteSent then 204 else 403
@@ -1978,7 +2249,7 @@ else
       return callback new Error("[friend] srem failed for ir:#{username}:#{friendname}") if err?
       callback null
 
-  sendInviteResponseGcm = (username, friendname, action, callback) ->
+  sendInviteResponseGcm = (username, friendname, action) ->
     userKey = "u:" + friendname
     rc.hget userKey, "gcmId", (err, gcmId) ->
       if err?
@@ -2001,9 +2272,6 @@ else
 
         sender.send gcmmessage, regIds, 4, (err, result) ->
           logger.debug "sendGcm result: #{JSON.stringify(result)}"
-          callback result
-      else
-          callback null
 
   app.post '/invites/:username/:action', ensureAuthenticated, validateUsernameExists, (req, res, next) ->
     return next new Error 'action required' unless req.params.action?
@@ -2026,8 +2294,8 @@ else
           when 'accept'
             createFriendShip username, friendname, (err) ->
               return next err if err?
-              sendInviteResponseGcm username, friendname, action, (result) ->
-                res.send 204
+              sendInviteResponseGcm username, friendname, action
+              res.send 204
           when 'ignore'
             createAndSendUserControlMessage friendname, 'ignore', username, null, (err) ->
               return next err if err?
@@ -2327,7 +2595,7 @@ else
 
         getFriendImageData username, theirUsername, (err, friend) ->
           if friend.imageUrl?
-            deleteImage friend.imageUrl
+            deleteFile friend.imageUrl, "image/"
 
         multi.hdel "fi:#{username}", "#{theirUsername}:imageUrl", "#{theirUsername}:imageVersion", "#{theirUsername}:imageIv"
 
@@ -2502,6 +2770,7 @@ else
 
 
   passport.use new LocalStrategy ({passReqToCallback: true}), (req, username, password, done) ->
+    logger.debug "client ip: #{req.connection.remoteAddress}"
     signature = req.body.authSig
     validateUser username, password, signature, req.body.gcmId, (err, status, user) ->
       return done(err) if err?

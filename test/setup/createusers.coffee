@@ -11,7 +11,7 @@ _ = require 'underscore'
 dcrypt = require 'dcrypt'
 crypto = require 'crypto'
 
-rc = redis.createClient()
+#rc = redis.createClient()
 
 # generate keys like this: (bash)
 #  private:
@@ -21,9 +21,9 @@ rc = redis.createClient()
 
 testkeydir = '../testkeys'
 
-baseUri = "https://localhost:443"
-minclient = 0
-maxclient = 9
+baseUri = "https://96.126.119.175:443"
+minclient = 200
+maxclient = 999
 #maxsockets = 100
 
 #http.globalAgent.maxSockets = maxsockets
