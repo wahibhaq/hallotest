@@ -10,7 +10,7 @@ if env is 'Prod'
   NODETIME_API_KEY=process.env.SURESPOT_NODETIME_API_KEY
   require('nodetime').profile({
     accountKey: NODETIME_API_KEY,
-    appName: 'surespot'
+    appName: 'surespot-test'
   })
 
 cluster = require('cluster')
@@ -85,7 +85,8 @@ googleClientSecret = process.env.SURESPOT_GOOGLE_CLIENT_SECRET
 googleRedirectUrl = process.env.SURESPOT_GOOGLE_REDIRECT_URL
 googleOauth2Code = process.env.SURESPOT_GOOGLE_OAUTH2_CODE
 rackspaceApiKey = process.env.SURESPOT_RACKSPACE_API_KEY
-rackspaceCdnBaseUrl = process.env.SURESPOT_RACKSPACE_CDN_URL
+rackspaceCdnImageBaseUrl = process.env.SURESPOT_RACKSPACE_IMAGE_CDN_URL
+rackspaceCdnVoiceBaseUrl = process.env.SURESPOT_RACKSPACE_VOICE_CDN_URL
 rackspaceImageContainer = process.env.SURESPOT_RACKSPACE_IMAGE_CONTAINER
 rackspaceVoiceContainer = process.env.SURESPOT_RACKSPACE_VOICE_CONTAINER
 rackspaceUsername = process.env.SURESPOT_RACKSPACE_USERNAME
@@ -156,8 +157,9 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "google redirect url: #{googleRedirectUrl}"
   logger.info "google oauth2 code: #{googleOauth2Code}"
   logger.info "rackspace api key: #{rackspaceApiKey}"
-  logger.info "rackspace cdn url: #{rackspaceCdnBaseUrl}"
+  logger.info "rackspace image cdn url: #{rackspaceCdnImageBaseUrl}"
   logger.info "rackspace image container: #{rackspaceImageContainer}"
+  logger.info "rackspace voice cdn url: #{rackspaceCdnVoiceBaseUrl}"
   logger.info "rackspace voice container: #{rackspaceVoiceContainer}"
   logger.info "rackspace username: #{rackspaceUsername}"
   logger.info "session secret: #{sessionSecret}"
@@ -190,8 +192,9 @@ else
     logger.info "google redirect url: #{googleRedirectUrl}"
     logger.info "google oauth2 code: #{googleOauth2Code}"
     logger.info "rackspace api key: #{rackspaceApiKey}"
-    logger.info "rackspace cdn url: #{rackspaceCdnBaseUrl}"
+    logger.info "rackspace image cdn url: #{rackspaceCdnImageBaseUrl}"
     logger.info "rackspace image container: #{rackspaceImageContainer}"
+    logger.info "rackspace voice cdn url: #{rackspaceCdnVoiceBaseUrl}"
     logger.info "rackspace voice container: #{rackspaceVoiceContainer}"
     logger.info "rackspace username: #{rackspaceUsername}"
     logger.info "session secret: #{sessionSecret}"
@@ -1593,7 +1596,7 @@ else
             return next err #delete filenames[part.filename]
 
           logger.debug 'upload completed'
-          url = rackspaceCdnBaseUrl + "/#{path}"
+          url = rackspaceCdnImageBaseUrl + "/#{path}"
 
           getFriendImageData username, otherUser, (err, friend) ->
             return next err if err?
@@ -1617,6 +1620,7 @@ else
     path = null
     size = null
     container = null
+    cdn = null
 
     form = new formidable.IncomingForm()
     form.onPart = (part) ->
@@ -1660,9 +1664,11 @@ else
             #yes it's a 402
             if not valid
               return res.send 402
+            cdn = rackspaceCdnVoiceBaseUrl
             container = rackspaceVoiceContainer
             callback()
         else
+          cdn = rackspaceCdnImageBaseUrl
           container = rackspaceImageContainer
           callback()
 
@@ -1696,7 +1702,7 @@ else
                 return next err #delete filenames[part.filename]
 
               logger.debug "upload completed #{path}, size: #{size}"
-              uri = rackspaceCdnBaseUrl + "/#{path}"
+              uri = cdn + "/#{path}"
               #uris.push uri
               createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, mimeType, id, size, (err) ->
                 logger.error "error sending message on socket: #{err}" if err?
