@@ -6,13 +6,13 @@
 
 ###
 env = process.env.SURESPOT_ENV ? 'Local' # one of "Local","Stage", "Prod"
-if env is 'Prod'
-  NODETIME_APP=process.env.SURESPOT_NODETIME_APP
-  NODETIME_API_KEY=process.env.SURESPOT_NODETIME_API_KEY
-  require('nodetime').profile({
-    accountKey: NODETIME_API_KEY,
-    appName: NODETIME_APP
-  })
+#if env is 'Prod'
+#  NODETIME_APP=process.env.SURESPOT_NODETIME_APP
+#  NODETIME_API_KEY=process.env.SURESPOT_NODETIME_API_KEY
+#  require('nodetime').profile({
+#    accountKey: NODETIME_API_KEY,
+#    appName: NODETIME_APP
+#  })
 
 cluster = require('cluster')
 cookie = require("cookie")
@@ -166,8 +166,8 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "session secret: #{sessionSecret}"
   logger.info "cores: #{NUM_CORES}"
   logger.info "console logging: #{logConsole}"
-  logger.info "nodetime app: #{NODETIME_APP}"
-  logger.info "nodetime api key: #{NODETIME_API_KEY}"
+  #logger.info "nodetime app: #{NODETIME_APP}"
+  #logger.info "nodetime api key: #{NODETIME_API_KEY}"
   logger.info "use redis sentinel: #{useRedisSentinel}"
   logger.info "redis sentinel hostname: #{redisSentinelHostname}"
   logger.info "redis sentinel port: #{redisSentinelPort}"
@@ -202,8 +202,8 @@ else
     logger.info "session secret: #{sessionSecret}"
     logger.info "cores: #{NUM_CORES}"
     logger.info "console logging: #{logConsole}"
-    logger.info "nodetime app: #{NODETIME_APP}"
-    logger.info "nodetime api key: #{NODETIME_API_KEY}"
+    #logger.info "nodetime app: #{NODETIME_APP}"
+    #logger.info "nodetime api key: #{NODETIME_API_KEY}"
     logger.info "redis sentinel hostname: #{redisSentinelHostname}"
     logger.info "redis sentinel port: #{redisSentinelPort}"
     logger.info "redis password: #{redisPassword}"
@@ -2770,7 +2770,7 @@ else
 
 
   passport.use new LocalStrategy ({passReqToCallback: true}), (req, username, password, done) ->
-    logger.debug "client ip: #{req.connection.remoteAddress}"
+    #logger.debug "client ip: #{req.connection.remoteAddress}"
     signature = req.body.authSig
     validateUser username, password, signature, req.body.gcmId, (err, status, user) ->
       return done(err) if err?
