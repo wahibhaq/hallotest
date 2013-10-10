@@ -64,13 +64,14 @@ terms of a separate license:
 * [passport](https://github.com/jaredhanson/passport) - Copyright (c) 2011-2013 Jared Hanson
 * [cookie](https://github.com/shtylman/node-cookie) - Copyright (C) Roman Shtylman shtylman@gmail.com
 * [winston](https://github.com/flatiron/winston) - Copyright (c) 2010 Charlie Robbins
-* [express-winston](https://github.com/heapsource/express-winston) - Copyright (c) 2012 Firebase.co
+* [express-winston](https://github.com/heapsource/express-winston) - Copyright (c) 2012-2013 Heapsource.com 
 * [mocha](https://github.com/visionmedia/mocha) - Copyright (c) 2011-2013 TJ Holowaychuk  tj@vision-media.ca
 * [should](https://github.com/visionmedia/should.js) - Copyright (c) 2010-2011 TJ Holowaychuk tj@vision-media.ca  Copyright (c) 2011 Aseem Kishore aseem.kishore@gmail.com
 * [express](https://github.com/visionmedia/express) -  Copyright (c) 2009-2011 TJ Holowaychuk tj@vision-media.ca
 * [connect-redis](https://github.com/visionmedia/connect-redis) - Copyright (c) 2009-2011 TJ Holowaychuk tj@vision-media.ca
 * [socket.io](https://github.com/LearnBoost/socket.io) - Copyright (c) 2011 Guillermo Rauch guillermo@learnboost.com
 * [cluster](https://github.com/LearnBoost/cluster) - Copyright (c) 2011 LearnBoost <dev@learnboost.com>
+* [redis-sentinel-client](https://github.com/DocuSignDev/node-redis-sentinel-client) - Copyright (c) Node.js team at DocuSign
 * [redis](https://redis.io/) -
 redis: http://redis.io/
 Redis is open source software released under the terms of the three clause BSD license. Most of the Redis source code was written and is copyrighted by Salvatore Sanfilippo and Pieter Noordhuis. A list of other contributors can be found in the git history.
