@@ -1800,6 +1800,7 @@ else
 
         sData = JSON.stringify(data)
         logger.debug "sending: #{sData}"
+        res.set {'Content-Type': 'application/json'}
         res.send sData
 
   app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, getPublicKeys
