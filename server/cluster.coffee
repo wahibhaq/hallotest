@@ -675,18 +675,14 @@ else
       #get this user's current token
       rc.hget userKey, "vm", (err, currtoken) ->
         return if err?
+        #if they uploaded in a token
         if voiceToken?
           #get current user with token
           rc.hget "t", "u:vm:#{voiceToken}", (err, currentuser) ->
             return if err?
-            #if user is different remove from previous user and update mappings
-            if currentuser? and username != currentuser
+            #if user is different remove from current user
+            if currentuser? and username isnt currentuser
               multi.hdel "u:#{currentuser}", "vm"
-
-            else
-              #if token is different, remove old token
-              if currtoken? and voiceToken != currtoken
-                multi.hdel "t", "u:vm:#{currtoken}"
 
             #set token to user
             multi.hset userKey, "vm", voiceToken
@@ -694,12 +690,8 @@ else
             multi.hset "t", "u:vm:#{voiceToken}", username
             callback()
         else
-          #no token uploaded so remove old token if there was one assigned
-          if currtoken?
-            multi.hdel "t", "u:vm:#{currtoken}"
-            multi.hdel "t", "v:vm:#{currtoken}"
-          #delete token from user
-          multi.hdel userKey, "vm"
+          #no token uploaded so perform check on existing token
+          voiceToken = currtoken
           callback()
 
     updateLicense ->
