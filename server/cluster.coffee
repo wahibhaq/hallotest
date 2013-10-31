@@ -38,6 +38,7 @@ pause = require 'pause'
 stream = require 'stream'
 redbacklib = require 'redback'
 googleapis = require 'googleapis'
+apn = require 'apn'
 
 
 
@@ -225,7 +226,8 @@ else
 
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
 
-
+  apnOptions = { "gateway": "gateway.sandbox.push.apple.com" , "cert": "apn#{env}/cert.pem", "key": "apn#{env}/key.pem" }
+  apnConnection = new apn.Connection(apnOptions);
 
   redis = undefined
   if useRedisSentinel
@@ -1066,46 +1068,62 @@ else
           else
             theirMessage = newMessage
 
-          sendGcm = (gcmCallback) ->
-            #send gcm message
-            userKey = "u:" + to
-            rc.hget userKey, "gcmId", (err, gcm_id) ->
-              if err?
-                logger.error "error getting gcm id for user: #{to}, error: #{err}"
-                return gcmCallback()
-
-              if gcm_id?.length > 0
-                logger.debug "sending gcm message"
-                gcmmessage = new gcm.Message()
-                sender = new gcm.Sender("#{googleApiKey}")
-                gcmmessage.addData("type", "message")
-                gcmmessage.addData("to", message.to)
-                gcmmessage.addData("sentfrom", message.from)
-                gcmmessage.addData("mimeType", message.mimeType)
-                #pop entire message into gcm message if it's small enough
-                if theirMessage.length <= 3800
-                  gcmmessage.addData("message", theirMessage)
-
-                gcmmessage.delayWhileIdle = false
-                gcmmessage.timeToLive = GCM_TTL
-                #gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
-                regIds = [gcm_id]
-
-                sender.send gcmmessage, regIds, 4, (err, result) ->
-                  logger.debug "sendGcm result: #{JSON.stringify(result)}"
-                gcmCallback()
-              else
-                logger.debug "no gcm id for #{to}"
-                gcmCallback()
 
 
-          sendGcm () ->
+          sendPushMessage message.to, message.from, message.mimeType, message, theirMessage, (err) ->
 
             sio.sockets.to(to).emit "message", theirMessage
             sio.sockets.to(from).emit "message", myMessage
 
             callback()
 
+
+  sendPushMessage = (to, from, mimeType, message, messagejson,  callback) ->
+    #send gcm message
+    userKey = "u:" + to
+    rc.hmget userKey, ["gcmId", "apnToken"], (err, ids) ->
+      if err?
+        logger.error "error getting push ids for user: #{to}, error: #{err}"
+        return callback(err)
+
+      gcm_id = ids[0]
+      apn_token = ids[1]
+      if gcm_id?.length > 0
+        logger.debug "sending gcm message"
+        gcmmessage = new gcm.Message()
+        sender = new gcm.Sender("#{googleApiKey}")
+        gcmmessage.addData("type", "message")
+        gcmmessage.addData("to", to)
+        gcmmessage.addData("sentfrom", from)
+        gcmmessage.addData("mimeType", mimeType)
+        #pop entire message into gcm message if it's small enough
+        if messagejson.length <= 3800
+          gcmmessage.addData("message", messagejson)
+
+        gcmmessage.delayWhileIdle = false
+        gcmmessage.timeToLive = GCM_TTL
+        #gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
+        regIds = [gcm_id]
+
+        sender.send gcmmessage, regIds, 4, (err, result) ->
+          logger.debug "sendGcm result: #{JSON.stringify(result)}"
+
+      else
+        logger.debug "no gcm id for #{to}"
+
+      if apn_token?.length > 0
+        logger.debug "sending apn message"
+        apnDevice = new apn.Device apn_token
+        note = new apn.Notification()
+        note.alert = "#{to}: new message from #{from}"
+        note.payload = message
+
+        apnConnection.pushNotification note, apnDevice
+
+      else
+        logger.debug "no apn token for #{to}"
+
+      callback()
 
   getMessagePointerData = (from, messagePointer) ->
     #delete message
@@ -1504,7 +1522,7 @@ else
     username = req.body.username
     password = req.body.password
     authSig = req.body.authSig
-    validateUser username, password, authSig, null, (err, status, user) ->
+    validateUser username, password, authSig, null, null, (err, status, user) ->
       return next err if err?
       return res.send 403 unless user?
 
@@ -1524,7 +1542,7 @@ else
     username = req.body.username
     password = req.body.password
     authSig = req.body.authSig
-    validateUser username, password, authSig, null, (err, status, user) ->
+    validateUser username, password, authSig, null, null, (err, status, user) ->
       return next err if err?
       return res.send 403 unless user?
 
@@ -2020,7 +2038,7 @@ else
     username = req.body.username
     password = req.body.password
     authSig = req.body.authSig
-    validateUser username, password, authSig, null, (err, status, user) ->
+    validateUser username, password, authSig, null, null, (err, status, user) ->
       return next err if err?
       return res.send 403 unless user?
 
@@ -2081,7 +2099,7 @@ else
           return res.send 403 unless verified
 
           authSig = req.body.authSig
-          validateUser username, password, authSig, null, (err, status, user) ->
+          validateUser username, password, authSig, null, null, (err, status, user) ->
             return next err if err?
             return res.send 403 unless user?
 
@@ -2115,7 +2133,7 @@ else
     password = req.body.password
     authSig = req.body.authSig
 
-    validateUser username, password, authSig, null, (err, status, user) ->
+    validateUser username, password, authSig, null, null, (err, status, user) ->
       return next err if err?
       res.send status
 
@@ -2125,6 +2143,7 @@ else
     rc.hset userKey, "gcmId", gcmId, (err) ->
       return next err if err?
       res.send 204
+
 
 
   inviteUser = (username, friendname, source, callback) ->
@@ -2406,7 +2425,7 @@ else
         return res.send 403 unless verified
 
         authSig = req.body.authSig
-        validateUser username, password, authSig, null, (err, status, user) ->
+        validateUser username, password, authSig, null, null, (err, status, user) ->
           return next(err) if err?
           return res.send 403 unless user?
 
@@ -2533,7 +2552,7 @@ else
         return res.send 403 unless verified
 
         authSig = req.body.authSig
-        validateUser username, password, authSig, null, (err, status, user) ->
+        validateUser username, password, authSig, null, null, (err, status, user) ->
           return next(err) if err?
           return res.send 403 unless user?
 
@@ -2740,7 +2759,7 @@ else
     return crypto.createVerify('sha256').update(b1).update(b2).update(random).verify(pubKey, signature)
 
 
-  validateUser = (username, password, signature, gcmId, done) ->
+  validateUser = (username, password, signature, gcmId, apnToken, done) ->
     return done(null, 403) if (!checkUser(username) or !checkPassword(password))
     return done(null, 403) if signature.length < 16
     userKey = "u:" + username
@@ -2763,8 +2782,13 @@ else
           logger.debug "validated, #{username}: #{verified}"
 
           #update the gcm if we were sent one and it's different and we're verified
-          if gcmId? and user.gcmId isnt gcmId and verified
-            rc.hset userKey, 'gcmId', gcmId
+          if verified
+            if gcmId? and user.gcmId isnt gcmId
+              rc.hset userKey, 'gcmId', gcmId
+
+            if apnToken? and user.apnToken isnt apnToken
+              rc.hset userKey, 'apnToken', apnToken
+
 
           status = if verified then 204 else 403
           done null, status, if verified then user else null
@@ -2773,7 +2797,7 @@ else
   passport.use new LocalStrategy ({passReqToCallback: true}), (req, username, password, done) ->
     #logger.debug "client ip: #{req.connection.remoteAddress}"
     signature = req.body.authSig
-    validateUser username, password, signature, req.body.gcmId, (err, status, user) ->
+    validateUser username, password, signature, req.body.gcmId, req.body.apnToken, (err, status, user) ->
       return done(err) if err?
 
       switch status
