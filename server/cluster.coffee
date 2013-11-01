@@ -1068,23 +1068,20 @@ else
           else
             theirMessage = newMessage
 
+          sio.sockets.to(to).emit "message", theirMessage
+          sio.sockets.to(from).emit "message", myMessage
+
+          sendPushMessage message, theirMessage
+          callback()
 
 
-          sendPushMessage message.to, message.from, message.mimeType, message, theirMessage, (err) ->
-
-            sio.sockets.to(to).emit "message", theirMessage
-            sio.sockets.to(from).emit "message", myMessage
-
-            callback()
-
-
-  sendPushMessage = (to, from, mimeType, message, messagejson,  callback) ->
+  sendPushMessage = (message, messagejson) ->
     #send gcm message
-    userKey = "u:" + to
+    userKey = "u:" + message.to
     rc.hmget userKey, ["gcmId", "apnToken"], (err, ids) ->
       if err?
-        logger.error "error getting push ids for user: #{to}, error: #{err}"
-        return callback(err)
+        logger.error "error getting push ids for user: #{message.to}, error: #{err}"
+        return
 
       gcm_id = ids[0]
       apn_token = ids[1]
@@ -1093,9 +1090,9 @@ else
         gcmmessage = new gcm.Message()
         sender = new gcm.Sender("#{googleApiKey}")
         gcmmessage.addData("type", "message")
-        gcmmessage.addData("to", to)
-        gcmmessage.addData("sentfrom", from)
-        gcmmessage.addData("mimeType", mimeType)
+        gcmmessage.addData("to", message.to)
+        gcmmessage.addData("sentfrom", message.from)
+        gcmmessage.addData("mimeType", message.mimeType)
         #pop entire message into gcm message if it's small enough
         if messagejson.length <= 3800
           gcmmessage.addData("message", messagejson)
@@ -1109,21 +1106,22 @@ else
           logger.debug "sendGcm result: #{JSON.stringify(result)}"
 
       else
-        logger.debug "no gcm id for #{to}"
+        logger.debug "no gcm id for #{message.to}"
 
       if apn_token?.length > 0
         logger.debug "sending apn message"
         apnDevice = new apn.Device apn_token
         note = new apn.Notification()
-        note.alert = "#{to}: new message from #{from}"
-        note.payload = message
+
+        #apns are only 256 chars so we can't send the message
+
+        note.alert = { "loc-key": "notification_message", "loc-args": [message.to, message.from] }
+        note.payload = { to:message.to,from: message.from, id:message.id }
 
         apnConnection.pushNotification note, apnDevice
 
       else
-        logger.debug "no apn token for #{to}"
-
-      callback()
+        logger.debug "no apn token for #{message.to}"
 
   getMessagePointerData = (from, messagePointer) ->
     #delete message
@@ -2167,36 +2165,50 @@ else
           return callback err if err?
           createAndSendUserControlMessage friendname, "invite", username, null, (err) ->
             return callback err if err?
-            #sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
-            #send gcm message
-            userKey = "u:" + friendname
-            rc.hget userKey, "gcmId", (err, gcmId) ->
-              if err?
-                logger.error "inviteUser, " + err
-                return callback new Error err
-
-              if gcmId?.length > 0
-                logger.debug "sending gcm notification"
-                gcmmessage = new gcm.Message()
-                sender = new gcm.Sender("#{googleApiKey}")
-                gcmmessage.addData "type", "invite"
-                gcmmessage.addData "sentfrom", username
-                gcmmessage.addData "to", friendname
-                gcmmessage.delayWhileIdle = false
-                gcmmessage.timeToLive = GCM_TTL
-                #gcmmessage.collapseKey = "invite:#{friendname}"
-                regIds = [gcmId]
-
-                sender.send gcmmessage, regIds, 4, (err, result) ->
-                  logger.debug "sent gcm: #{JSON.stringify(result)}"
-                callback null, true
-              else
-                logger.debug "gcmId not set for #{friendname}"
-                callback null, true
+            #send push notification
+            sendPushInvite username, friendname
+            callback null, true
       else
         callback null, false
 
+  sendPushInvite = (username, friendname) ->
+    userKey = "u:" + friendname
 
+    rc.hmget userKey, ["gcmId", "apnToken"], (err, ids) ->
+      if err?
+        logger.error "inviteUser, " + err
+        return
+
+      gcmId = ids[0]
+      apn_token = ids[1]
+
+      if gcmId?.length > 0
+        logger.debug "sending gcm notification"
+        gcmmessage = new gcm.Message()
+        sender = new gcm.Sender("#{googleApiKey}")
+        gcmmessage.addData "type", "invite"
+        gcmmessage.addData "sentfrom", username
+        gcmmessage.addData "to", friendname
+        gcmmessage.delayWhileIdle = false
+        gcmmessage.timeToLive = GCM_TTL
+        #gcmmessage.collapseKey = "invite:#{friendname}"
+        regIds = [gcmId]
+
+        sender.send gcmmessage, regIds, 4, (err, result) ->
+          logger.debug "sent gcm: #{JSON.stringify(result)}"
+      else
+        logger.debug "gcmId not set for #{friendname}"
+
+      if apn_token?.length > 0
+        logger.debug "sending apn invite"
+        apnDevice = new apn.Device apn_token
+        note = new apn.Notification()
+        note.alert = { "loc-key": "notification_invite", "loc-args": [friendname, username] }
+
+        apnConnection.pushNotification note, apnDevice
+
+      else
+        logger.debug "no apn token for #{friendname}"
 
   handleInvite = (req,res,next) ->
     friendname = req.params.username
@@ -2235,8 +2247,8 @@ else
                 return next err if err?
                 createFriendShip username, friendname, (err) ->
                   return next err if err?
-                  sendInviteResponseGcm username, friendname, 'accept'
-                  sendInviteResponseGcm friendname, username, 'accept'
+                  sendPushInviteAccept username, friendname
+                  sendPushInviteAccept friendname, username
                   res.send 204
             else
               inviteUser username, friendname, source, (err, inviteSent) ->
@@ -2269,12 +2281,16 @@ else
       return callback new Error("[friend] srem failed for ir:#{username}:#{friendname}") if err?
       callback null
 
-  sendInviteResponseGcm = (username, friendname, action) ->
+  sendPushInviteAccept = (username, friendname) ->
     userKey = "u:" + friendname
-    rc.hget userKey, "gcmId", (err, gcmId) ->
+
+    rc.hmget userKey, ["gcmId", "apnToken"], (err, ids) ->
       if err?
         logger.error "sendInviteResponseGcm, #{err}"
-        return next new Error err
+        return
+
+      gcmId = ids[0]
+      apn_token = ids[1]
 
       if gcmId?.length > 0
         logger.debug "sending gcm invite response notification"
@@ -2284,7 +2300,7 @@ else
         gcmmessage.addData("type", "inviteResponse")
         gcmmessage.addData "sentfrom", username
         gcmmessage.addData "to", friendname
-        gcmmessage.addData("response", action)
+        gcmmessage.addData("response", "accept")
         gcmmessage.delayWhileIdle = false
         gcmmessage.timeToLive = GCM_TTL
         #gcmmessage.collapseKey = "inviteResponse"
@@ -2292,6 +2308,19 @@ else
 
         sender.send gcmmessage, regIds, 4, (err, result) ->
           logger.debug "sendGcm result: #{JSON.stringify(result)}"
+
+
+      if apn_token?.length > 0
+        logger.debug "sending apn invite response"
+        apnDevice = new apn.Device apn_token
+        note = new apn.Notification()
+        note.alert = { "loc-key": "notification_invite_accept", "loc-args": [friendname, username] }
+
+        apnConnection.pushNotification note, apnDevice
+
+      else
+        logger.debug "no apn token for #{friendname}"
+
 
   app.post '/invites/:username/:action', ensureAuthenticated, validateUsernameExists, (req, res, next) ->
     return next new Error 'action required' unless req.params.action?
@@ -2314,7 +2343,7 @@ else
           when 'accept'
             createFriendShip username, friendname, (err) ->
               return next err if err?
-              sendInviteResponseGcm username, friendname, action
+              sendPushInviteAccept username, friendname
               res.send 204
           when 'ignore'
             createAndSendUserControlMessage friendname, 'ignore', username, null, (err) ->
