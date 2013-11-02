@@ -770,6 +770,8 @@ else
     multi.exec fn
 
   filterDeletedMessages = (username, room, messages, callback) ->
+    return callback null, messages unless messages?
+
     rc.smembers "d:#{username}:#{room}", (err, deleted) ->
       scoredMessages = []
       sendMessages = []
@@ -1753,6 +1755,85 @@ else
       else
         callback null, null
 
+
+  #get all the data we need in one call
+  app.post "/latestdata/:userControlId", ensureAuthenticated, setNoCache, (req, res, next) ->
+    #need array of {un: username, mid: , cmid: }
+
+    # "/messagedata/:username/:messageid/:controlmessageid", e
+
+    username = req.user.username
+    userControlId = req.params.userControlId
+    spotIds = undefined
+
+    try
+      logger.debug "latestdata, spotIds: #{req.body.spotIds}"
+      spotIds = JSON.parse req.body.spotIds
+    catch error
+
+    return next new Error 'no userControlId' unless userControlId?
+
+    getUserControlMessagesAfterId username, parseInt(userControlId), (err, userControlMessages) ->
+      return next err if err?
+
+      data =  {}
+      if userControlMessages?.length > 0
+        data.userControlMessages = userControlMessages
+        logger.debug "/latestdata userControlMessages: #{userControlMessages}"
+      getConversationIds req.user.username, (err, conversationIds) ->
+        return next err if err?
+
+        return res.send data unless conversationIds?
+        controlIdKeys = []
+        async.each(
+          conversationIds
+          (item, callback) ->
+            controlIdKeys.push "cm:#{item.conversation}:id"
+            callback()
+          (err) ->
+            return next err if err?
+            #Get control ids
+            rc.mget controlIdKeys, (err, rControlIds) ->
+              return next err if err?
+              controlIds = []
+              _.each(
+                rControlIds
+                (controlId, i) ->
+                  if controlId isnt null
+                    controlIds.push({conversation: conversationIds[i].conversation, id: controlId}))
+
+              if conversationIds.length > 0
+                data.conversationIds = conversationIds
+
+              if controlIds.length > 0
+                data.controlIds = controlIds
+
+              addNewMessages = (callback) ->
+                if spotIds?.length > 0
+                  messages = []
+                  #get messages
+                  async.each(
+                    spotIds,
+                    (item, callback1) ->
+                      getMessagesAndControlMessages(username, item.username, item.messageid,item.controlmessageid, (err, data) ->
+                        return callback1() if err?
+                        if data?
+                          messages.push data
+                        callback1())
+                    (err) ->
+                      if messages.length > 0
+                        data.messageData = messages
+                      callback())
+                else
+                  callback()
+
+              addNewMessages ->
+                logger.debug "/latestdata sending #{JSON.stringify(data)}"
+                res.set {'Content-Type': 'application/json'}
+                res.send data)
+
+
+
   app.get "/latestids/:userControlId", ensureAuthenticated, setNoCache, (req, res, next) ->
     userControlId = req.params.userControlId
     return next new Error 'no userControlId' unless userControlId?
@@ -1805,21 +1886,33 @@ else
       res.send data
 
   app.get "/messagedata/:username/:messageid/:controlmessageid", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
-    getMessagesAfterId req.user.username, getRoomName(req.user.username, req.params.username), parseInt(req.params.messageid), (err, messageData) ->
+    getMessagesAndControlMessages req.user.username, req.params.username, req.params.messageid, req.params.controlmessageid, (err, data) ->
       return next err if err?
-      #return messages since id
-      getControlMessagesAfterId getRoomName(req.user.username, req.params.username), parseInt(req.params.controlmessageid), (err, controlData) ->
-        return next err if err?
-        data = {}
-        if messageData?
-          data.messages = messageData
-        if controlData?
-          data.controlMessages = controlData
-
+      if data?
         sData = JSON.stringify(data)
         logger.debug "sending: #{sData}"
         res.set {'Content-Type': 'application/json'}
         res.send sData
+      else
+        res.send 204
+
+  getMessagesAndControlMessages = (username, friendname, messageId, controlMessageId, callback) ->
+    spot = getRoomName(username, friendname)
+    getMessagesAfterId username, spot, parseInt(messageId), (err, messageData) ->
+
+      return callback err if err?
+      #return messages since id
+      getControlMessagesAfterId spot, parseInt(controlMessageId), (err, controlData) ->
+        return callback err if err?
+        data = {}
+        data.username = friendname
+        if messageData?.length > 0
+          data.messages = messageData
+        if controlData?.length > 0
+          data.controlMessages = controlData
+
+
+        callback null, if data.messages? and data.controlMessages? then data else null
 
   app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, getPublicKeys
   app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setCache(oneYear), getPublicKeys
