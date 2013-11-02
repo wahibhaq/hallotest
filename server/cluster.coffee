@@ -1114,9 +1114,10 @@ else
         note = new apn.Notification()
 
         #apns are only 256 chars so we can't send the message
-
+        #note.badge = 1
         note.alert = { "loc-key": "notification_message", "loc-args": [message.to, message.from] }
         note.payload = { to:message.to,from: message.from, id:message.id }
+        note.sound = "default"
 
         apnConnection.pushNotification note, apnDevice
 
@@ -1795,6 +1796,7 @@ else
               res.send data)
 
 
+
   #get remote messages before id
   app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
     #return messages since id
@@ -2203,6 +2205,8 @@ else
         logger.debug "sending apn invite"
         apnDevice = new apn.Device apn_token
         note = new apn.Notification()
+        #note.badge = 1
+        note.sound = "default"
         note.alert = { "loc-key": "notification_invite", "loc-args": [friendname, username] }
 
         apnConnection.pushNotification note, apnDevice
@@ -2286,7 +2290,7 @@ else
 
     rc.hmget userKey, ["gcmId", "apnToken"], (err, ids) ->
       if err?
-        logger.error "sendInviteResponseGcm, #{err}"
+        logger.error "sendPushInviteAccept, #{err}"
         return
 
       gcmId = ids[0]
@@ -2314,6 +2318,8 @@ else
         logger.debug "sending apn invite response"
         apnDevice = new apn.Device apn_token
         note = new apn.Notification()
+        #note.badge = 1
+        note.sound = "default"
         note.alert = { "loc-key": "notification_invite_accept", "loc-args": [friendname, username] }
 
         apnConnection.pushNotification note, apnDevice
