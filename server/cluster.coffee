@@ -1716,7 +1716,7 @@ else
       data =  {}
       if userControlMessages?.length > 0
         data.userControlMessages = userControlMessages
-        #logger.debug "/latestdata userControlMessages: #{userControlMessages}"
+
       getConversationIds req.user.username, (err, conversationIds) ->
         return next err if err?
 
@@ -1837,7 +1837,6 @@ else
   getMessagesAndControlMessages = (username, friendname, messageId, controlMessageId, callback) ->
     spot = getRoomName(username, friendname)
     getMessagesAfterId username, spot, parseInt(messageId), (err, messageData) ->
-
       return callback err if err?
       #return messages since id
       getControlMessagesAfterId spot, parseInt(controlMessageId), (err, controlData) ->
@@ -1849,8 +1848,8 @@ else
         if controlData?.length > 0
           data.controlMessages = controlData
 
-
         callback null, if data.messages? or data.controlMessages? then data else null
+
 
   app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, getPublicKeys
   app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setCache(oneYear), getPublicKeys
