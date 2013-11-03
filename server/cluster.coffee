@@ -1032,7 +1032,8 @@ else
           sio.sockets.to(to).emit "message", theirMessage
           sio.sockets.to(from).emit "message", myMessage
 
-          sendPushMessage message, theirMessage
+          process.nextTick ->
+            sendPushMessage message, theirMessage
           callback()
 
 
@@ -1123,7 +1124,6 @@ else
           logger.debug "control message deleteCount #{deleteCount}"
           multi.zremrangebyrank controlMessageKey, 0, deleteCount-1 if deleteCount > 0
           callback()
-
 
       deleteEarliestControlMessage (err) ->
         logger.warn "delete earliest control message error: #{err}" if err?
@@ -2163,7 +2163,8 @@ else
           createAndSendUserControlMessage friendname, "invite", username, null, (err) ->
             return callback err if err?
             #send push notification
-            sendPushInvite username, friendname
+            process.nextTick ->
+              sendPushInvite(username, friendname)
             callback null, true
       else
         callback null, false
@@ -2246,8 +2247,9 @@ else
                 return next err if err?
                 createFriendShip username, friendname, (err) ->
                   return next err if err?
-                  sendPushInviteAccept username, friendname
-                  sendPushInviteAccept friendname, username
+                  process.nextTick ->
+                    sendPushInviteAccept username, friendname
+                    sendPushInviteAccept friendname, username
                   res.send 204
             else
               inviteUser username, friendname, source, (err, inviteSent) ->
@@ -2344,7 +2346,8 @@ else
           when 'accept'
             createFriendShip username, friendname, (err) ->
               return next err if err?
-              sendPushInviteAccept username, friendname
+              process.nextTick ->
+                sendPushInviteAccept(username, friendname)
               res.send 204
           when 'ignore'
             createAndSendUserControlMessage friendname, 'ignore', username, null, (err) ->
@@ -2406,8 +2409,6 @@ else
                 friend[0].flags += 1
               else
                 friends.push new Friend name, 1
-
-
 
             rc.get "cu:#{username}:id", (err, id) ->
               friendstate = {}
