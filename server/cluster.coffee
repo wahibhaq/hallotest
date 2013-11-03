@@ -36,11 +36,8 @@ pkgcloud = require 'pkgcloud'
 utils = require('connect/lib/utils')
 pause = require 'pause'
 stream = require 'stream'
-redbacklib = require 'redback'
 googleapis = require 'googleapis'
 apn = require 'apn'
-
-
 
 #constants
 USERNAME_LENGTH = 20
@@ -54,28 +51,6 @@ oneYear = 31536000000
 oneDay = 86400
 
 #config
-
-#rate limit to MESSAGE_RATE_LIMIT_RATE / MESSAGE_RATE_LIMIT_SECS (seconds) (allows us to get request specific on top of iptables)
-RATE_LIMITING_MESSAGE=process.env.SURESPOT_RATE_LIMITING_MESSAGE is "true"
-RATE_LIMITING_PING=process.env.SURESPOT_RATE_LIMITING_PING is "true"
-RATE_LIMITING_EXISTS=process.env.SURESPOT_RATE_LIMITING_EXISTS is "true"
-RATE_LIMITING_CREATE_USER=process.env.SURESPOT_RATE_LIMITING_CREATE_USER is "true"
-
-RATE_LIMIT_BUCKET_MESSAGE = process.env.SURESPOT_RATE_LIMIT_BUCKET_MESSAGE ? 5
-RATE_LIMIT_SECS_MESSAGE = process.env.SURESPOT_RATE_LIMIT_SECS_MESSAGE ? 10
-RATE_LIMIT_RATE_MESSAGE = process.env.SURESPOT_RATE_LIMIT_RATE_MESSAGE ? 100
-
-RATE_LIMIT_BUCKET_PING = process.env.SURESPOT_RATE_LIMIT_BUCKET_PING ? 60
-RATE_LIMIT_SECS_PING = process.env.SURESPOT_RATE_LIMIT_SECS_PING ? 10
-RATE_LIMIT_RATE_PING = process.env.SURESPOT_RATE_LIMIT_RATE_PING ? 100
-
-RATE_LIMIT_BUCKET_EXISTS = process.env.SURESPOT_RATE_LIMIT_BUCKET_EXISTS ? 20
-RATE_LIMIT_SECS_EXISTS = process.env.SURESPOT_RATE_LIMIT_SECS_EXISTS ? 10
-RATE_LIMIT_RATE_EXISTS = process.env.SURESPOT_RATE_LIMIT_RATE_EXISTS ? 100
-
-RATE_LIMIT_BUCKET_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_BUCKET_CREATE_USER ? 600
-RATE_LIMIT_SECS_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_SECS_CREATE_USER ? 86400
-RATE_LIMIT_RATE_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_RATE_CREATE_USER ? 1000
 
 MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 500
 debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'debug'
@@ -147,10 +122,6 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "socket: #{socketPort}"
   logger.info "address: #{bindAddress}"
   logger.info "ssl: #{useSSL}"
-  logger.info "rate limiting messages: #{RATE_LIMITING_MESSAGE}, int: #{RATE_LIMIT_BUCKET_MESSAGE}, secs: #{RATE_LIMIT_SECS_MESSAGE}, rate: #{RATE_LIMIT_RATE_MESSAGE}"
-  logger.info "rate limiting ping: #{RATE_LIMITING_PING}, int: #{RATE_LIMIT_BUCKET_PING}, secs: #{RATE_LIMIT_SECS_PING}, rate: #{RATE_LIMIT_RATE_PING}"
-  logger.info "rate limiting exists: #{RATE_LIMITING_EXISTS}, int: #{RATE_LIMIT_BUCKET_EXISTS}, secs: #{RATE_LIMIT_SECS_EXISTS}, rate: #{RATE_LIMIT_RATE_EXISTS}"
-  logger.info "rate limiting create users: #{RATE_LIMITING_CREATE_USER}, int: #{RATE_LIMIT_BUCKET_CREATE_USER}, secs: #{RATE_LIMIT_SECS_CREATE_USER}, rate: #{RATE_LIMIT_RATE_CREATE_USER}"
   logger.info "messages per user: #{MESSAGES_PER_USER}"
   logger.info "debug level: #{debugLevel}"
   logger.info "google api key: #{googleApiKey}"
@@ -183,10 +154,6 @@ else
     logger.info "socket: #{socketPort}"
     logger.info "address: #{bindAddress}"
     logger.info "ssl: #{useSSL}"
-    logger.info "rate limiting messages: #{RATE_LIMITING_MESSAGE}, secs: #{RATE_LIMIT_SECS_MESSAGE}, rate: #{RATE_LIMIT_RATE_MESSAGE}"
-    logger.info "rate limiting ping: #{RATE_LIMITING_PING}, secs: #{RATE_LIMIT_SECS_PING}, rate: #{RATE_LIMIT_SECS_MESSAGE}"
-    logger.info "rate limiting exists: #{RATE_LIMITING_EXISTS}, secs: #{RATE_LIMIT_SECS_EXISTS}, rate: #{RATE_LIMIT_RATE_EXISTS}"
-    logger.info "rate limiting create users: #{RATE_LIMITING_CREATE_USER}, secs: #{RATE_LIMIT_SECS_CREATE_USER}, rate: #{RATE_LIMIT_RATE_CREATE_USER}"
     logger.info "messages per user: #{MESSAGES_PER_USER}"
     logger.info "debug level: #{debugLevel}"
     logger.info "google api key: #{googleApiKey}"
@@ -217,7 +184,6 @@ else
   rcs = undefined
   pub = undefined
   sub = undefined
-  redback = undefined
   client = undefined
   client2 = undefined
   app = undefined
@@ -304,13 +270,6 @@ else
   sub = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
   client = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
   client2 = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
-
-  redback = redbacklib.use rc
-  ratelimiterexists = redback.createRateLimit('rle', { bucket_interval: RATE_LIMIT_BUCKET_EXISTS } )
-  ratelimiterping = redback.createRateLimit('rlp', { bucket_interval: RATE_LIMIT_BUCKET_PING })
-  ratelimitercreateuser = redback.createRateLimit('rlu', { bucket_interval: RATE_LIMIT_BUCKET_CREATE_USER })
-  ratelimitermessages = redback.createRateLimit('rlm', { bucket_interval: RATE_LIMIT_BUCKET_MESSAGE })
-
 
   app = express()
   app.configure ->
@@ -1244,28 +1203,6 @@ else
 
 
   handleMessages = (socket, user, data) ->
-    #rate limit
-    if RATE_LIMITING_MESSAGE
-      ratelimitermessages.add user
-      ratelimitermessages.count user, RATE_LIMIT_SECS_MESSAGE, (err,requests) ->
-
-        if requests > RATE_LIMIT_RATE_MESSAGE
-          ip = client.handshake.headers['x-forwarded-for'] or client.handshake.address.address
-          logger.warn "rate limiting messages for user: #{user}, ip: #{ip}"
-          try
-            message = JSON.parse(data)
-
-            if typeIsArray message
-              #todo  this blows but will do for now
-              #would be better to send bulk messages on a separate event but fuck it
-              return socket.emit "messageError", new MessageError(data, 429)
-            else
-              return socket.emit "messageError", new MessageError(message.iv, 429)
-          catch error
-            return socket.emit "messageError", new MessageError(data, 500)
-
-
-
     message = undefined
     #todo check from and to exist and are friends
     try
@@ -1913,7 +1850,7 @@ else
           data.controlMessages = controlData
 
 
-        callback null, if data.messages? and data.controlMessages? then data else null
+        callback null, if data.messages? or data.controlMessages? then data else null
 
   app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, getPublicKeys
   app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setCache(oneYear), getPublicKeys
@@ -2051,41 +1988,14 @@ else
                     next()
 
 
-
-
-
-  rateLimitByIp = (limit, limiter, seconds, rate) -> (req, res, next) ->
-    return next() unless limit
-
-    ip = req.header('x-forwarded-for') or req.connection.remoteAddress
-    #port = req.connection.remotePort
-
-    #if we use this before stream we need to pause req
-
-    #hash the ip, no data is associated so doesn't really need to be secure, also ip address + port is 48 bit range so don't need crazy hashing function
-    hash = crypto.createHash('md4').update(ip).digest('base64')
-    logger.debug "checking rate limiting, hash: #{hash}, seconds: #{seconds}, rate: #{rate}"
-
-    limiter.add hash
-    limiter.count hash, seconds, (err, requests) ->
-      return next err if err?
-      if requests > rate
-        username = req.body.username
-        logger.warn "rate limiting ip: #{ip}" + if username? then ", user: #{username}" else "" #", port #{port}"
-        return res.send 429
-      else
-        next()
-
-
-
   # unauth'd methods have rate limit
-  app.head "/ping", rateLimitByIp(RATE_LIMITING_PING, ratelimiterping, RATE_LIMIT_SECS_PING, RATE_LIMIT_RATE_PING), (req,res,next) ->
+  app.head "/ping", (req,res,next) ->
     rc.time (err, time) ->
       return next err if err?
       return next new Error 'redis does not know what time it is' unless time
       res.send 204
 
-  app.get "/users/:username/exists", rateLimitByIp(RATE_LIMITING_EXISTS, ratelimiterexists, RATE_LIMIT_SECS_EXISTS, RATE_LIMIT_RATE_EXISTS), setNoCache, (req, res, next) ->
+  app.get "/users/:username/exists", setNoCache, (req, res, next) ->
     userExistsOrDeleted req.params.username, true, (err, exists) ->
       return next err if err?
       res.send exists
@@ -2102,7 +2012,6 @@ else
   app.post "/users",
     validateVersion,
     validateUsernamePassword,
-    rateLimitByIp(RATE_LIMITING_CREATE_USER, ratelimitercreateuser, RATE_LIMIT_SECS_CREATE_USER, RATE_LIMIT_RATE_CREATE_USER),
     createNewUser,
     passport.authenticate("local"),
     updatePurchaseTokensMiddleware,
@@ -2110,13 +2019,7 @@ else
       res.send 201
 
 
-
-
   #end unauth'd methods
-
-
-
-
   app.post "/login", passport.authenticate("local"), validateVersion, updatePurchaseTokensMiddleware, (req, res, next) ->
     username = req.user.username
 
@@ -2158,7 +2061,6 @@ else
     return next new Error('dsa public key required') unless req.body?.dsaPub?
     return next new Error 'key version required' unless req.body?.keyVersion?
     return next new Error 'token signature required' unless req.body?.tokenSig?
-
 
     #make sure the key versions match
     username = req.body.username

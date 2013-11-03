@@ -252,10 +252,7 @@ describe "delete messages and friends test", () ->
                 if err
                   done err
                 else
-                  res.statusCode.should.equal 200
-                  data = JSON.parse(body)
-                  data.messages.length.should.equal 0
-
+                  res.statusCode.should.equal 204
                   done()
 
     it 'the other user should have 3 of his messages left', (done) ->
@@ -318,10 +315,7 @@ describe "delete messages and friends test", () ->
                 if err
                   done err
                 else
-                  res.statusCode.should.equal 200
-                  data = JSON.parse(body)
-                  data.messages.length.should.equal 0
-
+                  res.statusCode.should.equal 204
                   done()
 
   describe 'delete friend', ->
