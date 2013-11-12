@@ -1137,6 +1137,7 @@ else
     createMessageControlMessage from, to, room, action, data, moredata, (err, message) ->
       return callback err if err?
       sio.sockets.to(to).emit "control", message
+      sio.sockets.to(from).emit "control", message
       callback null, message
 
   createAndSendUserControlMessage = (to, action, data, moredata, callback) ->
@@ -1903,8 +1904,6 @@ else
     version = req.body.version
 
     logger.debug "version: #{version}"
-    #return next new Error('username required') unless username?
-    #return next new Error('password required') unless password?
 
     userExistsOrDeleted username, true, (err, exists) ->
       return next err if err?
