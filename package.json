@@ -34,7 +34,7 @@
     "pkgcloud": "~0.8.1",
     "nodemailer": "~0.4.4",
     "nodetime": "~0.8.13",
-    "redis-sentinel-client": "~0.1.4",
+    "redis-sentinel-client": "~0.1.4                                                                                          ",
     "googleapis": "~0.4.5",
     "dcrypt": "https://github.com/surespot/dcrypt/tarball/master",
     "apn": "~1.4.2",

@@ -6,13 +6,6 @@
 
 ###
 env = process.env.SURESPOT_ENV ? 'Local' # one of "Local","Stage", "Prod"
-#if env is 'Prod'
-#  NODETIME_APP=process.env.SURESPOT_NODETIME_APP
-#  NODETIME_API_KEY=process.env.SURESPOT_NODETIME_API_KEY
-#  require('nodetime').profile({
-#    accountKey: NODETIME_API_KEY,
-#    appName: NODETIME_APP
-#  })
 
 cluster = require('cluster')
 cookie = require("cookie")
@@ -84,6 +77,7 @@ redisPassword = process.env.SURESPOT_REDIS_PASSWORD ? null
 useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
 bindAddress = process.env.SURESPOT_BIND_ADDRESS ? "0.0.0.0"
 dontUseSSL = process.env.SURESPOT_DONT_USE_SSL is "true"
+apnGateway = process.env.SURESPOT_APN_GATEWAY
 useSSL = not dontUseSSL
 
 
@@ -138,6 +132,7 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "google client secret: #{googleClientSecret}"
   logger.info "google redirect url: #{googleRedirectUrl}"
   logger.info "google oauth2 code: #{googleOauth2Code}"
+  logger.info "apple apn gateway: #{apnGateway}"
   logger.info "rackspace api key: #{rackspaceApiKey}"
   logger.info "rackspace image cdn url: #{rackspaceCdnImageBaseUrl}"
   logger.info "rackspace image container: #{rackspaceImageContainer}"
@@ -147,8 +142,6 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "session secret: #{sessionSecret}"
   logger.info "cores: #{NUM_CORES}"
   logger.info "console logging: #{logConsole}"
-  #logger.info "nodetime app: #{NODETIME_APP}"
-  #logger.info "nodetime api key: #{NODETIME_API_KEY}"
   logger.info "use redis sentinel: #{useRedisSentinel}"
   logger.info "redis sentinel hostname: #{redisSentinelHostname}"
   logger.info "redis sentinel port: #{redisSentinelPort}"
@@ -171,6 +164,7 @@ else
     logger.info "google client secret: #{googleClientSecret}"
     logger.info "google redirect url: #{googleRedirectUrl}"
     logger.info "google oauth2 code: #{googleOauth2Code}"
+    logger.info "apple apn gateway: #{apnGateway}"
     logger.info "rackspace api key: #{rackspaceApiKey}"
     logger.info "rackspace image cdn url: #{rackspaceCdnImageBaseUrl}"
     logger.info "rackspace image container: #{rackspaceImageContainer}"
@@ -180,8 +174,6 @@ else
     logger.info "session secret: #{sessionSecret}"
     logger.info "cores: #{NUM_CORES}"
     logger.info "console logging: #{logConsole}"
-    #logger.info "nodetime app: #{NODETIME_APP}"
-    #logger.info "nodetime api key: #{NODETIME_API_KEY}"
     logger.info "redis sentinel hostname: #{redisSentinelHostname}"
     logger.info "redis sentinel port: #{redisSentinelPort}"
     logger.info "redis password: #{redisPassword}"
@@ -203,7 +195,7 @@ else
 
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
 
-  apnOptions = { "gateway": "gateway.sandbox.push.apple.com" , "cert": "apn#{env}/cert.pem", "key": "apn#{env}/key.pem" }
+  apnOptions = { "gateway": apnGateway , "cert": "apn#{env}/cert.pem", "key": "apn#{env}/key.pem" }
   apnConnection = new apn.Connection(apnOptions);
 
   redis = undefined
