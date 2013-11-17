@@ -392,7 +392,7 @@ describe "surespot chat test", () ->
           done err
         else
           messageData = JSON.parse(body)
-          messageData.messages.should.not.exist
+          should.not.exist messageData.messages
           done()
 
   it 'sending 3 messages then asking for messages after the 2nd messages should return 1 message with the correct id, and 2 delete control messages for the prior deletes', (done) ->

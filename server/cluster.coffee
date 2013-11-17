@@ -6,13 +6,6 @@
 
 ###
 env = process.env.SURESPOT_ENV ? 'Local' # one of "Local","Stage", "Prod"
-#if env is 'Prod'
-#  NODETIME_APP=process.env.SURESPOT_NODETIME_APP
-#  NODETIME_API_KEY=process.env.SURESPOT_NODETIME_API_KEY
-#  require('nodetime').profile({
-#    accountKey: NODETIME_API_KEY,
-#    appName: NODETIME_APP
-#  })
 
 cluster = require('cluster')
 cookie = require("cookie")
@@ -38,8 +31,8 @@ pause = require 'pause'
 stream = require 'stream'
 redbacklib = require 'redback'
 googleapis = require 'googleapis'
-
-
+apn = require 'apn'
+uaparser = require 'ua-parser'
 
 #constants
 USERNAME_LENGTH = 20
@@ -56,25 +49,9 @@ oneDay = 86400
 
 #rate limit to MESSAGE_RATE_LIMIT_RATE / MESSAGE_RATE_LIMIT_SECS (seconds) (allows us to get request specific on top of iptables)
 RATE_LIMITING_MESSAGE=process.env.SURESPOT_RATE_LIMITING_MESSAGE is "true"
-RATE_LIMITING_PING=process.env.SURESPOT_RATE_LIMITING_PING is "true"
-RATE_LIMITING_EXISTS=process.env.SURESPOT_RATE_LIMITING_EXISTS is "true"
-RATE_LIMITING_CREATE_USER=process.env.SURESPOT_RATE_LIMITING_CREATE_USER is "true"
-
 RATE_LIMIT_BUCKET_MESSAGE = process.env.SURESPOT_RATE_LIMIT_BUCKET_MESSAGE ? 5
 RATE_LIMIT_SECS_MESSAGE = process.env.SURESPOT_RATE_LIMIT_SECS_MESSAGE ? 10
 RATE_LIMIT_RATE_MESSAGE = process.env.SURESPOT_RATE_LIMIT_RATE_MESSAGE ? 100
-
-RATE_LIMIT_BUCKET_PING = process.env.SURESPOT_RATE_LIMIT_BUCKET_PING ? 60
-RATE_LIMIT_SECS_PING = process.env.SURESPOT_RATE_LIMIT_SECS_PING ? 10
-RATE_LIMIT_RATE_PING = process.env.SURESPOT_RATE_LIMIT_RATE_PING ? 100
-
-RATE_LIMIT_BUCKET_EXISTS = process.env.SURESPOT_RATE_LIMIT_BUCKET_EXISTS ? 20
-RATE_LIMIT_SECS_EXISTS = process.env.SURESPOT_RATE_LIMIT_SECS_EXISTS ? 10
-RATE_LIMIT_RATE_EXISTS = process.env.SURESPOT_RATE_LIMIT_RATE_EXISTS ? 100
-
-RATE_LIMIT_BUCKET_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_BUCKET_CREATE_USER ? 600
-RATE_LIMIT_SECS_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_SECS_CREATE_USER ? 86400
-RATE_LIMIT_RATE_CREATE_USER = process.env.SURESPOT_RATE_LIMIT_RATE_CREATE_USER ? 1000
 
 MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 500
 debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'debug'
@@ -100,6 +77,7 @@ redisPassword = process.env.SURESPOT_REDIS_PASSWORD ? null
 useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
 bindAddress = process.env.SURESPOT_BIND_ADDRESS ? "0.0.0.0"
 dontUseSSL = process.env.SURESPOT_DONT_USE_SSL is "true"
+apnGateway = process.env.SURESPOT_APN_GATEWAY
 useSSL = not dontUseSSL
 
 
@@ -147,9 +125,6 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "address: #{bindAddress}"
   logger.info "ssl: #{useSSL}"
   logger.info "rate limiting messages: #{RATE_LIMITING_MESSAGE}, int: #{RATE_LIMIT_BUCKET_MESSAGE}, secs: #{RATE_LIMIT_SECS_MESSAGE}, rate: #{RATE_LIMIT_RATE_MESSAGE}"
-  logger.info "rate limiting ping: #{RATE_LIMITING_PING}, int: #{RATE_LIMIT_BUCKET_PING}, secs: #{RATE_LIMIT_SECS_PING}, rate: #{RATE_LIMIT_RATE_PING}"
-  logger.info "rate limiting exists: #{RATE_LIMITING_EXISTS}, int: #{RATE_LIMIT_BUCKET_EXISTS}, secs: #{RATE_LIMIT_SECS_EXISTS}, rate: #{RATE_LIMIT_RATE_EXISTS}"
-  logger.info "rate limiting create users: #{RATE_LIMITING_CREATE_USER}, int: #{RATE_LIMIT_BUCKET_CREATE_USER}, secs: #{RATE_LIMIT_SECS_CREATE_USER}, rate: #{RATE_LIMIT_RATE_CREATE_USER}"
   logger.info "messages per user: #{MESSAGES_PER_USER}"
   logger.info "debug level: #{debugLevel}"
   logger.info "google api key: #{googleApiKey}"
@@ -157,6 +132,7 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "google client secret: #{googleClientSecret}"
   logger.info "google redirect url: #{googleRedirectUrl}"
   logger.info "google oauth2 code: #{googleOauth2Code}"
+  logger.info "apple apn gateway: #{apnGateway}"
   logger.info "rackspace api key: #{rackspaceApiKey}"
   logger.info "rackspace image cdn url: #{rackspaceCdnImageBaseUrl}"
   logger.info "rackspace image container: #{rackspaceImageContainer}"
@@ -166,8 +142,6 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "session secret: #{sessionSecret}"
   logger.info "cores: #{NUM_CORES}"
   logger.info "console logging: #{logConsole}"
-  #logger.info "nodetime app: #{NODETIME_APP}"
-  #logger.info "nodetime api key: #{NODETIME_API_KEY}"
   logger.info "use redis sentinel: #{useRedisSentinel}"
   logger.info "redis sentinel hostname: #{redisSentinelHostname}"
   logger.info "redis sentinel port: #{redisSentinelPort}"
@@ -183,9 +157,6 @@ else
     logger.info "address: #{bindAddress}"
     logger.info "ssl: #{useSSL}"
     logger.info "rate limiting messages: #{RATE_LIMITING_MESSAGE}, secs: #{RATE_LIMIT_SECS_MESSAGE}, rate: #{RATE_LIMIT_RATE_MESSAGE}"
-    logger.info "rate limiting ping: #{RATE_LIMITING_PING}, secs: #{RATE_LIMIT_SECS_PING}, rate: #{RATE_LIMIT_SECS_MESSAGE}"
-    logger.info "rate limiting exists: #{RATE_LIMITING_EXISTS}, secs: #{RATE_LIMIT_SECS_EXISTS}, rate: #{RATE_LIMIT_RATE_EXISTS}"
-    logger.info "rate limiting create users: #{RATE_LIMITING_CREATE_USER}, secs: #{RATE_LIMIT_SECS_CREATE_USER}, rate: #{RATE_LIMIT_RATE_CREATE_USER}"
     logger.info "messages per user: #{MESSAGES_PER_USER}"
     logger.info "debug level: #{debugLevel}"
     logger.info "google api key: #{googleApiKey}"
@@ -193,6 +164,7 @@ else
     logger.info "google client secret: #{googleClientSecret}"
     logger.info "google redirect url: #{googleRedirectUrl}"
     logger.info "google oauth2 code: #{googleOauth2Code}"
+    logger.info "apple apn gateway: #{apnGateway}"
     logger.info "rackspace api key: #{rackspaceApiKey}"
     logger.info "rackspace image cdn url: #{rackspaceCdnImageBaseUrl}"
     logger.info "rackspace image container: #{rackspaceImageContainer}"
@@ -202,8 +174,6 @@ else
     logger.info "session secret: #{sessionSecret}"
     logger.info "cores: #{NUM_CORES}"
     logger.info "console logging: #{logConsole}"
-    #logger.info "nodetime app: #{NODETIME_APP}"
-    #logger.info "nodetime api key: #{NODETIME_API_KEY}"
     logger.info "redis sentinel hostname: #{redisSentinelHostname}"
     logger.info "redis sentinel port: #{redisSentinelPort}"
     logger.info "redis password: #{redisPassword}"
@@ -225,7 +195,8 @@ else
 
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
 
-
+  apnOptions = { "gateway": apnGateway , "cert": "apn#{env}/cert.pem", "key": "apn#{env}/key.pem" }
+  apnConnection = new apn.Connection(apnOptions);
 
   redis = undefined
   if useRedisSentinel
@@ -304,9 +275,6 @@ else
   client2 = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
 
   redback = redbacklib.use rc
-  ratelimiterexists = redback.createRateLimit('rle', { bucket_interval: RATE_LIMIT_BUCKET_EXISTS } )
-  ratelimiterping = redback.createRateLimit('rlp', { bucket_interval: RATE_LIMIT_BUCKET_PING })
-  ratelimitercreateuser = redback.createRateLimit('rlu', { bucket_interval: RATE_LIMIT_BUCKET_CREATE_USER })
   ratelimitermessages = redback.createRateLimit('rlm', { bucket_interval: RATE_LIMIT_BUCKET_MESSAGE })
 
 
@@ -760,6 +728,8 @@ else
     multi.exec fn
 
   filterDeletedMessages = (username, room, messages, callback) ->
+    return callback null, messages unless messages?
+
     rc.smembers "d:#{username}:#{room}", (err, deleted) ->
       scoredMessages = []
       sendMessages = []
@@ -1058,46 +1028,62 @@ else
           else
             theirMessage = newMessage
 
-          sendGcm = (gcmCallback) ->
-            #send gcm message
-            userKey = "u:" + to
-            rc.hget userKey, "gcmId", (err, gcm_id) ->
-              if err?
-                logger.error "error getting gcm id for user: #{to}, error: #{err}"
-                return gcmCallback()
+          sio.sockets.to(to).emit "message", theirMessage
+          sio.sockets.to(from).emit "message", myMessage
 
-              if gcm_id?.length > 0
-                logger.debug "sending gcm message"
-                gcmmessage = new gcm.Message()
-                sender = new gcm.Sender("#{googleApiKey}")
-                gcmmessage.addData("type", "message")
-                gcmmessage.addData("to", message.to)
-                gcmmessage.addData("sentfrom", message.from)
-                gcmmessage.addData("mimeType", message.mimeType)
-                #pop entire message into gcm message if it's small enough
-                if theirMessage.length <= 3800
-                  gcmmessage.addData("message", theirMessage)
-
-                gcmmessage.delayWhileIdle = false
-                gcmmessage.timeToLive = GCM_TTL
-                #gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
-                regIds = [gcm_id]
-
-                sender.send gcmmessage, regIds, 4, (err, result) ->
-                  logger.debug "sendGcm result: #{JSON.stringify(result)}"
-                gcmCallback()
-              else
-                logger.debug "no gcm id for #{to}"
-                gcmCallback()
+          process.nextTick ->
+            sendPushMessage message, theirMessage
+          callback()
 
 
-          sendGcm () ->
+  sendPushMessage = (message, messagejson) ->
+    #send gcm message
+    userKey = "u:" + message.to
+    rc.hmget userKey, ["gcmId", "apnToken"], (err, ids) ->
+      if err?
+        logger.error "error getting push ids for user: #{message.to}, error: #{err}"
+        return
 
-            sio.sockets.to(to).emit "message", theirMessage
-            sio.sockets.to(from).emit "message", myMessage
+      gcm_id = ids[0]
+      apn_token = ids[1]
+      if gcm_id?.length > 0
+        logger.debug "sending gcm message"
+        gcmmessage = new gcm.Message()
+        sender = new gcm.Sender("#{googleApiKey}")
+        gcmmessage.addData("type", "message")
+        gcmmessage.addData("to", message.to)
+        gcmmessage.addData("sentfrom", message.from)
+        gcmmessage.addData("mimeType", message.mimeType)
+        #pop entire message into gcm message if it's small enough
+        if messagejson.length <= 3800
+          gcmmessage.addData("message", messagejson)
 
-            callback()
+        gcmmessage.delayWhileIdle = false
+        gcmmessage.timeToLive = GCM_TTL
+        #gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
+        regIds = [gcm_id]
 
+        sender.send gcmmessage, regIds, 4, (err, result) ->
+          logger.debug "sendGcm result: #{JSON.stringify(result)}"
+
+      else
+        logger.debug "no gcm id for #{message.to}"
+
+      if apn_token?.length > 0
+        logger.debug "sending apn message"
+        apnDevice = new apn.Device apn_token
+        note = new apn.Notification()
+
+        #apns are only 256 chars so we can't send the message
+        #note.badge = 1
+        note.alert = { "loc-key": "notification_message", "loc-args": [message.to, message.from] }
+        note.payload = { to:message.to,from: message.from, id:message.id }
+        note.sound = "default"
+
+        apnConnection.pushNotification note, apnDevice
+
+      else
+        logger.debug "no apn token for #{message.to}"
 
   getMessagePointerData = (from, messagePointer) ->
     #delete message
@@ -1138,7 +1124,6 @@ else
           multi.zremrangebyrank controlMessageKey, 0, deleteCount-1 if deleteCount > 0
           callback()
 
-
       deleteEarliestControlMessage (err) ->
         logger.warn "delete earliest control message error: #{err}" if err?
         multi.zadd "cm:#{room}", id, sMessage
@@ -1151,6 +1136,7 @@ else
     createMessageControlMessage from, to, room, action, data, moredata, (err, message) ->
       return callback err if err?
       sio.sockets.to(to).emit "control", message
+      sio.sockets.to(from).emit "control", message
       callback null, message
 
   createAndSendUserControlMessage = (to, action, data, moredata, callback) ->
@@ -1496,7 +1482,7 @@ else
     username = req.body.username
     password = req.body.password
     authSig = req.body.authSig
-    validateUser username, password, authSig, null, (err, status, user) ->
+    validateUser username, password, authSig, null, null, (err, status, user) ->
       return next err if err?
       return res.send 403 unless user?
 
@@ -1516,7 +1502,7 @@ else
     username = req.body.username
     password = req.body.password
     authSig = req.body.authSig
-    validateUser username, password, authSig, null, (err, status, user) ->
+    validateUser username, password, authSig, null, null, (err, status, user) ->
       return next err if err?
       return res.send 403 unless user?
 
@@ -1728,6 +1714,85 @@ else
       else
         callback null, null
 
+
+  #get all the data we need in one call
+  app.post "/latestdata/:userControlId", ensureAuthenticated, setNoCache, (req, res, next) ->
+    #need array of {un: username, mid: , cmid: }
+
+    # "/messagedata/:username/:messageid/:controlmessageid", e
+
+    username = req.user.username
+    userControlId = req.params.userControlId
+    spotIds = undefined
+
+    try
+      logger.debug "latestdata, spotIds: #{req.body.spotIds}"
+      spotIds = JSON.parse req.body.spotIds
+    catch error
+
+    return next new Error 'no userControlId' unless userControlId?
+
+    getUserControlMessagesAfterId username, parseInt(userControlId), (err, userControlMessages) ->
+      return next err if err?
+
+      data =  {}
+      if userControlMessages?.length > 0
+        data.userControlMessages = userControlMessages
+
+      getConversationIds req.user.username, (err, conversationIds) ->
+        return next err if err?
+
+        return res.send data unless conversationIds?
+        controlIdKeys = []
+        async.each(
+          conversationIds
+          (item, callback) ->
+            controlIdKeys.push "cm:#{item.conversation}:id"
+            callback()
+          (err) ->
+            return next err if err?
+            #Get control ids
+            rc.mget controlIdKeys, (err, rControlIds) ->
+              return next err if err?
+              controlIds = []
+              _.each(
+                rControlIds
+                (controlId, i) ->
+                  if controlId isnt null
+                    controlIds.push({conversation: conversationIds[i].conversation, id: controlId}))
+
+              if conversationIds.length > 0
+                data.conversationIds = conversationIds
+
+              if controlIds.length > 0
+                data.controlIds = controlIds
+
+              addNewMessages = (callback) ->
+                if spotIds?.length > 0
+                  messages = []
+                  #get messages
+                  async.each(
+                    spotIds,
+                    (item, callback1) ->
+                      getMessagesAndControlMessages(username, item.username, item.messageid,item.controlmessageid, (err, data) ->
+                        return callback1() if err?
+                        if data?
+                          messages.push data
+                        callback1())
+                    (err) ->
+                      if messages.length > 0
+                        data.messageData = messages
+                      callback())
+                else
+                  callback()
+
+              addNewMessages ->
+                logger.debug "/latestdata sending #{JSON.stringify(data)}"
+                res.set {'Content-Type': 'application/json'}
+                res.send data)
+
+
+
   app.get "/latestids/:userControlId", ensureAuthenticated, setNoCache, (req, res, next) ->
     userControlId = req.params.userControlId
     return next new Error 'no userControlId' unless userControlId?
@@ -1771,6 +1836,7 @@ else
               res.send data)
 
 
+
   #get remote messages before id
   app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
     #return messages since id
@@ -1779,20 +1845,33 @@ else
       res.send data
 
   app.get "/messagedata/:username/:messageid/:controlmessageid", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
-    getMessagesAfterId req.user.username, getRoomName(req.user.username, req.params.username), parseInt(req.params.messageid), (err, messageData) ->
+    getMessagesAndControlMessages req.user.username, req.params.username, req.params.messageid, req.params.controlmessageid, (err, data) ->
       return next err if err?
-      #return messages since id
-      getControlMessagesAfterId getRoomName(req.user.username, req.params.username), parseInt(req.params.controlmessageid), (err, controlData) ->
-        return next err if err?
-        data = {}
-        if messageData?
-          data.messages = messageData
-        if controlData?
-          data.controlMessages = controlData
-
+      if data?
         sData = JSON.stringify(data)
         logger.debug "sending: #{sData}"
+        res.set {'Content-Type': 'application/json'}
         res.send sData
+      else
+        logger.debug "no new messages for user #{req.user.username} for friend #{req.params.username}"
+        res.send 204
+
+  getMessagesAndControlMessages = (username, friendname, messageId, controlMessageId, callback) ->
+    spot = getRoomName(username, friendname)
+    getMessagesAfterId username, spot, parseInt(messageId), (err, messageData) ->
+      return callback err if err?
+      #return messages since id
+      getControlMessagesAfterId spot, parseInt(controlMessageId), (err, controlData) ->
+        return callback err if err?
+        data = {}
+        data.username = friendname
+        if messageData?.length > 0
+          data.messages = messageData
+        if controlData?.length > 0
+          data.controlMessages = controlData
+
+        callback null, if data.messages? or data.controlMessages? then data else null
+
 
   app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, getPublicKeys
   app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setCache(oneYear), getPublicKeys
@@ -1832,6 +1911,10 @@ else
 
   #they didn't have surespot on their phone so they came here so direct them to the play store
   app.get "/autoinvite/:username/:source", validateUsernameExists, (req, res, next) ->
+
+    #ua = uaparser.parse req.headers['user-agent']
+    #logger.debug "user agent: #{ua.toString()}, family: #{ua.os.family}"
+
     username = req.params.username
     source = req.params.source
 
@@ -1846,8 +1929,6 @@ else
     version = req.body.version
 
     logger.debug "version: #{version}"
-    #return next new Error('username required') unless username?
-    #return next new Error('password required') unless password?
 
     userExistsOrDeleted username, true, (err, exists) ->
       return next err if err?
@@ -1930,41 +2011,22 @@ else
                     next()
 
 
+  # unauth'd methods
+  app.get "/ping", (req,res,next) ->
+    ua = uaparser.parse req.headers['user-agent']
+    #logger.debug "user agent: #{ua.toString()}, family: #{ua.os.family}"
 
-
-
-  rateLimitByIp = (limit, limiter, seconds, rate) -> (req, res, next) ->
-    return next() unless limit
-
-    ip = req.header('x-forwarded-for') or req.connection.remoteAddress
-    #port = req.connection.remotePort
-
-    #if we use this before stream we need to pause req
-
-    #hash the ip, no data is associated so doesn't really need to be secure, also ip address + port is 48 bit range so don't need crazy hashing function
-    hash = crypto.createHash('md4').update(ip).digest('base64')
-    logger.debug "checking rate limiting, hash: #{hash}, seconds: #{seconds}, rate: #{rate}"
-
-    limiter.add hash
-    limiter.count hash, seconds, (err, requests) ->
-      return next err if err?
-      if requests > rate
-        username = req.body.username
-        logger.warn "rate limiting ip: #{ip}" + if username? then ", user: #{username}" else "" #", port #{port}"
-        return res.send 429
-      else
-        next()
-
-
-
-  # unauth'd methods have rate limit
-  app.head "/ping", rateLimitByIp(RATE_LIMITING_PING, ratelimiterping, RATE_LIMIT_SECS_PING, RATE_LIMIT_RATE_PING), (req,res,next) ->
     rc.time (err, time) ->
       return next err if err?
       return next new Error 'redis does not know what time it is' unless time
       res.send 204
 
-  app.get "/users/:username/exists", rateLimitByIp(RATE_LIMITING_EXISTS, ratelimiterexists, RATE_LIMIT_SECS_EXISTS, RATE_LIMIT_RATE_EXISTS), setNoCache, (req, res, next) ->
+#  app.get "/iosinvite/:username", validateUsernameExists, (req, res, next) ->
+#    inviteText = "Please click on the link above to install or open surespot and invite #{req.params.username}"
+#    res.send '<meta name="viewport" content="width=device-width">' + inviteText + '<br><br><meta name="apple-itunes-app" content="app-id=352861751, app-argument=https://www.surespot.me/user=' + "#{req.params.username}" + '"/>'
+
+
+  app.get "/users/:username/exists", setNoCache, (req, res, next) ->
     userExistsOrDeleted req.params.username, true, (err, exists) ->
       return next err if err?
       res.send exists
@@ -1981,7 +2043,6 @@ else
   app.post "/users",
     validateVersion,
     validateUsernamePassword,
-    rateLimitByIp(RATE_LIMITING_CREATE_USER, ratelimitercreateuser, RATE_LIMIT_SECS_CREATE_USER, RATE_LIMIT_RATE_CREATE_USER),
     createNewUser,
     passport.authenticate("local"),
     updatePurchaseTokensMiddleware,
@@ -1989,13 +2050,7 @@ else
       res.send 201
 
 
-
-
   #end unauth'd methods
-
-
-
-
   app.post "/login", passport.authenticate("local"), validateVersion, updatePurchaseTokensMiddleware, (req, res, next) ->
     username = req.user.username
 
@@ -2011,7 +2066,7 @@ else
     username = req.body.username
     password = req.body.password
     authSig = req.body.authSig
-    validateUser username, password, authSig, null, (err, status, user) ->
+    validateUser username, password, authSig, null, null, (err, status, user) ->
       return next err if err?
       return res.send 403 unless user?
 
@@ -2037,7 +2092,6 @@ else
     return next new Error('dsa public key required') unless req.body?.dsaPub?
     return next new Error 'key version required' unless req.body?.keyVersion?
     return next new Error 'token signature required' unless req.body?.tokenSig?
-
 
     #make sure the key versions match
     username = req.body.username
@@ -2072,7 +2126,7 @@ else
           return res.send 403 unless verified
 
           authSig = req.body.authSig
-          validateUser username, password, authSig, null, (err, status, user) ->
+          validateUser username, password, authSig, null, null, (err, status, user) ->
             return next err if err?
             return res.send 403 unless user?
 
@@ -2106,7 +2160,7 @@ else
     password = req.body.password
     authSig = req.body.authSig
 
-    validateUser username, password, authSig, null, (err, status, user) ->
+    validateUser username, password, authSig, null, null, (err, status, user) ->
       return next err if err?
       res.send status
 
@@ -2116,6 +2170,7 @@ else
     rc.hset userKey, "gcmId", gcmId, (err) ->
       return next err if err?
       res.send 204
+
 
 
   inviteUser = (username, friendname, source, callback) ->
@@ -2139,36 +2194,53 @@ else
           return callback err if err?
           createAndSendUserControlMessage friendname, "invite", username, null, (err) ->
             return callback err if err?
-            #sio.sockets.in(friendname).emit "notification", {type: 'invite', data: username}
-            #send gcm message
-            userKey = "u:" + friendname
-            rc.hget userKey, "gcmId", (err, gcmId) ->
-              if err?
-                logger.error "inviteUser, " + err
-                return callback new Error err
-
-              if gcmId?.length > 0
-                logger.debug "sending gcm notification"
-                gcmmessage = new gcm.Message()
-                sender = new gcm.Sender("#{googleApiKey}")
-                gcmmessage.addData "type", "invite"
-                gcmmessage.addData "sentfrom", username
-                gcmmessage.addData "to", friendname
-                gcmmessage.delayWhileIdle = false
-                gcmmessage.timeToLive = GCM_TTL
-                #gcmmessage.collapseKey = "invite:#{friendname}"
-                regIds = [gcmId]
-
-                sender.send gcmmessage, regIds, 4, (err, result) ->
-                  logger.debug "sent gcm: #{JSON.stringify(result)}"
-                callback null, true
-              else
-                logger.debug "gcmId not set for #{friendname}"
-                callback null, true
+            #send push notification
+            process.nextTick ->
+              sendPushInvite(username, friendname)
+            callback null, true
       else
         callback null, false
 
+  sendPushInvite = (username, friendname) ->
+    userKey = "u:" + friendname
 
+    rc.hmget userKey, ["gcmId", "apnToken"], (err, ids) ->
+      if err?
+        logger.error "inviteUser, " + err
+        return
+
+      gcmId = ids[0]
+      apn_token = ids[1]
+
+      if gcmId?.length > 0
+        logger.debug "sending gcm notification"
+        gcmmessage = new gcm.Message()
+        sender = new gcm.Sender("#{googleApiKey}")
+        gcmmessage.addData "type", "invite"
+        gcmmessage.addData "sentfrom", username
+        gcmmessage.addData "to", friendname
+        gcmmessage.delayWhileIdle = false
+        gcmmessage.timeToLive = GCM_TTL
+        #gcmmessage.collapseKey = "invite:#{friendname}"
+        regIds = [gcmId]
+
+        sender.send gcmmessage, regIds, 4, (err, result) ->
+          logger.debug "sent gcm: #{JSON.stringify(result)}"
+      else
+        logger.debug "gcmId not set for #{friendname}"
+
+      if apn_token?.length > 0
+        logger.debug "sending apn invite"
+        apnDevice = new apn.Device apn_token
+        note = new apn.Notification()
+        #note.badge = 1
+        note.sound = "default"
+        note.alert = { "loc-key": "notification_invite", "loc-args": [friendname, username] }
+
+        apnConnection.pushNotification note, apnDevice
+
+      else
+        logger.debug "no apn token for #{friendname}"
 
   handleInvite = (req,res,next) ->
     friendname = req.params.username
@@ -2207,8 +2279,9 @@ else
                 return next err if err?
                 createFriendShip username, friendname, (err) ->
                   return next err if err?
-                  sendInviteResponseGcm username, friendname, 'accept'
-                  sendInviteResponseGcm friendname, username, 'accept'
+                  process.nextTick ->
+                    sendPushInviteAccept username, friendname
+                    sendPushInviteAccept friendname, username
                   res.send 204
             else
               inviteUser username, friendname, source, (err, inviteSent) ->
@@ -2241,12 +2314,16 @@ else
       return callback new Error("[friend] srem failed for ir:#{username}:#{friendname}") if err?
       callback null
 
-  sendInviteResponseGcm = (username, friendname, action) ->
+  sendPushInviteAccept = (username, friendname) ->
     userKey = "u:" + friendname
-    rc.hget userKey, "gcmId", (err, gcmId) ->
+
+    rc.hmget userKey, ["gcmId", "apnToken"], (err, ids) ->
       if err?
-        logger.error "sendInviteResponseGcm, #{err}"
-        return next new Error err
+        logger.error "sendPushInviteAccept, #{err}"
+        return
+
+      gcmId = ids[0]
+      apn_token = ids[1]
 
       if gcmId?.length > 0
         logger.debug "sending gcm invite response notification"
@@ -2256,7 +2333,7 @@ else
         gcmmessage.addData("type", "inviteResponse")
         gcmmessage.addData "sentfrom", username
         gcmmessage.addData "to", friendname
-        gcmmessage.addData("response", action)
+        gcmmessage.addData("response", "accept")
         gcmmessage.delayWhileIdle = false
         gcmmessage.timeToLive = GCM_TTL
         #gcmmessage.collapseKey = "inviteResponse"
@@ -2264,6 +2341,21 @@ else
 
         sender.send gcmmessage, regIds, 4, (err, result) ->
           logger.debug "sendGcm result: #{JSON.stringify(result)}"
+
+
+      if apn_token?.length > 0
+        logger.debug "sending apn invite response"
+        apnDevice = new apn.Device apn_token
+        note = new apn.Notification()
+        #note.badge = 1
+        note.sound = "default"
+        note.alert = { "loc-key": "notification_invite_accept", "loc-args": [friendname, username] }
+
+        apnConnection.pushNotification note, apnDevice
+
+      else
+        logger.debug "no apn token for #{friendname}"
+
 
   app.post '/invites/:username/:action', ensureAuthenticated, validateUsernameExists, (req, res, next) ->
     return next new Error 'action required' unless req.params.action?
@@ -2286,7 +2378,8 @@ else
           when 'accept'
             createFriendShip username, friendname, (err) ->
               return next err if err?
-              sendInviteResponseGcm username, friendname, action
+              process.nextTick ->
+                sendPushInviteAccept(username, friendname)
               res.send 204
           when 'ignore'
             createAndSendUserControlMessage friendname, 'ignore', username, null, (err) ->
@@ -2349,8 +2442,6 @@ else
               else
                 friends.push new Friend name, 1
 
-
-
             rc.get "cu:#{username}:id", (err, id) ->
               friendstate = {}
               friendstate.userControlId = id ? 0
@@ -2397,7 +2488,7 @@ else
         return res.send 403 unless verified
 
         authSig = req.body.authSig
-        validateUser username, password, authSig, null, (err, status, user) ->
+        validateUser username, password, authSig, null, null, (err, status, user) ->
           return next(err) if err?
           return res.send 403 unless user?
 
@@ -2524,7 +2615,7 @@ else
         return res.send 403 unless verified
 
         authSig = req.body.authSig
-        validateUser username, password, authSig, null, (err, status, user) ->
+        validateUser username, password, authSig, null, null, (err, status, user) ->
           return next(err) if err?
           return res.send 403 unless user?
 
@@ -2551,7 +2642,7 @@ else
     deleteUser username, theirUsername, multi, (err) ->
       return next err if err?
 
-      #tell (todo) other connections logged in as us that we deleted someone
+      #tell other connections logged in as us that we deleted someone
       createAndSendUserControlMessage username, "delete", theirUsername, username, (err) ->
         return next err if err?
         #tell them they've been deleted
@@ -2731,7 +2822,7 @@ else
     return crypto.createVerify('sha256').update(b1).update(b2).update(random).verify(pubKey, signature)
 
 
-  validateUser = (username, password, signature, gcmId, done) ->
+  validateUser = (username, password, signature, gcmId, apnToken, done) ->
     return done(null, 403) if (!checkUser(username) or !checkPassword(password))
     return done(null, 403) if signature.length < 16
     userKey = "u:" + username
@@ -2754,8 +2845,13 @@ else
           logger.debug "validated, #{username}: #{verified}"
 
           #update the gcm if we were sent one and it's different and we're verified
-          if gcmId? and user.gcmId isnt gcmId and verified
-            rc.hset userKey, 'gcmId', gcmId
+          if verified
+            if gcmId? and user.gcmId isnt gcmId
+              rc.hset userKey, 'gcmId', gcmId
+
+            if apnToken? and user.apnToken isnt apnToken
+              rc.hset userKey, 'apnToken', apnToken
+
 
           status = if verified then 204 else 403
           done null, status, if verified then user else null
@@ -2764,7 +2860,7 @@ else
   passport.use new LocalStrategy ({passReqToCallback: true}), (req, username, password, done) ->
     #logger.debug "client ip: #{req.connection.remoteAddress}"
     signature = req.body.authSig
-    validateUser username, password, signature, req.body.gcmId, (err, status, user) ->
+    validateUser username, password, signature, req.body.gcmId, req.body.apnToken, (err, status, user) ->
       return done(err) if err?
 
       switch status
