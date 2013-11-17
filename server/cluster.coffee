@@ -36,8 +36,10 @@ pkgcloud = require 'pkgcloud'
 utils = require('connect/lib/utils')
 pause = require 'pause'
 stream = require 'stream'
+redbacklib = require 'redback'
 googleapis = require 'googleapis'
 apn = require 'apn'
+uaparser = require 'ua-parser'
 
 #constants
 USERNAME_LENGTH = 20
@@ -51,6 +53,12 @@ oneYear = 31536000000
 oneDay = 86400
 
 #config
+
+#rate limit to MESSAGE_RATE_LIMIT_RATE / MESSAGE_RATE_LIMIT_SECS (seconds) (allows us to get request specific on top of iptables)
+RATE_LIMITING_MESSAGE=process.env.SURESPOT_RATE_LIMITING_MESSAGE is "true"
+RATE_LIMIT_BUCKET_MESSAGE = process.env.SURESPOT_RATE_LIMIT_BUCKET_MESSAGE ? 5
+RATE_LIMIT_SECS_MESSAGE = process.env.SURESPOT_RATE_LIMIT_SECS_MESSAGE ? 10
+RATE_LIMIT_RATE_MESSAGE = process.env.SURESPOT_RATE_LIMIT_RATE_MESSAGE ? 100
 
 MESSAGES_PER_USER = process.env.SURESPOT_MESSAGES_PER_USER ? 500
 debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'debug'
@@ -122,6 +130,7 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "socket: #{socketPort}"
   logger.info "address: #{bindAddress}"
   logger.info "ssl: #{useSSL}"
+  logger.info "rate limiting messages: #{RATE_LIMITING_MESSAGE}, int: #{RATE_LIMIT_BUCKET_MESSAGE}, secs: #{RATE_LIMIT_SECS_MESSAGE}, rate: #{RATE_LIMIT_RATE_MESSAGE}"
   logger.info "messages per user: #{MESSAGES_PER_USER}"
   logger.info "debug level: #{debugLevel}"
   logger.info "google api key: #{googleApiKey}"
@@ -154,6 +163,7 @@ else
     logger.info "socket: #{socketPort}"
     logger.info "address: #{bindAddress}"
     logger.info "ssl: #{useSSL}"
+    logger.info "rate limiting messages: #{RATE_LIMITING_MESSAGE}, secs: #{RATE_LIMIT_SECS_MESSAGE}, rate: #{RATE_LIMIT_RATE_MESSAGE}"
     logger.info "messages per user: #{MESSAGES_PER_USER}"
     logger.info "debug level: #{debugLevel}"
     logger.info "google api key: #{googleApiKey}"
@@ -184,6 +194,7 @@ else
   rcs = undefined
   pub = undefined
   sub = undefined
+  redback = undefined
   client = undefined
   client2 = undefined
   app = undefined
@@ -270,6 +281,10 @@ else
   sub = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
   client = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
   client2 = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
+
+  redback = redbacklib.use rc
+  ratelimitermessages = redback.createRateLimit('rlm', { bucket_interval: RATE_LIMIT_BUCKET_MESSAGE })
+
 
   app = express()
   app.configure ->
@@ -1204,6 +1219,28 @@ else
 
 
   handleMessages = (socket, user, data) ->
+    #rate limit
+    if RATE_LIMITING_MESSAGE
+      ratelimitermessages.add user
+      ratelimitermessages.count user, RATE_LIMIT_SECS_MESSAGE, (err,requests) ->
+
+        if requests > RATE_LIMIT_RATE_MESSAGE
+          ip = client.handshake.headers['x-forwarded-for'] or client.handshake.address.address
+          logger.warn "rate limiting messages for user: #{user}, ip: #{ip}"
+          try
+            message = JSON.parse(data)
+
+            if typeIsArray message
+              #todo  this blows but will do for now
+              #would be better to send bulk messages on a separate event but fuck it
+              return socket.emit "messageError", new MessageError(data, 429)
+            else
+              return socket.emit "messageError", new MessageError(message.iv, 429)
+          catch error
+            return socket.emit "messageError", new MessageError(data, 500)
+
+
+
     message = undefined
     #todo check from and to exist and are friends
     try
@@ -1890,6 +1927,10 @@ else
 
   #they didn't have surespot on their phone so they came here so direct them to the play store
   app.get "/autoinvite/:username/:source", validateUsernameExists, (req, res, next) ->
+
+    #ua = uaparser.parse req.headers['user-agent']
+    #logger.debug "user agent: #{ua.toString()}, family: #{ua.os.family}"
+
     username = req.params.username
     source = req.params.source
 
@@ -1988,10 +2029,18 @@ else
 
   # unauth'd methods
   app.get "/ping", (req,res,next) ->
+    ua = uaparser.parse req.headers['user-agent']
+    #logger.debug "user agent: #{ua.toString()}, family: #{ua.os.family}"
+
     rc.time (err, time) ->
       return next err if err?
       return next new Error 'redis does not know what time it is' unless time
       res.send 204
+
+#  app.get "/iosinvite/:username", validateUsernameExists, (req, res, next) ->
+#    inviteText = "Please click on the link above to install or open surespot and invite #{req.params.username}"
+#    res.send '<meta name="viewport" content="width=device-width">' + inviteText + '<br><br><meta name="apple-itunes-app" content="app-id=352861751, app-argument=https://www.surespot.me/user=' + "#{req.params.username}" + '"/>'
+
 
   app.get "/users/:username/exists", setNoCache, (req, res, next) ->
     userExistsOrDeleted req.params.username, true, (err, exists) ->
@@ -2609,7 +2658,7 @@ else
     deleteUser username, theirUsername, multi, (err) ->
       return next err if err?
 
-      #tell (todo) other connections logged in as us that we deleted someone
+      #tell other connections logged in as us that we deleted someone
       createAndSendUserControlMessage username, "delete", theirUsername, username, (err) ->
         return next err if err?
         #tell them they've been deleted
