@@ -402,6 +402,7 @@ else
 
 
   checkUser = (username) ->
+    #todo check for valid chars - letters or digits only
     return username?.length > 0 and username?.length  <= USERNAME_LENGTH
 
 
@@ -2151,7 +2152,7 @@ else
               #send revoke message
               multi.exec (err, replies) ->
                 return next err if err?
-                sendRevokeMessages username, storedkv
+                sendRevokeMessages username, kv
                 res.send 201
 
 
