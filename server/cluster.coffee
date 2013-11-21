@@ -1078,7 +1078,7 @@ else
         #apns are only 256 chars so we can't send the message
         #note.badge = 1
         note.alert = { "loc-key": "notification_message", "loc-args": [message.to, message.from] }
-        note.payload = { to:message.to,from: message.from, id:message.id }
+        note.payload = { id:message.id }
         note.sound = "default"
 
         apnConnection.pushNotification note, apnDevice
@@ -2237,7 +2237,6 @@ else
         #note.badge = 1
         note.sound = "default"
         note.alert = { "loc-key": "notification_invite", "loc-args": [friendname, username] }
-
         apnConnection.pushNotification note, apnDevice
 
       else
@@ -2294,6 +2293,7 @@ else
 
 
   createFriendShip = (username, friendname, callback) ->
+    logger.debug "#{username} accepted #{friendname}"
     multi = rc.multi()
     multi.sadd "f:#{username}", friendname
     multi.sadd "f:#{friendname}", username
@@ -2301,9 +2301,9 @@ else
     multi.srem "ud:#{friendname}", username
     multi.exec (err, results) ->
       return callback new Error("createFriendShip failed for username: " + username + ", friendname" + friendname) if err?
-      createAndSendUserControlMessage username, "added", friendname, null, (err) ->
+      createAndSendUserControlMessage username, "added", friendname, username, (err) ->
         return callback err if err?
-        createAndSendUserControlMessage friendname, "added", username, null, (err) ->
+        createAndSendUserControlMessage friendname, "added", username, username, (err) ->
           return callback err if err?
           callback null
 
@@ -2351,7 +2351,6 @@ else
         #note.badge = 1
         note.sound = "default"
         note.alert = { "loc-key": "notification_invite_accept", "loc-args": [friendname, username] }
-
         apnConnection.pushNotification note, apnDevice
 
       else
