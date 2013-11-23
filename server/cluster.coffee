@@ -2824,7 +2824,7 @@ else
 
   validateUser = (username, password, signature, gcmId, apnToken, done) ->
     return done(null, 403) if (!checkUser(username) or !checkPassword(password))
-    return done(null, 403) if signature.length < 16
+    return done(null, 403) if signature?.length < 16
     userKey = "u:" + username
     logger.debug "validating: " + username
     rcs.hgetall userKey, (err, user) ->
