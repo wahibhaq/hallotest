@@ -221,7 +221,7 @@ describe "surespot chat test", () ->
       receivedControlMessage.action.should.equal 'added'
       receivedControlMessage.data.should.equal 'test0'
       should.not.exist receivedControlMessage.localid
-      should.not.exist receivedControlMessage.moredata
+      #should.not.exist receivedControlMessage.moredata
       should.not.exist receivedControlMessage.from
       client1Received = true
       done() if clientReceived
@@ -233,7 +233,7 @@ describe "surespot chat test", () ->
       receivedControlMessage.action.should.equal 'added'
       receivedControlMessage.data.should.equal 'test1'
       should.not.exist receivedControlMessage.localid
-      should.not.exist receivedControlMessage.moredata
+      #should.not.exist receivedControlMessage.moredata
       should.not.exist receivedControlMessage.from
       clientReceived = true
       done() if client1Received
@@ -276,7 +276,7 @@ describe "surespot chat test", () ->
           receivedControlMessage.id.should.equal 2
 
           should.not.exist receivedControlMessage.localid
-          should.not.exist receivedControlMessage.moredata
+          #should.not.exist receivedControlMessage.moredata
           should.not.exist receivedControlMessage.from
           done()
 
