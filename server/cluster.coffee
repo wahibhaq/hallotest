@@ -2036,7 +2036,8 @@ else
 
   validateVersion = (req, res, next) ->
     version = req.body.version ? "not sent"
-    logger.debug "validate version: #{version}"
+    platform = req.body.platform
+    logger.debug "validate platform #{platform}, version: #{version}"
     #reserved for future use, will send 403 if version is not acceptable
     #res.send 403
     next()
@@ -2054,7 +2055,6 @@ else
   #end unauth'd methods
   app.post "/login", passport.authenticate("local"), validateVersion, updatePurchaseTokensMiddleware, (req, res, next) ->
     username = req.user.username
-
     logger.debug "/login post, user #{username}"
 
     res.send 204
