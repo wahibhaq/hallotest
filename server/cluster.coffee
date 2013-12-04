@@ -1082,6 +1082,7 @@ else
             note.alert = { "loc-key": "notification_message", "loc-args": [message.to, message.from] }
             note.payload = { id:message.id }
             note.sound = "default"
+            logger.debug "sending apn to token: #{token} for #{message.to}"
             apnConnection.pushNotification note, apnDevice
             callback()
           (err) ->
@@ -2055,7 +2056,7 @@ else
     gcmId = req.body.gcmId
     apnToken = req.body.apnToken
 
-    return next() unless gcmId or apnToken
+    return next() unless gcmId? or apnToken?
 
     username = req.user.username
 
@@ -2063,27 +2064,57 @@ else
     rcs.hgetall userKey, (err, user) ->
       return next() if err?
 
-      if gcmId
-        gcmIds = user.gcmId.split(":")
+      updateGcmId = (callback) ->
+        return callback() unless gcmId?
+
+        gcmIds = user.gcmId?.split(":") ? []
         #if it's not in the list, add it
         if (gcmIds.indexOf(gcmId) is -1)
 
           gcmIds.push gcmId
-          newIds =  gcmIds.join(":")
+          newIds =  gcmIds.filter((n) -> return n?.length > 0).join(":")
           logger.debug "adding gcm id #{gcmId} for #{username}, new list: #{newIds}"
-          rc.hset userKey, 'gcmId', newIds
+          rc.hset userKey, 'gcmId', newIds, (err, result) ->
+            logger.error "error setting gcmId for #{username}" if err?
+            callback()
+        else
+          callback()
 
-      if apnToken
-        apnTokens = user.apnToken.split(":")
+      updateGcmId ->
+        return next() unless apnToken?
+
+        apnTokens = user.apnToken?.split(":") ? []
         #if it's not in the list, add it
         if (apnTokens.indexOf(apnToken) is -1)
-
           apnTokens.push apnToken
           newTokens =  apnTokens.join(":")
           logger.debug "adding apn token #{apnToken} for #{username}, new list: #{newTokens}"
-          rc.hset userKey, 'apnToken', newTokens
+          #save mapping from token to username(s) so we can remove it if we get feedback
 
-      next()
+          #get the current mapping
+          rc.hget "apnMap", apnToken, (err, usernameData) ->
+            return next() if err?
+            usernameList = usernameData
+
+            #if we have a current mapping and the username is not in the list, add it
+            if usernameData?
+              usernames = usernameData.split(":")
+              if (usernames.indexOf(username) is -1)
+                usernames.push username
+                usernameList = usernames.filter((n) -> return n?.length > 0).join(":")
+            else
+              usernameList = username
+
+            logger.debug "setting map for apn token #{apnToken} to #{usernameList}"
+            multi = rc.multi()
+            multi.hset "apnMap", apnToken, usernameList
+            multi.hset userKey, 'apnToken', newTokens
+            multi.exec (err, results) ->
+              logger.error "error setting apn tokens for user #{username}: #{err}" if err?
+              next()
+        else
+          next()
+
 
   app.post "/users",
     validateVersion,
@@ -2920,4 +2951,58 @@ else
     logger.debug "deserializeUser, user:" + username
     rcs.hgetall "u:" + username, (err, user) ->
       done err, user
+
+
+  #apn feedback
+  apnFeedbackOptions = {
+    batchFeedback: true
+    cert: "apn#{env}/cert.pem"
+    key: "apn#{env}/key.pem"
+  }
+
+  apnFeedback = new apn.Feedback(apnFeedbackOptions)
+  apnFeedback.on "feedback", (devices) ->
+    devices.forEach (item) ->
+      apnToken = item.device.token.toString('hex')
+      logger.debug "apnFeedback, token: #{apnToken} time: #{item.time}"
+      rc.hget "apnMap", apnToken, (err, usernameList) ->
+        if usernameList?
+          multi = rc.multi()
+          usernames = usernameList.split(":")
+          async.each(
+            usernames,
+            (username, callback) ->
+              userKey = "u:" + username
+              rcs.hgetall userKey, (err, user) ->
+                return callback(err) if err?
+
+                apnTokens = user.apnToken?.split(":") ? []
+                #if it's in the list, remove it
+                index = apnTokens.indexOf(apnToken)
+
+                return callback() if index == -1
+
+                apnTokens.splice index, 1
+                newTokens = apnTokens.filter((n) -> return n?.length > 0).join(":")
+
+                logger.debug "removing apn token #{apnToken} from #{username}, new list: #{newTokens}"
+
+                #remove mapping
+                multi.hdel "apnMap", apnToken
+
+                #set or remove token list
+                if newTokens?.length > 0
+                  multi.hset userKey, 'apnToken', newTokens
+                else
+                  multi.hdel userKey, 'apnToken'
+
+                callback()
+
+            (err) ->
+              return logger.error "error removing apn token: #{err}" if err?
+              multi.exec (err, results) ->
+                logger.error "error removing apn tokens for users #{usernameList}: #{err}" if err?
+          )
+
+
 
