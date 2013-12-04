@@ -3009,8 +3009,6 @@ else
                 logger.error "error removing apn tokens for users #{usernameList}: #{err}" if err?
           )
 
-
-
   removeGcmIds = (username, gcmIds, results) ->
     indexesToRemove = []
     #check for errors and remove gcm id from user if so
