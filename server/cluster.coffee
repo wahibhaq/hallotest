@@ -1045,7 +1045,7 @@ else
         logger.error "error getting push ids for user: #{message.to}, error: #{err}"
         return
 
-      gcmIds = ids[0]?.split(":")
+      gcmIds = ids[0]?.split(":") ? []
       apn_tokens = ids[1]?.split(":")
       if gcmIds?.length > 0
         logger.debug "sending gcms for message"
@@ -1061,11 +1061,12 @@ else
 
         gcmmessage.delayWhileIdle = false
         gcmmessage.timeToLive = GCM_TTL
-        #gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
-
 
         sender.send gcmmessage, gcmIds, 4, (err, result) ->
           logger.debug "sendGcm result: #{JSON.stringify(result)}"
+
+          if result.failure > 0
+            removeGcmIds message.to, gcmIds, result.results
 
       else
         logger.debug "no gcm id for #{message.to}"
@@ -2087,7 +2088,7 @@ else
         #if it's not in the list, add it
         if (apnTokens.indexOf(apnToken) is -1)
           apnTokens.push apnToken
-          newTokens =  apnTokens.join(":")
+          newTokens =  apnTokens.filter((n) -> return n?.length > 0).join(":")
           logger.debug "adding apn token #{apnToken} for #{username}, new list: #{newTokens}"
           #save mapping from token to username(s) so we can remove it if we get feedback
 
@@ -2297,6 +2298,8 @@ else
 
         sender.send gcmmessage, gcmIds, 4, (err, result) ->
           logger.debug "sent gcm for invite: #{JSON.stringify(result)}"
+          if result.failure > 0
+            removeGcmIds friendname, gcmIds, result.results
       else
         logger.debug "gcmIds not set for #{friendname}"
 
@@ -2419,6 +2422,8 @@ else
 
         sender.send gcmmessage, gcmIds, 4, (err, result) ->
           logger.debug "sendGcm result: #{JSON.stringify(result)}"
+          if result.failure > 0
+            removeGcmIds friendname, gcmIds, result.results
 
       if apn_tokens?.length > 0
         logger.debug "sending apns for invite response"
@@ -3006,3 +3011,36 @@ else
 
 
 
+  removeGcmIds = (username, gcmIds, results) ->
+    indexesToRemove = []
+    #check for errors and remove gcm id from user if so
+    _.each(
+      results,
+    (item, index) ->
+      error = item.error
+      if error is "NotRegistered" or error is "InvalidRegistration"
+        indexesToRemove.push index)
+
+    saveGcms = []
+    for i in [0..gcmIds.length] by 1
+      if indexesToRemove.indexOf(i) > -1
+        logger.debug "removing gcmId #{gcmIds[i]} from user #{username}"
+      else
+        saveGcms.push gcmIds[i]
+
+    userKey = "u:#{username}"
+    if saveGcms?.length > 0
+      saveGcmString = saveGcms.filter((n) -> n?.length > 0).join(":")
+
+      if saveGcmString?.length > 0
+        logger.debug "setting remaining gcmids #{saveGcmString} for user #{username}"
+        rc.hset userKey, 'gcmId', saveGcmString, (err, result) ->
+          logger.error "error setting gcmIds for #{username}" if err?
+      else
+        logger.debug "removing all gcmids for user #{username}"
+        rc.hdel userKey, "gcmId", (err, result) ->
+          logger.error "error removing gcmIds for #{username}" if err?
+    else
+      logger.debug "removing all gcmids for user #{username}"
+      rc.hdel userKey, "gcmId", (err, result) ->
+        logger.error "error removing gcmIds for #{username}" if err?
