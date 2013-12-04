@@ -1045,10 +1045,10 @@ else
         logger.error "error getting push ids for user: #{message.to}, error: #{err}"
         return
 
-      gcm_id = ids[0]
-      apn_token = ids[1]
-      if gcm_id?.length > 0
-        logger.debug "sending gcm message"
+      gcmIds = ids[0]?.split(":")
+      apn_tokens = ids[1]?.split(":")
+      if gcmIds?.length > 0
+        logger.debug "sending gcms for message"
         gcmmessage = new gcm.Message()
         sender = new gcm.Sender("#{googleApiKey}")
         gcmmessage.addData("type", "message")
@@ -1062,29 +1062,33 @@ else
         gcmmessage.delayWhileIdle = false
         gcmmessage.timeToLive = GCM_TTL
         #gcmmessage.collapseKey = "message:#{getRoomName(message.from, message.to)}"
-        regIds = [gcm_id]
 
-        sender.send gcmmessage, regIds, 4, (err, result) ->
+
+        sender.send gcmmessage, gcmIds, 4, (err, result) ->
           logger.debug "sendGcm result: #{JSON.stringify(result)}"
 
       else
         logger.debug "no gcm id for #{message.to}"
 
-      if apn_token?.length > 0
-        logger.debug "sending apn message"
-        apnDevice = new apn.Device apn_token
-        note = new apn.Notification()
-
-        #apns are only 256 chars so we can't send the message
-        #note.badge = 1
-        note.alert = { "loc-key": "notification_message", "loc-args": [message.to, message.from] }
-        note.payload = { id:message.id }
-        note.sound = "default"
-
-        apnConnection.pushNotification note, apnDevice
-
+      if apn_tokens?.length > 0
+        logger.debug "sending apns for message"
+        async.each(
+          apn_tokens,
+          (token, callback) ->
+            apnDevice = new apn.Device token
+            note = new apn.Notification()
+            #apns are only 256 chars so we can't send the message
+            #note.badge = 1
+            note.alert = { "loc-key": "notification_message", "loc-args": [message.to, message.from] }
+            note.payload = { id:message.id }
+            note.sound = "default"
+            apnConnection.pushNotification note, apnDevice
+            callback()
+          (err) ->
+            logger.error "error sending message apns: #{err}" if err?
+        )
       else
-        logger.debug "no apn token for #{message.to}"
+        logger.debug "no apn tokens for #{message.to}"
 
   getMessagePointerData = (from, messagePointer) ->
     #delete message
@@ -1483,7 +1487,7 @@ else
     username = req.body.username
     password = req.body.password
     authSig = req.body.authSig
-    validateUser username, password, authSig, null, null, (err, status, user) ->
+    validateUser username, password, authSig, (err, status, user) ->
       return next err if err?
       return res.send 403 unless user?
 
@@ -1503,7 +1507,7 @@ else
     username = req.body.username
     password = req.body.password
     authSig = req.body.authSig
-    validateUser username, password, authSig, null, null, (err, status, user) ->
+    validateUser username, password, authSig, (err, status, user) ->
       return next err if err?
       return res.send 403 unless user?
 
@@ -2042,18 +2046,58 @@ else
     #res.send 403
     next()
 
+
+  updatePushIds = (req, res, next) ->
+    #add push id
+
+    #ids colon delimited
+
+    gcmId = req.body.gcmId
+    apnToken = req.body.apnToken
+
+    return next() unless gcmId or apnToken
+
+    username = req.user.username
+
+    userKey = "u:" + username
+    rcs.hgetall userKey, (err, user) ->
+      return next() if err?
+
+      if gcmId
+        gcmIds = user.gcmId.split(":")
+        #if it's not in the list, add it
+        if (gcmIds.indexOf(gcmId) is -1)
+
+          gcmIds.push gcmId
+          newIds =  gcmIds.join(":")
+          logger.debug "adding gcm id #{gcmId} for #{username}, new list: #{newIds}"
+          rc.hset userKey, 'gcmId', newIds
+
+      if apnToken
+        apnTokens = user.apnToken.split(":")
+        #if it's not in the list, add it
+        if (apnTokens.indexOf(apnToken) is -1)
+
+          apnTokens.push apnToken
+          newTokens =  apnTokens.join(":")
+          logger.debug "adding apn token #{apnToken} for #{username}, new list: #{newTokens}"
+          rc.hset userKey, 'apnToken', newTokens
+
+      next()
+
   app.post "/users",
     validateVersion,
     validateUsernamePassword,
     createNewUser,
     passport.authenticate("local"),
+    updatePushIds,
     updatePurchaseTokensMiddleware,
     (req, res, next) ->
       res.send 201
 
 
   #end unauth'd methods
-  app.post "/login", passport.authenticate("local"), validateVersion, updatePurchaseTokensMiddleware, (req, res, next) ->
+  app.post "/login", passport.authenticate("local"), validateVersion, updatePushIds, updatePurchaseTokensMiddleware, (req, res, next) ->
     username = req.user.username
     logger.debug "/login post, user #{username}"
 
@@ -2067,7 +2111,7 @@ else
     username = req.body.username
     password = req.body.password
     authSig = req.body.authSig
-    validateUser username, password, authSig, null, null, (err, status, user) ->
+    validateUser username, password, authSig, (err, status, user) ->
       return next err if err?
       return res.send 403 unless user?
 
@@ -2127,7 +2171,7 @@ else
           return res.send 403 unless verified
 
           authSig = req.body.authSig
-          validateUser username, password, authSig, null, null, (err, status, user) ->
+          validateUser username, password, authSig,(err, status, user) ->
             return next err if err?
             return res.send 403 unless user?
 
@@ -2161,16 +2205,12 @@ else
     password = req.body.password
     authSig = req.body.authSig
 
-    validateUser username, password, authSig, null, null, (err, status, user) ->
+    validateUser username, password, authSig, (err, status, user) ->
       return next err if err?
       res.send status
 
-  app.post "/registergcm", ensureAuthenticated, (req, res, next) ->
-    gcmId = req.body.gcmId
-    userKey = "u:#{req.user.username}"
-    rc.hset userKey, "gcmId", gcmId, (err) ->
-      return next err if err?
-      res.send 204
+  app.post "/registergcm", ensureAuthenticated, updatePushIds, (req, res, next) ->
+    res.send 204
 
 
 
@@ -2210,11 +2250,11 @@ else
         logger.error "inviteUser, " + err
         return
 
-      gcmId = ids[0]
-      apn_token = ids[1]
+      gcmIds = ids[0]?.split(":")
+      apn_tokens = ids[1]?.split(":")
 
-      if gcmId?.length > 0
-        logger.debug "sending gcm notification"
+      if gcmIds?.length > 0
+        logger.debug "sending gcms for invite"
         gcmmessage = new gcm.Message()
         sender = new gcm.Sender("#{googleApiKey}")
         gcmmessage.addData "type", "invite"
@@ -2223,24 +2263,31 @@ else
         gcmmessage.delayWhileIdle = false
         gcmmessage.timeToLive = GCM_TTL
         #gcmmessage.collapseKey = "invite:#{friendname}"
-        regIds = [gcmId]
 
-        sender.send gcmmessage, regIds, 4, (err, result) ->
-          logger.debug "sent gcm: #{JSON.stringify(result)}"
+        sender.send gcmmessage, gcmIds, 4, (err, result) ->
+          logger.debug "sent gcm for invite: #{JSON.stringify(result)}"
       else
-        logger.debug "gcmId not set for #{friendname}"
+        logger.debug "gcmIds not set for #{friendname}"
 
-      if apn_token?.length > 0
-        logger.debug "sending apn invite"
-        apnDevice = new apn.Device apn_token
-        note = new apn.Notification()
-        #note.badge = 1
-        note.sound = "default"
-        note.alert = { "loc-key": "notification_invite", "loc-args": [friendname, username] }
-        apnConnection.pushNotification note, apnDevice
+      if apn_tokens?.length > 0
+        logger.debug "sending apns for invite"
+        async.each(
+          apn_tokens,
+          (token, callback) ->
+            apnDevice = new apn.Device token
+            note = new apn.Notification()
+            #note.badge = 1
+            note.sound = "default"
+            note.alert = { "loc-key": "notification_invite", "loc-args": [friendname, username] }
+            apnConnection.pushNotification note, apnDevice
+            callback()
+          (err) ->
+            logger.error "error sending invite apns: #{err}" if err?
+        )
+
 
       else
-        logger.debug "no apn token for #{friendname}"
+        logger.debug "no apn tokens for #{friendname}"
 
   handleInvite = (req,res,next) ->
     friendname = req.params.username
@@ -2323,11 +2370,11 @@ else
         logger.error "sendPushInviteAccept, #{err}"
         return
 
-      gcmId = ids[0]
-      apn_token = ids[1]
+      gcmIds = ids[0]?.split(":")
+      apn_tokens = ids[1]?.split(":")
 
-      if gcmId?.length > 0
-        logger.debug "sending gcm invite response notification"
+      if gcmIds?.length > 0
+        logger.debug "sending gcms for invite response notification"
 
         gcmmessage = new gcm.Message()
         sender = new gcm.Sender("#{googleApiKey}")
@@ -2338,20 +2385,26 @@ else
         gcmmessage.delayWhileIdle = false
         gcmmessage.timeToLive = GCM_TTL
         #gcmmessage.collapseKey = "inviteResponse"
-        regIds = [gcmId]
 
-        sender.send gcmmessage, regIds, 4, (err, result) ->
+        sender.send gcmmessage, gcmIds, 4, (err, result) ->
           logger.debug "sendGcm result: #{JSON.stringify(result)}"
 
+      if apn_tokens?.length > 0
+        logger.debug "sending apns for invite response"
 
-      if apn_token?.length > 0
-        logger.debug "sending apn invite response"
-        apnDevice = new apn.Device apn_token
-        note = new apn.Notification()
-        #note.badge = 1
-        note.sound = "default"
-        note.alert = { "loc-key": "notification_invite_accept", "loc-args": [friendname, username] }
-        apnConnection.pushNotification note, apnDevice
+        async.each(
+          apn_tokens,
+          (token, callback) ->
+            apnDevice = new apn.Device token
+            note = new apn.Notification()
+            #note.badge = 1
+            note.sound = "default"
+            note.alert = { "loc-key": "notification_invite_accept", "loc-args": [friendname, username] }
+            apnConnection.pushNotification note, apnDevice
+            callback()
+          (err) ->
+            logger.error "error sending invite response apns: #{err}" if err?
+        )
 
       else
         logger.debug "no apn token for #{friendname}"
@@ -2488,7 +2541,7 @@ else
         return res.send 403 unless verified
 
         authSig = req.body.authSig
-        validateUser username, password, authSig, null, null, (err, status, user) ->
+        validateUser username, password, authSig, (err, status, user) ->
           return next(err) if err?
           return res.send 403 unless user?
 
@@ -2615,7 +2668,7 @@ else
         return res.send 403 unless verified
 
         authSig = req.body.authSig
-        validateUser username, password, authSig, null, null, (err, status, user) ->
+        validateUser username, password, authSig, (err, status, user) ->
           return next(err) if err?
           return res.send 403 unless user?
 
@@ -2822,7 +2875,7 @@ else
     return crypto.createVerify('sha256').update(b1).update(b2).update(random).verify(pubKey, signature)
 
 
-  validateUser = (username, password, signature, gcmId, apnToken, done) ->
+  validateUser = (username, password, signature, done) ->
     return done(null, 403) if (!checkUser(username) or !checkPassword(password))
     return done(null, 403) if signature?.length < 16
     userKey = "u:" + username
@@ -2840,18 +2893,7 @@ else
           return done new Error "no keys exist for user #{username}" unless keys?
 
           verified = verifySignature new Buffer(username), new Buffer(password), signature, keys.dsaPub
-
-          #crypto.createVerify('sha256').update(new Buffer(username)).update(new Buffer(password)).update(random).verify(keys.dsaPub, signature)
           logger.debug "validated, #{username}: #{verified}"
-
-          #update the gcm if we were sent one and it's different and we're verified
-          if verified
-            if gcmId? and user.gcmId isnt gcmId
-              rc.hset userKey, 'gcmId', gcmId
-
-            if apnToken? and user.apnToken isnt apnToken
-              rc.hset userKey, 'apnToken', apnToken
-
 
           status = if verified then 204 else 403
           done null, status, if verified then user else null
@@ -2860,7 +2902,7 @@ else
   passport.use new LocalStrategy ({passReqToCallback: true}), (req, username, password, done) ->
     #logger.debug "client ip: #{req.connection.remoteAddress}"
     signature = req.body.authSig
-    validateUser username, password, signature, req.body.gcmId, req.body.apnToken, (err, status, user) ->
+    validateUser username, password, signature, (err, status, user) ->
       return done(err) if err?
 
       switch status
