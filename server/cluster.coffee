@@ -1063,6 +1063,7 @@ else
         gcmmessage.timeToLive = GCM_TTL
 
         sender.send gcmmessage, gcmIds, 4, (err, result) ->
+          return logger.error "Error sending gcm: #{err}" if err?
           logger.debug "sendGcm result: #{JSON.stringify(result)}"
 
           if result.failure > 0
@@ -2307,6 +2308,7 @@ else
         #gcmmessage.collapseKey = "invite:#{friendname}"
 
         sender.send gcmmessage, gcmIds, 4, (err, result) ->
+          return logger.error "Error sending gcm: #{err}" if err?
           logger.debug "sent gcm for invite: #{JSON.stringify(result)}"
           if result.failure > 0
             removeGcmIds friendname, gcmIds, result.results
@@ -2431,6 +2433,7 @@ else
         #gcmmessage.collapseKey = "inviteResponse"
 
         sender.send gcmmessage, gcmIds, 4, (err, result) ->
+          return logger.error "Error sending gcm: #{err}" if err?
           logger.debug "sendGcm result: #{JSON.stringify(result)}"
           if result.failure > 0
             removeGcmIds friendname, gcmIds, result.results
