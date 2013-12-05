@@ -1045,7 +1045,7 @@ else
         logger.error "error getting push ids for user: #{message.to}, error: #{err}"
         return
 
-      gcmIds = ids[0]?.split(":") ? []
+      gcmIds = ids[0]?.split(":")
       apn_tokens = ids[1]?.split(":")
       if gcmIds?.length > 0
         logger.debug "sending gcms for message"
