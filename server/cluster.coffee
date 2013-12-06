@@ -1537,9 +1537,11 @@ else
         dMessage.shareable = bShareable
         rc.zadd "m:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
           return next err if err?
-          createAndSendMessageControlMessage username, otherUser, room, (if bShareable then "shareable" else "notshareable"), room, messageId, (err) ->
+          newStatus = if bShareable then "shareable" else "notshareable"
+          createAndSendMessageControlMessage username, otherUser, room, newStatus, room, messageId, (err) ->
             return next err if err?
-            res.send 204
+            res.send newStatus
+
 
 
   app.post "/images/:username/:version", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
