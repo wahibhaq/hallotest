@@ -222,7 +222,6 @@ else
       #if database?
        # tempclient.select database
         #return tempclient
-
       else
         return tempclient
     else
@@ -1062,8 +1061,9 @@ else
         gcmmessage.delayWhileIdle = false
         gcmmessage.timeToLive = GCM_TTL
 
+        logger.debug "sending push messages to: #{ids[0]}"
         sender.send gcmmessage, gcmIds, 4, (err, result) ->
-          return logger.error "Error sending gcm: #{err}" if err?
+          return logger.error "Error sending gcm: #{err}" if err? or not result?
           logger.debug "sendGcm result: #{JSON.stringify(result)}"
 
           if result.failure > 0
@@ -2053,6 +2053,8 @@ else
     gcmId = req.body.gcmId
     apnToken = req.body.apnToken
 
+    logger.debug "received gcmId: #{gcmId} apnToken: #{apnToken}"
+
     return next() unless gcmId? or apnToken?
 
     username = req.user.username
@@ -2308,7 +2310,7 @@ else
         #gcmmessage.collapseKey = "invite:#{friendname}"
 
         sender.send gcmmessage, gcmIds, 4, (err, result) ->
-          return logger.error "Error sending gcm: #{err}" if err?
+          return logger.error "Error sending gcm: #{err}" if err? or not result?
           logger.debug "sent gcm for invite: #{JSON.stringify(result)}"
           if result.failure > 0
             removeGcmIds friendname, gcmIds, result.results
@@ -2433,7 +2435,7 @@ else
         #gcmmessage.collapseKey = "inviteResponse"
 
         sender.send gcmmessage, gcmIds, 4, (err, result) ->
-          return logger.error "Error sending gcm: #{err}" if err?
+          return logger.error "Error sending gcm: #{err}" if err? or not result?
           logger.debug "sendGcm result: #{JSON.stringify(result)}"
           if result.failure > 0
             removeGcmIds friendname, gcmIds, result.results
