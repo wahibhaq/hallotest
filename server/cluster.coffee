@@ -607,8 +607,8 @@ else
       #check token with google
       googleapis.discover("androidpublisher", "v1.1").execute (err, client) ->
         if err?
+          logger.error "error validating voice messaging, #{err}"
           oauth2Client = null
-          logger.error err
           return
 
         checkClient = (callback) ->
@@ -621,8 +621,8 @@ else
         checkClient ->
           getPurchaseInfo client, oauth2Client, token, (err, data) ->
             if err?
+              logger.err "error validating voice messaging, #{err}"
               oauth2Client = null
-              logger.error err
               return
             return unless data?.purchaseState?
             logger.debug "validated voice_messaging, purchaseState: #{data.purchaseState}, token: #{token}"
@@ -2575,6 +2575,7 @@ else
     kv = req.body.keyVersion
     logger.debug "signed with keyversion: " + kv
     #todo transaction
+    #todo defer sending control messages on socket until multi.exec has occured
     #make sure the tokens match
     rc.get "dt:#{username}", (err, rtoken) ->
       return next new Error 'no delete token' unless rtoken?
@@ -2681,9 +2682,9 @@ else
                                 if friends.length is 0
                                   deleteRemainingIdentityData multi, username
 
-                                multi.exec (err, replies) ->
+                                createAndSendUserControlMessage username, "revoke", username, parseInt(kv) + 1, (err) ->
                                   return next err if err?
-                                  createAndSendUserControlMessage username, "revoke", username, parseInt(kv) + 1, (err) ->
+                                  multi.exec (err, replies) ->
                                     return next err if err?
                                     res.send 204)))
 
