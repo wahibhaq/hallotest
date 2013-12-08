@@ -1049,7 +1049,9 @@ else
       if gcmIds?.length > 0
         logger.debug "sending gcms for message"
         gcmmessage = new gcm.Message()
+        logger.debug "gcm message created"
         sender = new gcm.Sender("#{googleApiKey}")
+        logger.debug "gcm sender created"
         gcmmessage.addData("type", "message")
         gcmmessage.addData("to", message.to)
         gcmmessage.addData("sentfrom", message.from)
@@ -1060,6 +1062,8 @@ else
 
         gcmmessage.delayWhileIdle = false
         gcmmessage.timeToLive = GCM_TTL
+
+        logger.debug "gcm data set"
 
         logger.debug "sending push messages to: #{ids[0]}"
         sender.send gcmmessage, gcmIds, 4, (err, result) ->
