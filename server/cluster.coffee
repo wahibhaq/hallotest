@@ -2924,6 +2924,7 @@ else
 
 
   verifySignature = (b1, b2, sigString, pubKey) ->
+    return false unless b1?.length > 0 && b2?.length > 0 && sigString?.length > 0 && pubKey?.length > 0
     #get the signature
     buffer = new Buffer(sigString, 'base64')
 
