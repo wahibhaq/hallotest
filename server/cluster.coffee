@@ -1319,6 +1319,7 @@ else
 
     socket.on "message", (data) -> handleMessages socket, user, data
     socket.on "disconnect", ->
+      socket.leave user
       logger.info "#{user} disconnected"
 
 

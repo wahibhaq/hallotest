@@ -6,7 +6,7 @@
   "dependencies": {
     "connect-redis": "1.4.5",
     "bcrypt": "~0.7.3",
-    "socket.io": "https://github.com/surespot/socket.io/tarball/sentinel",
+    "socket.io": "https://github.com/surespot/socket.io/tarball/surespot",
     "chai": "~1.1.1",
     "underscore": "~1.4.3",
     "coffee-script": "~1.6.3",
