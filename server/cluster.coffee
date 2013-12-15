@@ -1581,7 +1581,7 @@ else
         path = bytes
         logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
-        outStream.pipe rackspace.upload {container: rackspaceImageContainer, remote: path}, (err) ->
+        outStream.pipe rackspace.upload {container: rackspaceImageContainer, remote: path, headers: { "content-type": "application/octet-stream"}}, (err) ->
           if err?
             logger.error "POST /images/:username/:version, error: #{err}"
             return next err #delete filenames[part.filename]
@@ -1686,7 +1686,7 @@ else
             path = bytes
             logger.debug "received part: #{part.filename}, uploading to rackspace at: #{path}"
 
-            outStream.pipe rackspace.upload {container: container, remote: path}, (err) ->
+            outStream.pipe rackspace.upload {container: container, remote: path, headers: { "content-type": "application/octet-stream"}}, (err) ->
               if err?
                 logger.error "fileupload, mimeType: #{mimeType} error: #{err}"
                 #sio.sockets.to(username).emit "messageError", new MessageError(iv, 500)
