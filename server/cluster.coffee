@@ -785,12 +785,15 @@ else
         logger.debug "searching room: #{room} from id: #{resendId} for duplicate messages"
         #check messages client doesn't have for dupes
         getMessagesAfterId username, room, resendId, (err, data) ->
+          logger.error "error getting messages" if err?
           return callback err if err
           found = _.find data, (checkMessageJSON) ->
             checkMessage = undefined
             try
+              logger.debug "parsing #{checkMessageJSON}"
               checkMessage = JSON.parse(checkMessageJSON)
             catch error
+              logger.debug "error parsing #{checkMessageJSON}"
               return callback error
 
             logger.debug "comparing ivs"
@@ -801,11 +804,14 @@ else
         logger.debug "searching 30 messages from room: #{room} for duplicates"
         #check last 30 for dupes
         getMessages username, room, 30, (err, data) ->
+          logger.error "error getting messages" if err?
           return callback err if err
           found = _.find data, (checkMessageJSON) ->
             try
+              logger.debug "parsing #{checkMessageJSON}"
               checkMessage = JSON.parse(checkMessageJSON)
             catch error
+              logger.error "error parsing #{checkMessageJSON}"
               return callback error
 
             logger.debug "comparing ivs"
@@ -832,28 +838,6 @@ else
         getUserControlMessages user, 20, fn
       else
         rc.zrangebyscore "cu:" + user, "(" + id, "+inf", fn
-
-
-  checkForDuplicateControlMessage = (resendId, room, message, callback) ->
-    if (resendId?)
-      logger.debug "searching room: #{room} from id: #{resendId} for duplicate control messages"
-      #check messages client doesn't have for dupes
-      getControlMessagesAfterId room, resendId, (err, data) ->
-        return callback err if err
-        found = _.find data, (checkMessageJSON) ->
-          checkMessage = undefined
-          try
-            checkMessage = JSON.parse(checkMessageJSON)
-          catch error
-            return callback error
-
-          checkMessage.from is message.from
-          checkMessage.localid is message.localid
-        return callback(null, found)
-    else
-      return callback null, false
-
-
 
   getNextMessageId = (room, id, callback) ->
     #we will alread have an id if we uploaded a file
@@ -928,7 +912,7 @@ else
       return callback new MessageError(iv, 500) unless id?
       message.id = id
 
-      logger.info "#{from}->#{to}, mimeType: #{mimeType}"
+      logger.info "#{from}->#{to}, mimeType: #{mimeType} message: #{message}"
       newMessage = JSON.stringify(message)
 
       #store messages in sorted sets
