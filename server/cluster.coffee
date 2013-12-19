@@ -1562,13 +1562,13 @@ else
           url = rackspaceCdnImageBaseUrl + "/#{path}"
 
           getFriendImageData username, otherUser, (err, friend) ->
-
+            if err?
+              logger.error "POST /images/:username/:version, error: #{err}"
+              deleteFile url, "image/"
+              return next err
 
             if friend?.imageUrl?
               deleteFile friend.imageUrl, "image/"
-            else
-              deleteFile url, "image/"
-              return next new Error "error sending message on socket: #{err}"
 
             rc.hmset "fi:#{username}", "#{otherUser}:imageUrl", url, "#{otherUser}:imageVersion", version, "#{otherUser}:imageIv", iv, (err, status) ->
               if err?
