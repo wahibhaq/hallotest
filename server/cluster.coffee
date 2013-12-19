@@ -19,8 +19,6 @@ gcm = require("node-gcm")
 fs = require("fs")
 bcrypt = require 'bcrypt'
 mkdirp = require("mkdirp")
-expressWinston = require "express-winston"
-#logger = require("winston")
 async = require 'async'
 _ = require 'underscore'
 querystring = require 'querystring'
@@ -33,6 +31,7 @@ redbacklib = require 'redback'
 googleapis = require 'googleapis'
 apn = require 'apn'
 uaparser = require 'ua-parser'
+bunyan = require 'bunyan'
 
 #constants
 USERNAME_LENGTH = 20
@@ -80,32 +79,32 @@ dontUseSSL = process.env.SURESPOT_DONT_USE_SSL is "true"
 apnGateway = process.env.SURESPOT_APN_GATEWAY
 useSSL = not dontUseSSL
 
-
 http = if useSSL then require 'https' else require 'http'
-
-
-logger.remove logger.transports.Console
-#logger.setLevels logger.config.syslog.levels
-logger.exitOnError = true
-logger.emitErrs = false
-
-transports = []
-transports.push new (logger.transports.File)({ dirname: 'logs', filename: 'server.log', maxsize: 5000000, maxFiles: 20, json: false, level: debugLevel, handleExceptions: true })
-#always use file transport
-logger.add transports[0], null, true
-
 
 numCPUs = require('os').cpus().length
 
 if NUM_CORES > numCPUs then NUM_CORES = numCPUs
 
-if env is 'Local' or logConsole
-  transports.push new (logger.transports.Console)({colorize: true, timestamp: true, level: debugLevel, handleExceptions: true })
-  logger.add transports[1], null, true
+bunyanStreams = [{
+  type: 'rotating-file'
+  path: 'logs/surespot.log'
+  count: 7
+  level: 'debug'
+  period: 'daily'
+}]
 
+if env is 'Local' or logConsole
+  bunyanStreams.push {
+    level: 'debug'
+    stream: process.stdout
+  }
+
+logger = bunyan.createLogger({
+  name: 'surespot'
+  streams: bunyanStreams
+});
 
 logger.debug "__dirname: #{__dirname}"
-
 
 if (cluster.isMaster and NUM_CORES > 1)
   # Fork workers.
@@ -298,16 +297,10 @@ else
     )
     app.use passport.initialize()
     app.use passport.session({pauseStream: true})
-    app.use expressWinston.logger({
-    transports: transports
-    level: debugLevel
-    })
-    app.use app.router
-    app.use expressWinston.errorLogger({
-    transports: transports
-    level: "warn"
-    })
 
+    app.use(require('express-bunyan-logger')({name: 'surespot', streams : bunyanStreams }));
+    app.use app.router
+    app.use(require('express-bunyan-logger').errorLogger({name: 'surespot', streams : bunyanStreams }));
     app.use (err, req, res, next) ->
       res.send err.status or 500
 
@@ -320,12 +313,7 @@ else
 
   server = if useSSL then http.createServer ssloptions, app else http.createServer app
   server.listen socketPort, bindAddress
-  sio = require("socket.io").listen server
-
-
-  #winston up some socket.io
-  sio.set "logger", {debug: logger.debug, info: logger.info, warn: logger.warn, error: logger.error }
-
+  sio = require("socket.io").listen(server, {logger: logger})
 
   sioRedisStore = require("socket.io/lib/stores/redis")
   sio.set "store", new sioRedisStore(
