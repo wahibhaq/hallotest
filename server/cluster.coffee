@@ -33,10 +33,6 @@ apn = require 'apn'
 uaparser = require 'ua-parser'
 bunyan = require 'bunyan'
 
-
-
-
-
 #constants
 USERNAME_LENGTH = 20
 CONTROL_MESSAGE_HISTORY = 100
@@ -103,19 +99,12 @@ if env is 'Local' or logConsole
     stream: process.stdout
   }
 
-  bunyanStreams.push
-  {
-    level: 'debug'
-    stream: process.stderr
-  }
-
 logger = bunyan.createLogger({
   name: 'surespot'
   streams: bunyanStreams
 });
 
 logger.debug "__dirname: #{__dirname}"
-
 
 if (cluster.isMaster and NUM_CORES > 1)
   # Fork workers.
