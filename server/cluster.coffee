@@ -20,7 +20,7 @@ fs = require("fs")
 bcrypt = require 'bcrypt'
 mkdirp = require("mkdirp")
 expressWinston = require "express-winston"
-logger = require("winston")
+#logger = require("winston")
 async = require 'async'
 _ = require 'underscore'
 querystring = require 'querystring'
@@ -1906,16 +1906,103 @@ else
   #they didn't have surespot on their phone so they came here so direct them to the play store
   app.get "/autoinvite/:username/:source", validateUsernameExists, (req, res, next) ->
 
-    #ua = uaparser.parse req.headers['user-agent']
-    #logger.debug "user agent: #{ua.toString()}, family: #{ua.os.family}"
+    ua = uaparser.parse req.headers['user-agent']
+    family = ua.os.family
+    logger.debug "user agent: #{ua.toString()}, family: #{family}"
 
-    username = req.params.username
-    source = req.params.source
+    #change what we sent back based on what's connecting
 
-    redirectUrl = "market://details?id=com.twofours.surespot&referrer="
-    query = "utm_source=surespot_android&utm_medium=#{source}&utm_content=#{username}"
+    if family is 'Android'
 
-    res.redirect  redirectUrl + encodeURIComponent(query)
+      #they hit https://server.surespot.me/autoinvite because they didn't have surespot installed on their phone so
+      #redirect them to the play store and use analytics mechanism to invite the user once installed
+
+      #if they have the app installed it will intercept the link and invite them
+
+      username = req.params.username
+      source = req.params.source
+
+      redirectUrl = "market://details?id=com.twofours.surespot&referrer="
+      query = "utm_source=surespot_android&utm_medium=#{source}&utm_content=#{username}"
+
+      resText = redirectUrl + encodeURIComponent(query)
+      logger.debug "auto-invite redirecting to: #{resText}"
+      res.redirect resText
+    else
+      if family is 'iOS'
+        #use smart banner mechanism on iOS, which unfortunately does not pass the parameters to the app after it is installed. iOS users will have to click the link again to invite once the app is installed.
+        #if the app is already installed the link should open the app with the parameters (impossible to test in dev)
+#        inviteText = "Please click on the link above to install or open surespot and invite #{req.params.username}. If surespot needs installing you will need to click the above link again after installing to invite the user. If no link appears above on iOS, open this page in Safari."
+#        resText = "<meta name=\"viewport\" content=\"width=device-width\">#{inviteText}<br><br><meta name=\"apple-itunes-app\" content=\"app-id=352861751, app-argument=surespot://autoinvite/#{req.params.username}\"/>"
+#        resText += "<br><br><a href=\"surespot://autoinvite/#{req.params.username}\">test link using scheme</a>"
+#        logger.debug "auto-invite response: #{resText}"
+#        res.send resText
+
+        #http://tflig.ht/1bth8Eq
+        #todo for now redirect, when it is in app store show smart banner
+
+        redirect = "surespot://autoinvite/#{req.params.username}"
+#        html =  """
+#                <script language=\"javascript\">
+#                  var timeout;
+#                  var cleared = false;
+#                """
+#        html += """
+#                  function open_appstore() {
+#                    if (!cleared) {
+#                      alert('opening appstore');
+#                      window.location='http://tflig.ht/1bth8Eq';
+#                    }
+#                  }
+#
+#                  function try_to_open_app() {
+#
+#                    timeout = setTimeout('open_appstore()', 2000);
+#                  }
+#
+#                  window.addEventListener('pagehide', function() {
+#                    cleared = true;
+#                    alert('clearing timeout');
+#
+#                    window.clearTimeout(timeout);
+#                    delete timeout;
+#                  });
+#
+#                """
+#        html += "window.location = \"#{redirect}\"; try_to_open_app(); </script>"
+#
+#
+#        logger.debug "auto-invite response: #{html}"
+#        res.send html
+        #res.redirect redirect
+        html =  """<script language=\"javascript\">
+                """
+        html += "window.open(\"#{redirect}\"); </script>"
+        html += """
+                If you got a "Cannot Open Page" error because surespot is not installed, please <a href=\"http://tflig.ht/1bth8Eq\">click here</a> to install surespot and then reload this page.
+                """
+
+
+        logger.debug "auto-invite response: #{html}"
+        res.send html
+      else
+        #couldn't figure out the device so give user option
+        username = req.params.username
+        source = req.params.source
+
+        redirectUrl = "market://details?id=com.twofours.surespot&referrer="
+        query = "utm_source=surespot_android&utm_medium=#{source}&utm_content=#{username}"
+
+        androidUrl = redirectUrl + encodeURIComponent(query)
+
+#        inviteText = "If on iOS, please click on the link above to install or open surespot and invite #{req.params.username}. If surespot needs installing you will need to click the above link again after installing to invite the user. If no link appears above on iOS, open this page in Safari."
+#        resText = "<meta name=\"viewport\" content=\"width=device-width\">#{inviteText}<br><br><meta name=\"apple-itunes-app\" content=\"app-id=352861751, app-argument=surespot://autoinvite/#{req.params.username}\"/><br><br>" +
+        resText = "If on Android, please <a href=\"#{androidUrl}\">click here</a> to install surespot and invite #{req.params.username} as a friend."
+        resText += "<br><br>If on iOS and surespot is installed please <a href=\"surespot://autoinvite/#{req.params.username}\">click here</a> to invite the user, or <a href=\"http://tflig.ht/1bth8Eq\">click here</a> to help alpha test."
+        logger.debug "auto-invite response: #{resText}"
+        res.send resText
+
+
 
   createNewUser = (req, res, next) ->
     username = req.body.username
@@ -1999,6 +2086,7 @@ else
                 logger.info "#{username} created, uid: #{user.id}"
                 req.login user, ->
                   req.user = user
+
                   if referrers
                     handleReferrers username, referrers, next
                   else
