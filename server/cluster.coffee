@@ -1568,16 +1568,24 @@ else
               deleteFile friend.imageUrl, "image/"
             else
               deleteFile url, "image/"
-              return logger.error "error sending message on socket: #{err}"
+              return next new Error "error sending message on socket: #{err}"
 
             rc.hmset "fi:#{username}", "#{otherUser}:imageUrl", url, "#{otherUser}:imageVersion", version, "#{otherUser}:imageIv", iv, (err, status) ->
-              return next err if err?
+              if err?
+                logger.error "POST /images/:username/:version, error: #{err}"
+                deleteFile url, "image/"
+                return next err
+
               createAndSendUserControlMessage username, "friendImage", otherUser, { url: url, iv: iv, version: version }, (err) ->
-                return logger.error "error sending message on socket: #{err}" if err?
+                if err?
+                  logger.error "POST /images/:username/:version, error: #{err}"
+                  deleteFile url, "image/"
+                  return next err
+
                 res.send url
 
     form.on 'error', (err) ->
-      next new Error err
+      next err
 
     form.parse req
 
