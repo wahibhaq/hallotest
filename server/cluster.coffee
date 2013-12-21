@@ -90,7 +90,7 @@ bunyanStreams = [{
   path: "logs/surespot_#{process.pid}.log"
   count: 7
   level: 'debug'
-  period: '6h'
+  period: 'weekly'
 }]
 
 if env is 'Local' or logConsole
