@@ -87,7 +87,7 @@ if NUM_CORES > numCPUs then NUM_CORES = numCPUs
 
 bunyanStreams = [{
   type: 'rotating-file'
-  path: "logs/surespot_#{process.pid}.log"
+  path: "logs/surespot.log"
   count: 7
   level: 'debug'
   period: 'weekly'
