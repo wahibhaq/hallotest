@@ -609,7 +609,7 @@ else
         checkClient ->
           getPurchaseInfo client, oauth2Client, token, (err, data) ->
             if err?
-              logger.err "error validating voice messaging, #{err}"
+              logger.error "error validating voice messaging, #{err}"
               oauth2Client = null
               return
             return unless data?.purchaseState?
