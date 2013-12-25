@@ -1987,7 +1987,7 @@ else
 
 #        inviteText = "If on iOS, please click on the link above to install or open surespot and invite #{req.params.username}. If surespot needs installing you will need to click the above link again after installing to invite the user. If no link appears above on iOS, open this page in Safari."
 #        resText = "<meta name=\"viewport\" content=\"width=device-width\">#{inviteText}<br><br><meta name=\"apple-itunes-app\" content=\"app-id=352861751, app-argument=surespot://autoinvite/#{req.params.username}\"/><br><br>" +
-        resText = "If on Android, please <a href=\"#{androidUrl}\">click here</a> to install surespot and invite #{req.params.username} as a friend."
+        resText = "If on Android, please <a href=\"#{androidUrl}\">click here</a> to invite #{req.params.username} to be a friend / install surespot."
         resText += "<br><br>If on iOS and surespot is installed please <a href=\"surespot://autoinvite/#{req.params.username}\">click here</a> to invite the user, or <a href=\"http://tflig.ht/1bth8Eq\">click here</a> to help alpha test."
         logger.debug "auto-invite response: #{resText}"
         res.send resText
