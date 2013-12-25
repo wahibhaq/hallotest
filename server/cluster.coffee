@@ -1918,6 +1918,9 @@ else
       res.redirect resText
     else
       if family is 'iOS'
+        redirect = "surespot://autoinvite/#{req.params.username}"
+        return res.redirect redirect
+
         #use smart banner mechanism on iOS, which unfortunately does not pass the parameters to the app after it is installed. iOS users will have to click the link again to invite once the app is installed.
         #if the app is already installed the link should open the app with the parameters (impossible to test in dev)
 #        inviteText = "Please click on the link above to install or open surespot and invite #{req.params.username}. If surespot needs installing you will need to click the above link again after installing to invite the user. If no link appears above on iOS, open this page in Safari."
@@ -1929,7 +1932,7 @@ else
         #http://tflig.ht/1bth8Eq
         #todo for now redirect, when it is in app store show smart banner
 
-        redirect = "surespot://autoinvite/#{req.params.username}"
+
 #        html =  """
 #                <script language=\"javascript\">
 #                  var timeout;
@@ -1962,17 +1965,16 @@ else
 #
 #        logger.debug "auto-invite response: #{html}"
 #        res.send html
-        #res.redirect redirect
-        html =  """<script language=\"javascript\">
-                """
-        html += "window.open(\"#{redirect}\"); </script>"
-        html += """
-                If you got a "Cannot Open Page" error because surespot is not installed, please <a href=\"http://tflig.ht/1bth8Eq\">click here</a> to install surespot and then reload this page.
-                """
-
-
-        logger.debug "auto-invite response: #{html}"
-        res.send html
+#        html =  """<script language=\"javascript\">
+#                """
+#        html += "window.open(\"#{redirect}\"); </script>"
+#        html += """
+#                If you got a "Cannot Open Page" error because surespot is not installed, please <a href=\"http://tflig.ht/1bth8Eq\">click here</a> to install surespot and then reload this page.
+#                """
+#
+#
+#        logger.debug "auto-invite response: #{html}"
+#        res.send html
       else
         #couldn't figure out the device so give user option
         username = req.params.username
