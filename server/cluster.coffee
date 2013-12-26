@@ -277,11 +277,12 @@ else
 
 
   app = express()
+
   app.configure ->
+    app.use express.static(__dirname + '/public', { maxAge: oneYear })
     sessionStore = new RedisStore({
       client: client
     })
-
     app.use express.limit(MAX_HTTP_REQUEST_LENGTH)
     app.use express.compress()
     app.use express.cookieParser()
@@ -298,16 +299,14 @@ else
     app.use passport.initialize()
     app.use passport.session({pauseStream: true})
 
+    app.set 'views', "#{__dirname}/views"
+    app.set 'view engine', 'jade'
+
     app.use(require('express-bunyan-logger')({name: 'surespot', streams : bunyanStreams }));
     app.use app.router
     app.use(require('express-bunyan-logger').errorLogger({name: 'surespot', streams : bunyanStreams }));
     app.use (err, req, res, next) ->
       res.send err.status or 500
-
-
-
-
-
 
   http.globalAgent.maxSockets = Infinity
 
@@ -327,7 +326,6 @@ else
   sio.set 'transports', ['websocket']
   sio.set 'destroy buffer size', MAX_MESSAGE_LENGTH
   sio.set 'browser client', false
-
 
   sio.set "authorization", (req, accept) ->
     logger.debug 'socket.io auth'
@@ -1918,9 +1916,9 @@ else
       res.redirect resText
     else
       if family is 'iOS'
-        redirect = "surespot://autoinvite/#{req.params.username}"
-        return res.redirect redirect
-
+        #redirect = "surespot://autoinvite/#{req.params.username}"
+        #return res.redirect redirect
+        res.render 'autoinviteIosAlpha', {username: req.params.username}
         #use smart banner mechanism on iOS, which unfortunately does not pass the parameters to the app after it is installed. iOS users will have to click the link again to invite once the app is installed.
         #if the app is already installed the link should open the app with the parameters (impossible to test in dev)
 #        inviteText = "Please click on the link above to install or open surespot and invite #{req.params.username}. If surespot needs installing you will need to click the above link again after installing to invite the user. If no link appears above on iOS, open this page in Safari."
@@ -1977,20 +1975,24 @@ else
 #        res.send html
       else
         #couldn't figure out the device so give user option
-        username = req.params.username
-        source = req.params.source
+#        username = req.params.username
+#        source = req.params.source
+#
+#        redirectUrl = "market://details?id=com.twofours.surespot&referrer="
+#        query = "utm_source=surespot_android&utm_medium=#{source}&utm_content=#{username}"
+#
+#        androidUrl = redirectUrl + encodeURIComponent(query)
+#
+##        inviteText = "If on iOS, please click on the link above to install or open surespot and invite #{req.params.username}. If surespot needs installing you will need to click the above link again after installing to invite the user. If no link appears above on iOS, open this page in Safari."
+##        resText = "<meta name=\"viewport\" content=\"width=device-width\">#{inviteText}<br><br><meta name=\"apple-itunes-app\" content=\"app-id=352861751, app-argument=surespot://autoinvite/#{req.params.username}\"/><br><br>" +
+#        resText = "If on Android, please <a href=\"#{androidUrl}\">click here</a> to invite #{req.params.username} to be a friend / install surespot."
+#        resText += "<br><br>If on iOS and surespot is installed please <a href=\"surespot://autoinvite/#{req.params.username}\">click here</a> to invite the user, or <a href=\"http://tflig.ht/1bth8Eq\">click here</a> to install the alpha version."
+#        logger.debug "auto-invite response: #{resText}"
+#        res.send resText
+        #todo add autoinvite params and dynamically update play store/itunes links
+        res.redirect "https://www.surespot.me"
+        #res.render 'autoinviteIosAlpha', {username: req.params.username}
 
-        redirectUrl = "market://details?id=com.twofours.surespot&referrer="
-        query = "utm_source=surespot_android&utm_medium=#{source}&utm_content=#{username}"
-
-        androidUrl = redirectUrl + encodeURIComponent(query)
-
-#        inviteText = "If on iOS, please click on the link above to install or open surespot and invite #{req.params.username}. If surespot needs installing you will need to click the above link again after installing to invite the user. If no link appears above on iOS, open this page in Safari."
-#        resText = "<meta name=\"viewport\" content=\"width=device-width\">#{inviteText}<br><br><meta name=\"apple-itunes-app\" content=\"app-id=352861751, app-argument=surespot://autoinvite/#{req.params.username}\"/><br><br>" +
-        resText = "If on Android, please <a href=\"#{androidUrl}\">click here</a> to invite #{req.params.username} to be a friend / install surespot."
-        resText += "<br><br>If on iOS and surespot is installed please <a href=\"surespot://autoinvite/#{req.params.username}\">click here</a> to invite the user, or <a href=\"http://tflig.ht/1bth8Eq\">click here</a> to help alpha test."
-        logger.debug "auto-invite response: #{resText}"
-        res.send resText
 
 
 
