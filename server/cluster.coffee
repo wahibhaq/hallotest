@@ -1596,6 +1596,11 @@ else
     container = null
     cdn = null
 
+    os = uaparser.parseOS req.headers['user-agent']
+    family = os.family
+    logger.debug "user agent os: #{os.toString()}, family: #{family}"
+
+
     form = new formidable.IncomingForm()
     form.onPart = (part) ->
       return form.handlePart part unless part.filename?
@@ -1630,17 +1635,21 @@ else
       checkPermissions = (callback) ->
         #if it's audio make sure we have permission
         if mimeType is "audio/mp4"
-          hasValidVoiceMessageToken username, (err, valid) ->
-            if err?
-              return next err
-
-            logger.debug "validated voice purchase for #{username}, valid: #{valid}"
-            #yes it's a 402
-            if not valid
-              return res.send 402
-            cdn = rackspaceCdnVoiceBaseUrl
-            container = rackspaceVoiceContainer
+          #ios gets a free pass for now
+          if family is 'iOS'
             callback()
+          else
+            hasValidVoiceMessageToken username, (err, valid) ->
+              if err?
+                return next err
+
+              logger.debug "validated voice purchase for #{username}, valid: #{valid}"
+              #yes it's a 402
+              if not valid
+                return res.send 402
+              cdn = rackspaceCdnVoiceBaseUrl
+              container = rackspaceVoiceContainer
+              callback()
         else
           cdn = rackspaceCdnImageBaseUrl
           container = rackspaceImageContainer
@@ -1904,13 +1913,11 @@ else
 
   #they didn't have surespot on their phone so they came here so direct them to the play store
   app.get "/autoinvite/:username/:source", validateUsernameExists, (req, res, next) ->
-
-    ua = uaparser.parse req.headers['user-agent']
-    family = ua.os.family
-    logger.debug "user agent: #{ua.toString()}, family: #{family}"
+    os = uaparser.parseOS req.headers['user-agent']
+    family = os.family
+    logger.debug "user agent family: #{family}"
 
     #change what we sent back based on what's connecting
-
     if family is 'Android'
 
       #they hit https://server.surespot.me/autoinvite because they didn't have surespot installed on their phone so
@@ -2100,25 +2107,15 @@ else
 
   # unauth'd methods
   app.get "/ping", (req,res,next) ->
-    ua = uaparser.parse req.headers['user-agent']
-    #logger.debug "user agent: #{ua.toString()}, family: #{ua.os.family}"
-
     rc.time (err, time) ->
       return next err if err?
       return next new Error 'redis does not know what time it is' unless time
       res.send 204
 
-#  app.get "/iosinvite/:username", validateUsernameExists, (req, res, next) ->
-#    inviteText = "Please click on the link above to install or open surespot and invite #{req.params.username}"
-#    res.send '<meta name="viewport" content="width=device-width">' + inviteText + '<br><br><meta name="apple-itunes-app" content="app-id=352861751, app-argument=https://www.surespot.me/user=' + "#{req.params.username}" + '"/>'
-
-
   app.get "/users/:username/exists", setNoCache, (req, res, next) ->
     userExistsOrDeleted req.params.username, true, (err, exists) ->
       return next err if err?
       res.send exists
-
-
 
   validateVersion = (req, res, next) ->
     version = req.body.version ? "not sent"
