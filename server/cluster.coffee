@@ -1605,7 +1605,6 @@ else
     form.onPart = (part) ->
       return form.handlePart part unless part.filename?
     #  filenames[part.filename] = "uploading"
-      ##iv = part.filename
       mimeType = part.mime
 
       logger.debug "checking mimeType: #{mimeType}"
@@ -1635,6 +1634,8 @@ else
       checkPermissions = (callback) ->
         #if it's audio make sure we have permission
         if mimeType is "audio/mp4"
+          cdn = rackspaceCdnVoiceBaseUrl
+          container = rackspaceVoiceContainer
           #ios gets a free pass for now
           if family is 'iOS'
             callback()
@@ -1647,8 +1648,6 @@ else
               #yes it's a 402
               if not valid
                 return res.send 402
-              cdn = rackspaceCdnVoiceBaseUrl
-              container = rackspaceVoiceContainer
               callback()
         else
           cdn = rackspaceCdnImageBaseUrl
@@ -1685,12 +1684,12 @@ else
                 return next err #delete filenames[part.filename]
 
               logger.debug "upload completed #{path}, size: #{size}"
-              uri = cdn + "/#{path}"
-              #uris.push uri
-              createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, uri, mimeType, id, size, (err) ->
+              url = cdn + "/#{path}"
+
+              createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, url, mimeType, id, size, (err) ->
                 logger.error "error sending message on socket: #{err}" if err?
                 return next err if err?
-                res.send 200
+                res.send { id: id, url: url}
 
 
     form.on 'error', (err) ->
