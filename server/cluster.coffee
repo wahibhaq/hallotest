@@ -666,7 +666,7 @@ else
     logger.debug "validatingVoiceReceipt, username: #{username}, token: #{token}"
 
     #validate with apple
-    iapClient.verifyReceipt receipt, (valid, msg, data) ->
+    iapClient.verifyReceipt receipt, true, (valid, msg, data) ->
       logger.debug "validating voice messaging receipt, valid: #{valid}, token: #{token} data: #{JSON.stringify(data)}"
 
       #see if we have valid voice messaging product id
