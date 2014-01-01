@@ -750,20 +750,8 @@ else
         return callback null, valid is "true"
 
 
-  app.post "/updatePurchaseTokens", ensureAuthenticated, (req, res, next) ->
-    return res.send 400 unless req.body.purchaseTokens?
-    logger.debug "received purchaseTokens #{req.body.purchaseTokens}"
-    purchaseTokens = null
-    try
-      purchaseTokens = JSON.parse req.body.purchaseTokens
-    catch error
-     return next error
-
-    return res.send 400 unless purchaseTokens?
-
-    updatePurchaseTokens(req.user.username, purchaseTokens)
+  app.post "/updatePurchaseTokens", ensureAuthenticated, updatePurchaseTokensMiddleware, (req, res, next) ->
     res.send 204
-
 
   removeRoomMessage = (room, id, fn) ->
     #remove message data from set of room messages
