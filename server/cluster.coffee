@@ -667,16 +667,18 @@ else
 
     #validate with apple
     iapClient.verifyReceipt receipt, true, (valid, msg, data) ->
-      logger.debug "validating voice messaging receipt, valid: #{valid}, token: #{token} data: #{JSON.stringify(data)}"
+      logger.debug "validating voice messaging receipt, valid: #{valid}"
 
       #see if we have valid voice messaging product id
+      #looks like you get different results for different receipts ?@$$@#%
       inapp = data?.receipt?.in_app
       if inapp?
         #iterate through inapp purchases
         valid = _.some(inapp, (purchase) -> purchase.product_id is "voice_messaging")
       else
-        valid = "false"
+        valid = data.receipt.product_id is "voice_messaging"
 
+      logger.debug "validated voice messaging receipt, valid: #{valid}, token: #{token} data: #{JSON.stringify(data)}"
       rc.hset "t", "v:vmr:#{token}", valid
 
 
