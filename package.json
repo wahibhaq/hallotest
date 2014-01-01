@@ -37,7 +37,8 @@
     "ua-parser": "~0.3.3",
     "bunyan": "~0.22.1",
     "express-bunyan-logger": "0.0.2",
-    "jade": "~1.0.0"
+    "jade": "~1.0.0",
+    "iap_verifier": "0.0.5"
   },
   "subdomain": "2fours.com",
   "scripts": {

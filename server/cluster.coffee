@@ -32,6 +32,7 @@ googleapis = require 'googleapis'
 apn = require 'apn'
 uaparser = require 'ua-parser'
 bunyan = require 'bunyan'
+IAPVerifier = require 'iap_verifier'
 
 #constants
 USERNAME_LENGTH = 20
@@ -67,6 +68,7 @@ rackspaceCdnVoiceBaseUrl = process.env.SURESPOT_RACKSPACE_VOICE_CDN_URL
 rackspaceImageContainer = process.env.SURESPOT_RACKSPACE_IMAGE_CONTAINER
 rackspaceVoiceContainer = process.env.SURESPOT_RACKSPACE_VOICE_CONTAINER
 rackspaceUsername = process.env.SURESPOT_RACKSPACE_USERNAME
+iapSecret = process.env.SURESPOT_IAP_SECRET
 sessionSecret = process.env.SURESPOT_SESSION_SECRET
 logConsole = process.env.SURESPOT_LOG_CONSOLE is "true"
 redisPort = process.env.REDIS_PORT
@@ -138,6 +140,7 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "rackspace voice cdn url: #{rackspaceCdnVoiceBaseUrl}"
   logger.info "rackspace voice container: #{rackspaceVoiceContainer}"
   logger.info "rackspace username: #{rackspaceUsername}"
+  logger.info "iap secret: #{iapSecret}"
   logger.info "session secret: #{sessionSecret}"
   logger.info "cores: #{NUM_CORES}"
   logger.info "console logging: #{logConsole}"
@@ -170,6 +173,7 @@ else
     logger.info "rackspace voice cdn url: #{rackspaceCdnVoiceBaseUrl}"
     logger.info "rackspace voice container: #{rackspaceVoiceContainer}"
     logger.info "rackspace username: #{rackspaceUsername}"
+    logger.info "iap secret: #{iapSecret}"
     logger.info "session secret: #{sessionSecret}"
     logger.info "cores: #{NUM_CORES}"
     logger.info "console logging: #{logConsole}"
@@ -191,11 +195,14 @@ else
   app = undefined
   ssloptions = undefined
   oauth2Client = undefined
+  iapClient = undefined
 
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
 
   apnOptions = { "gateway": apnGateway , "cert": "apn#{env}/cert.pem", "key": "apn#{env}/key.pem" }
   apnConnection = new apn.Connection(apnOptions);
+
+  iapClient = new IAPVerifier iapSecret
 
   redis = undefined
   if useRedisSentinel
@@ -583,42 +590,38 @@ else
   validateVoiceToken = (username, token) ->
     return unless username? and token?
 
-    #get validation flag for this voice message token
-    rc.hget "t", "v:vm:#{token}", (err, valid) ->
+    logger.debug "validatingVoiceToken, username: #{username}, token: #{token}"
+    #check token with google
+    googleapis.discover("androidpublisher", "v1.1").execute (err, client) ->
       if err?
-        logger.error err
+        logger.error "error validating voice messaging, #{err}"
+        oauth2Client = null
         return
 
-      logger.debug "validatingVoiceToken, username: #{username}, token: #{token}"
-      #check token with google
-      googleapis.discover("androidpublisher", "v1.1").execute (err, client) ->
-        if err?
-          logger.error "error validating voice messaging, #{err}"
-          oauth2Client = null
-          return
+      checkClient = (callback) ->
+        if not oauth2Client?
+          oauth2Client = new googleapis.OAuth2Client googleClientId, googleClientSecret, googleRedirectUrl
+          getAuthToken oauth2Client, callback
+        else
+          callback()
 
-        checkClient = (callback) ->
-          if not oauth2Client?
-            oauth2Client = new googleapis.OAuth2Client googleClientId, googleClientSecret, googleRedirectUrl
-            getAuthToken oauth2Client, callback
-          else
-            callback()
+      checkClient ->
+        getPurchaseInfo client, oauth2Client, token, (err, data) ->
+          if err?
+            logger.error "error validating voice messaging, #{err}"
+            oauth2Client = null
+            return
+          return unless data?.purchaseState?
 
-        checkClient ->
-          getPurchaseInfo client, oauth2Client, token, (err, data) ->
-            if err?
-              logger.error "error validating voice messaging, #{err}"
-              oauth2Client = null
-              return
-            return unless data?.purchaseState?
-            logger.debug "validated voice_messaging, purchaseState: #{data.purchaseState}, token: #{token}"
-            rc.hset "t", "v:vm:#{token}", if data.purchaseState is 0 then "true" else "false"
+          valid =  if data.purchaseState is 0 then "true" else "false"
+          logger.debug "validated voice_messaging, valid: #{valid}, token: #{token}"
+          rc.hset "t", "v:vm:#{token}", valid
 
 
   updatePurchaseTokens = (username, purchaseTokens) ->
     voiceToken = purchaseTokens?.voice_messaging ? null
 
-    #if we have something to update, update, otherwise wipe
+    #if we have something to update, update
     userKey = "u:#{username}"
     multi = rc.multi()
     #single floating license implementation
@@ -657,24 +660,88 @@ else
         if voiceToken?
           validateVoiceToken username, voiceToken
 
-  updatePurchaseTokensMiddleware = (req, res, next) ->
-    logger.debug "received purchaseTokens #{req.body.purchaseTokens}"
-    purchaseTokens = null
-    try
-      purchaseTokens = JSON.parse req.body.purchaseTokens
-    catch error
 
-    updatePurchaseTokens(req.user.username, purchaseTokens)
+  validateVoiceReceipt = (username, token, receipt) ->
+    return unless username? and token? and receipt?
+    logger.debug "validatingVoiceReceipt, username: #{username}, token: #{token}"
+
+    #validate with apple
+    iapClient.verifyReceipt receipt, (valid, msg, data) ->
+      logger.debug "validated voice messaging receipt, valid: #{valid}, token: #{token} data: #{JSON.stringify(data)}"
+      rc.hset "t", "v:vmr:#{token}", valid
+
+
+  updatePurchaseReceipt = (username, purchaseReceipt) ->
+    #use hash of receipt of purchase token as key
+    voiceToken = if purchaseReceipt? then crypto.createHash('md5').digest(purchaseReceipt).toString('base64') else null
+
+    #if we have something to update, update
+    userKey = "u:#{username}"
+    multi = rc.multi()
+    #single floating license implementation
+    #map username to token
+
+    #update token information
+    updateLicense = (callback) ->
+      #if they uploaded a token
+      if voiceToken?
+        #get current user with token
+        rc.hget "t", "u:vmr:#{voiceToken}", (err, currentuser) ->
+          return if err?
+          #if user is different remove from current user
+          if currentuser? and username isnt currentuser
+            multi.hdel "u:#{currentuser}", "vmr"
+
+          #set token to user
+          multi.hset userKey, "vmr", voiceToken
+          #update token mapping to user
+          multi.hset "t", "u:vmr:#{voiceToken}", username
+          callback()
+      else
+        #no receipt uploaded so no check to perform
+        return
+
+    updateLicense ->
+      if voiceToken?
+        multi.exec (err, results) ->
+          return if err?
+
+          #validate receipt with apple
+          validateVoiceReceipt username, voiceToken, purchaseReceipt
+
+
+  updatePurchaseTokensMiddleware = (req, res, next) ->
+    logger.debug "user #{req.user.username} received purchaseTokens #{req.body.purchaseTokens}, receipt: #{req.body.purchaseReceipt}"
+
+    purchaseTokens = req.body.purchaseTokens
+    purchaseReceipt = req.body.purchaseReceipt
+
+    if purchaseTokens
+      try
+        purchaseTokens = JSON.parse purchaseTokens
+      catch error
+
+      updatePurchaseTokens(req.user.username, purchaseTokens)
+
+
+    if purchaseReceipt
+      updatePurchaseReceipt(req.user.username, purchaseReceipt)
+
+
     next()
 
 
 
-  hasValidVoiceMessageToken = (username, callback) ->
-    rc.hget "u:#{username}", "vm", (err, token) ->
+
+  hasValidVoiceMessageToken = (username, family, callback) ->
+    return callback null, false unless username? and family?
+    key = if family is 'iOS' then "vmr" else "vm"
+
+    rc.hget "u:#{username}", key, (err, token) ->
       return callback err if err?
       return callback null, false unless token?
 
-      rc.hget "t", "v:vm:#{token}", (err, valid) ->
+      rc.hget "t", "v:#{key}:#{token}", (err, valid) ->
         return callback err if err?
         return callback null, valid is "true"
 
@@ -1596,11 +1663,6 @@ else
     container = null
     cdn = null
 
-    os = uaparser.parseOS req.headers['user-agent']
-    family = os.family
-    logger.debug "user agent os: #{os.toString()}, family: #{family}"
-
-
     form = new formidable.IncomingForm()
     form.onPart = (part) ->
       return form.handlePart part unless part.filename?
@@ -1636,19 +1698,20 @@ else
         if mimeType is "audio/mp4"
           cdn = rackspaceCdnVoiceBaseUrl
           container = rackspaceVoiceContainer
-          #ios gets a free pass for now
-          if family is 'iOS'
-            callback()
-          else
-            hasValidVoiceMessageToken username, (err, valid) ->
-              if err?
-                return next err
 
-              logger.debug "validated voice purchase for #{username}, valid: #{valid}"
-              #yes it's a 402
-              if not valid
-                return res.send 402
-              callback()
+          os = uaparser.parseOS req.headers['user-agent']
+          family = os.family
+          logger.debug "family: #{family}"
+
+          hasValidVoiceMessageToken username, family, (err, valid) ->
+            if err?
+              return next err
+
+            logger.debug "validated voice purchase for #{username}, valid: #{valid}"
+            #yes it's a 402
+            if not valid
+              return res.send 402
+            callback()
         else
           cdn = rackspaceCdnImageBaseUrl
           container = rackspaceImageContainer
@@ -1843,6 +1906,7 @@ else
     #return messages since id
     getMessagesBeforeId req.user.username, getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
       return next err if err?
+      logger.debug "sending #{data}"
       res.send data
 
   app.get "/messagedata/:username/:messageid/:controlmessageid", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
