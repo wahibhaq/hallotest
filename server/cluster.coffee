@@ -667,7 +667,16 @@ else
 
     #validate with apple
     iapClient.verifyReceipt receipt, (valid, msg, data) ->
-      logger.debug "validated voice messaging receipt, valid: #{valid}, token: #{token} data: #{JSON.stringify(data)}"
+      logger.debug "validating voice messaging receipt, valid: #{valid}, token: #{token} data: #{JSON.stringify(data)}"
+
+      #see if we have valid voice messaging product id
+      inapp = data?.receipt?.in_app
+      if inapp?
+        #iterate through inapp purchases
+        valid = _.some(inapp, (purchase) -> purchase.product_id is "voice_messaging")
+      else
+        valid = "false"
+
       rc.hset "t", "v:vmr:#{token}", valid
 
 
@@ -711,7 +720,7 @@ else
 
 
   updatePurchaseTokensMiddleware = (req, res, next) ->
-    logger.debug "user #{req.user.username} received purchaseTokens #{req.body.purchaseTokens}, receipt: #{req.body.purchaseReceipt}"
+    logger.debug "user #{req.user.username} received purchaseTokens #{req.body.purchaseTokens}, receipt: " + if req.body.purchaseReceipt? then "yes" else "no"
 
     purchaseTokens = req.body.purchaseTokens
     purchaseReceipt = req.body.purchaseReceipt
@@ -723,15 +732,10 @@ else
 
       updatePurchaseTokens(req.user.username, purchaseTokens)
 
-
     if purchaseReceipt
       updatePurchaseReceipt(req.user.username, purchaseReceipt)
 
-
     next()
-
-
-
 
   hasValidVoiceMessageToken = (username, family, callback) ->
     return callback null, false unless username? and family?
