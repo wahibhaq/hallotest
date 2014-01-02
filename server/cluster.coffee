@@ -684,7 +684,7 @@ else
 
   updatePurchaseReceipt = (username, purchaseReceipt) ->
     #use hash of receipt of purchase token as key
-    voiceToken = if purchaseReceipt? then crypto.createHash('md5').digest(purchaseReceipt).toString('base64') else null
+    voiceToken = if purchaseReceipt? then crypto.createHash('md5').update(purchaseReceipt,'utf8').digest('base64') else null
 
     #if we have something to update, update
     userKey = "u:#{username}"
