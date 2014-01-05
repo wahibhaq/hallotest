@@ -661,64 +661,63 @@ else
           validateVoiceToken username, voiceToken
 
 
-  validateVoiceReceipt = (username, token, receipt) ->
-    return unless username? and token? and receipt?
-    logger.debug "validatingVoiceReceipt, username: #{username}, token: #{token}"
+  validateVoiceReceipt = (username, receipt) ->
+    return unless username? and receipt?
+    logger.debug "validatingVoiceReceipt, username: #{username}"
 
     #validate with apple
     iapClient.verifyReceipt receipt, true, (valid, msg, data) ->
-      logger.debug "validating voice messaging receipt, valid: #{valid}"
-
       #see if we have valid voice messaging product id
       #looks like you get different results for different receipts ?@$$@#%
       inapp = data?.receipt?.in_app
+      transactionid = undefined
       if inapp?
         #iterate through inapp purchases
-        valid = _.some(inapp, (purchase) -> purchase.product_id is "voice_messaging")
+        transaction = _.find(inapp, (purchase) -> purchase.product_id is "voice_messaging")
+        valid = if transaction? then true else false
+        if valid
+          transactionid = transaction.original_transaction_id
       else
-        valid = data.receipt.product_id is "voice_messaging"
+        if data.receipt.product_id is "voice_messaging"
+          transactionid = data.receipt.original_transaction_id
+          valid = true
+        else
+          valid = false
 
-      logger.debug "validated voice messaging receipt, valid: #{valid}, token: #{token} data: #{JSON.stringify(data)}"
-      rc.hset "t", "v:vmr:#{token}", valid
+      logger.debug "validated voice messaging receipt, username: #{username}, valid: #{valid}, transactionid: #{transactionid}, data: #{JSON.stringify(data)}"
 
+      userKey = "u:#{username}"
+      multi = rc.multi()
 
-  updatePurchaseReceipt = (username, purchaseReceipt) ->
-    #use hash of receipt of purchase token as key
-    voiceToken = if purchaseReceipt? then crypto.createHash('md5').update(purchaseReceipt,'utf8').digest('base64') else null
+      if transactionid?
+      #if we have something to update, update
 
-    #if we have something to update, update
-    userKey = "u:#{username}"
-    multi = rc.multi()
-    #single floating license implementation
-    #map username to token
+        #single floating license implementation
+        multi.hset "t", "v:vmr:#{transactionid}", valid
 
-    #update token information
-    updateLicense = (callback) ->
-      #if they uploaded a token
-      if voiceToken?
         #get current user with token
-        rc.hget "t", "u:vmr:#{voiceToken}", (err, currentuser) ->
+        rc.hget "t", "u:vmr:#{transactionid}", (err, currentuser) ->
           return if err?
           #if user is different remove from current user
           if currentuser? and username isnt currentuser
             multi.hdel "u:#{currentuser}", "vmr"
 
           #set token to user
-          multi.hset userKey, "vmr", voiceToken
+          multi.hset userKey, "vmr", transactionid
           #update token mapping to user
-          multi.hset "t", "u:vmr:#{voiceToken}", username
-          callback()
+          multi.hset "t", "u:vmr:#{transactionid}", username
+          multi.exec (err, results) ->
+            logger.error "error updating voice message receipt: #{err}" if err?
+
       else
-        #no receipt uploaded so no check to perform
-        return
-
-    updateLicense ->
-      if voiceToken?
+        #no transaction id, remove
+        logger.debug "no voice message transaction found in receipt for: #{username}, removing voice message powers"
+        multi.hdel userKey, "vmr"
         multi.exec (err, results) ->
-          return if err?
+          logger.error "error updating voice message receipt: #{err}" if err?
 
-          #validate receipt with apple
-          validateVoiceReceipt username, voiceToken, purchaseReceipt
+
+
 
 
   updatePurchaseTokensMiddleware = (req, res, next) ->
@@ -735,7 +734,7 @@ else
       updatePurchaseTokens(req.user.username, purchaseTokens)
 
     if purchaseReceipt
-      updatePurchaseReceipt(req.user.username, purchaseReceipt)
+      validateVoiceReceipt(req.user.username, purchaseReceipt)
 
     next()
 
