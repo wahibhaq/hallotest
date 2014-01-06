@@ -645,6 +645,12 @@ else
             multi.hset userKey, "vm", voiceToken
             #update token mapping to user
             multi.hset "t", "u:vm:#{voiceToken}", username
+
+            #if token different, remove old token mapping
+            if currtoken isnt voiceToken
+              multi.hdel "t","u:vm:#{currtoken}"
+              multi.hdel "t","v:vm:#{currtoken}"
+
             callback()
         else
           #no token uploaded so perform check on existing token
