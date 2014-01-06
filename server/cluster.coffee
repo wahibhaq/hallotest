@@ -740,6 +740,10 @@ else
 
   hasValidVoiceMessageToken = (username, family, callback) ->
     return callback null, false unless username? and family?
+
+    #todo remove when app is in app store
+    return callback null, true if family is 'iOS'
+
     key = if family is 'iOS' then "vmr" else "vm"
 
     rc.hget "u:#{username}", key, (err, token) ->
