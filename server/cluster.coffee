@@ -936,9 +936,8 @@ else
     return friend
 
 
-  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, dataSize, callback) ->
+  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, dataSize, time, callback) ->
     logger.debug "new message"
-    time = Date.now()
 
     message = {}
     message.to = to
@@ -1338,7 +1337,7 @@ else
                 sio.sockets.to(from).emit "message", found
                 callback()
               else
-                createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, null, callback
+                createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, null, Date.now(), callback
 
 
   sio.on "connection", (socket) ->
@@ -1742,10 +1741,11 @@ else
               logger.debug "upload completed #{path}, size: #{size}"
               url = cdn + "/#{path}"
 
-              createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, url, mimeType, id, size, (err) ->
+              time = Date.now()
+              createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, url, mimeType, id, size, time, (err) ->
                 logger.error "error sending message on socket: #{err}" if err?
                 return next err if err?
-                res.send { id: id, url: url}
+                res.send { id: id, url: url, time: time, size: size}
 
 
     form.on 'error', (err) ->
