@@ -1126,7 +1126,7 @@ else
             #note.badge = 1
             note.alert = { "loc-key": "notification_message", "loc-args": [message.to, message.from] }
             note.payload = { id:message.id }
-            note.sound = "message.wav"
+            note.sound = "message.caf"
             logger.debug "sending apn to token: #{token} for #{message.to}"
             apnConnection.pushNotification note, apnDevice
             callback()
@@ -2481,7 +2481,7 @@ else
             apnDevice = new apn.Device token
             note = new apn.Notification()
             #note.badge = 1
-            note.sound = "invite.wav"
+            note.sound = "surespot-invite.caf"
             note.alert = { "loc-key": "notification_invite", "loc-args": [friendname, username] }
             apnConnection.pushNotification note, apnDevice
             callback()
@@ -2605,7 +2605,7 @@ else
             apnDevice = new apn.Device token
             note = new apn.Notification()
             #note.badge = 1
-            note.sound = "invite-accept.wav"
+            note.sound = "invite-accept.caf"
             note.alert = { "loc-key": "notification_invite_accept", "loc-args": [friendname, username] }
             apnConnection.pushNotification note, apnDevice
             callback()
