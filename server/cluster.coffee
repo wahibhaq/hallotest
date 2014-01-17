@@ -87,19 +87,11 @@ numCPUs = require('os').cpus().length
 
 if NUM_CORES > numCPUs then NUM_CORES = numCPUs
 
+#log to stdout to send to journal
 bunyanStreams = [{
-  type: 'rotating-file'
-  path: "logs/surespot.log"
-  count: 7
-  level: 'debug'
-  period: 'weekly'
-}]
-
-if env is 'Local' or logConsole
-  bunyanStreams.push {
     level: 'debug'
     stream: process.stdout
-  }
+  }]
 
 logger = bunyan.createLogger({
   name: 'surespot'
