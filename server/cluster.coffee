@@ -93,10 +93,19 @@ bunyanStreams = [{
     stream: process.stdout
   }]
 
+if env is 'Local'
+  bunyanStreams.push {
+    level: 'debug'
+    path: "logs/surespot.log"
+  }
+
+
 logger = bunyan.createLogger({
   name: 'surespot'
   streams: bunyanStreams
 });
+
+
 
 logger.debug "__dirname: #{__dirname}"
 
