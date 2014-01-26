@@ -1113,6 +1113,8 @@ else
           if result.failure > 0
             removeGcmIds message.to, gcmIds, result.results
 
+          if result.canonical_ids > 0
+            handleCanonicalIds message.to, gcmIds, result.results
       else
         logger.debug "no gcm id for #{message.to}"
 
@@ -2471,6 +2473,9 @@ else
           logger.debug "sent gcm for invite: #{JSON.stringify(result)}"
           if result.failure > 0
             removeGcmIds friendname, gcmIds, result.results
+
+          if result.canonical_ids > 0
+            handleCanonicalIds friendname, gcmIds, result.results
       else
         logger.debug "gcmIds not set for #{friendname}"
 
@@ -2596,6 +2601,9 @@ else
           logger.debug "sendGcm result: #{JSON.stringify(result)}"
           if result.failure > 0
             removeGcmIds friendname, gcmIds, result.results
+
+          if result.canonical_ids > 0
+            handleCanonicalIds friendname, gcmIds, result.results
 
       if apn_tokens?.length > 0
         logger.debug "sending apns for invite response"
@@ -3216,3 +3224,24 @@ else
       logger.debug "removing all gcmids for user #{username}"
       rc.hdel userKey, "gcmId", (err, result) ->
         logger.error "error removing gcmIds for #{username}" if err?
+
+  handleCanonicalIds = (username, gcmIds, results) ->
+    #replace ids with canonical ids
+    logger.debug "replacing with canonical ids for user #{username}"
+    _.each(
+      results,
+      (item, index) ->
+        newId = item.registration_id
+        if newId?
+          logger.debug "replacing #{gcmIds[index]} with #{newId} for user #{username}"
+          gcmIds[index] = newId)
+
+    userKey = "u:#{username}"
+    if gcmIds?.length > 0
+      #make sure they are unique
+      uniqueIds = _.uniq(gcmIds)
+      saveGcmString = uniqueIds.filter((n) -> n?.length > 0).join(":")
+      logger.debug "setting gcmids #{saveGcmString} for user #{username}"
+      rc.hset userKey, 'gcmId', saveGcmString, (err, result) ->
+        logger.error "error setting gcmIds for #{username}" if err?
+
