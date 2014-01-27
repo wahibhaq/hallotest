@@ -33,6 +33,8 @@ apn = require 'apn'
 uaparser = require 'ua-parser'
 bunyan = require 'bunyan'
 IAPVerifier = require 'iap_verifier'
+chat = require './chat'
+common = require './common'
 
 #constants
 USERNAME_LENGTH = 20
@@ -197,6 +199,12 @@ else
   ssloptions = undefined
   oauth2Client = undefined
   iapClient = undefined
+
+  chat.connect (err) ->
+    if err?
+      logger.error 'could not connect to cassandra'
+      process.exit(1)
+
 
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
 
@@ -518,8 +526,6 @@ else
       return callback null, false if not result
       rc.sismember "ir:#{friendname}", username, callback
 
-  getRoomName = (from, to) ->
-    if from < to then from + ":" + to else to + ":" + from
 
   getOtherUser = (room, user) ->
     users = room.split ":"
@@ -960,7 +966,7 @@ else
     message.data = data
     message.mimeType = mimeType
     message.dataSize = dataSize if dataSize
-    room = getRoomName(from,to)
+    room = common.getRoomName(from,to)
 
 
     #INCR message id
@@ -971,102 +977,107 @@ else
       logger.info "#{from}->#{to}, mimeType: #{mimeType} message: #{message}"
       newMessage = JSON.stringify(message)
 
-      #store messages in sorted sets
-      multi = rc.multi()
 
-      userMessagesKey = "m:#{from}"
-      multi.zadd "m:#{room}", id, newMessage
-      #keep track of all the users message so we can remove the earliest when we cross their threshold
-      #we use a sorted set here so we can easily remove when message is deleted O(N) vs O(M*log(N))
-      multi.zadd userMessagesKey, time, "m:#{room}:#{id}"
+      #store message in cassandra
+      chat.insertTextMessage message, (err, results) ->
+        return callback new MessageError(err, 500) if err?
 
-      #make sure conversation is present
-      multi.sadd "c:" + from, room
-      multi.sadd "c:" + to, room
+        #store messages in sorted sets
+        multi = rc.multi()
 
-      #marketing wanted some stats
-      #increment total user message / image counter
-      switch mimeType
-        when "text/plain"
-          multi.hincrby "u:#{from}", "mc", 1
-          multi.incr "tmc"
+        #userMessagesKey = "m:#{from}"
+        #multi.zadd "m:#{room}", id, newMessage
+        #keep track of all the users message so we can remove the earliest when we cross their threshold
+        #we use a sorted set here so we can easily remove when message is deleted O(N) vs O(M*log(N))
+        #multi.zadd userMessagesKey, time, "m:#{room}:#{id}"
 
-        when "image/"
-          multi.hincrby "u:#{from}", "ic", 1
-          multi.incr "tic"
+        #make sure conversation is present
+        multi.sadd "c:" + from, room
+        multi.sadd "c:" + to, room
 
-        when "audio/mp4"
-          multi.hincrby "u:#{from}", "vc", 1
-          multi.incr "tvc"
+        #marketing wanted some stats
+        #increment total user message / image counter
+        switch mimeType
+          when "text/plain"
+            multi.hincrby "u:#{from}", "mc", 1
+            multi.incr "tmc"
 
+          when "image/"
+            multi.hincrby "u:#{from}", "ic", 1
+            multi.incr "tic"
 
-
-
-
-      deleteEarliestMessage = (callback) ->
-        #check how many messages the user has total
-        rc.zcard userMessagesKey, (err, card) ->
-          return callback err if err?
-          #TODO per user threshold based on pay status
-          #delete the oldest message(s)
-          deleteCount = (card - MESSAGES_PER_USER) + 1
-          logger.debug "deleteCount #{deleteCount}"
-          if deleteCount > 0
-
-            rc.zrange userMessagesKey,  0, deleteCount-1, (err, messagePointers) ->
-              return callback err if err?
-              myDeleteControlMessages = []
-              theirDeleteControlMessages = []
-              async.each(
-                messagePointers,
-                (item, callback) ->
-                  messageData = getMessagePointerData from, item
+          when "audio/mp4"
+            multi.hincrby "u:#{from}", "vc", 1
+            multi.incr "tvc"
 
 
-                  #if the message we deleted is not part of the same conversation,send a control message
-                  deletedSpot = getRoomName messageData.from, messageData.to
-                  deletedFromSameSpot = room is deletedSpot
-
-                  deleteMessage from, messageData.to, messageData.id, not deletedFromSameSpot, multi, (err, deleteControlMessage) ->
-                    if not err? and deleteControlMessage?
-                      myDeleteControlMessages.push deleteControlMessage
-
-                      #don't send control message to other user in the message if it pertains to a different conversation
-                      if deletedFromSameSpot
-                        theirDeleteControlMessages.push deleteControlMessage
 
 
-                    callback()
-                (err) ->
-                  logger.warn "error getting old messages to delete: #{err}" if err?
-                  callback null, myDeleteControlMessages, theirDeleteControlMessages)
 
-          else
-            callback null, null
+  #      deleteEarliestMessage = (callback) ->
+  #        #check how many messages the user has total
+  #        rc.zcard userMessagesKey, (err, card) ->
+  #          return callback err if err?
+  #          #TODO per user threshold based on pay status
+  #          #delete the oldest message(s)
+  #          deleteCount = (card - MESSAGES_PER_USER) + 1
+  #          logger.debug "deleteCount #{deleteCount}"
+  #          if deleteCount > 0
+  #
+  #            rc.zrange userMessagesKey,  0, deleteCount-1, (err, messagePointers) ->
+  #              return callback err if err?
+  #              myDeleteControlMessages = []
+  #              theirDeleteControlMessages = []
+  #              async.each(
+  #                messagePointers,
+  #                (item, callback) ->
+  #                  messageData = getMessagePointerData from, item
+  #
+  #
+  #                  #if the message we deleted is not part of the same conversation,send a control message
+  #                  deletedSpot = common.getRoomName messageData.from, messageData.to
+  #                  deletedFromSameSpot = room is deletedSpot
+  #
+  #                  deleteMessage from, messageData.to, messageData.id, not deletedFromSameSpot, multi, (err, deleteControlMessage) ->
+  #                    if not err? and deleteControlMessage?
+  #                      myDeleteControlMessages.push deleteControlMessage
+  #
+  #                      #don't send control message to other user in the message if it pertains to a different conversation
+  #                      if deletedFromSameSpot
+  #                        theirDeleteControlMessages.push deleteControlMessage
+  #
+  #
+  #                    callback()
+  #                (err) ->
+  #                  logger.warn "error getting old messages to delete: #{err}" if err?
+  #                  callback null, myDeleteControlMessages, theirDeleteControlMessages)
+  #
+  #          else
+  #            callback null, null
 
-      deleteEarliestMessage (err, myDeleteControlMessages, theirDeleteControlMessages) ->
-        return callback err if err?
+      #  deleteEarliestMessage (err, myDeleteControlMessages, theirDeleteControlMessages) ->
+       #   return callback err if err?
 
         multi.exec  (err, results) ->
           if err?
             logger.error ("ERROR: Socket.io onmessage, " + err)
             return callback new MessageError(iv, 500)
 
-          myMessage = null
-          theirMessage = null
+          myMessage = newMessage
+          theirMessage = newMessage
 
           #if we deleted messages, add the delete control message(s) to this message to save sending the delete control message separately
-          if myDeleteControlMessages?.length > 0
-            message.deleteControlMessages = myDeleteControlMessages
-            myMessage = JSON.stringify message
-          else
-            myMessage = newMessage
-
-          if theirDeleteControlMessages?.length > 0
-            message.deleteControlMessages = theirDeleteControlMessages
-            theirMessage = JSON.stringify message
-          else
-            theirMessage = newMessage
+    #      if myDeleteControlMessages?.length > 0
+    #        message.deleteControlMessages = myDeleteControlMessages
+    #        myMessage = JSON.stringify message
+    #      else
+    #        myMessage = newMessage
+    #
+    #      if theirDeleteControlMessages?.length > 0
+    #        message.deleteControlMessages = theirDeleteControlMessages
+    #        theirMessage = JSON.stringify message
+    #      else
+    #        theirMessage = newMessage
 
           sio.sockets.to(to).emit "message", theirMessage
           sio.sockets.to(from).emit "message", myMessage
@@ -1335,7 +1346,7 @@ else
 
             cipherdata = message.data
             resendId = message.resendId
-            room = getRoomName(from, to)
+            room = common.getRoomName(from, to)
 
             mimeType = message.mimeType
             #todo validate mimetype
@@ -1371,7 +1382,7 @@ else
 
     username = req.user.username
     otherUser = req.params.username
-    room = getRoomName username, otherUser
+    room = common.getRoomName username, otherUser
     id = req.params.id
 
     return res.send 400 unless id?
@@ -1383,7 +1394,7 @@ else
 
 
   deleteAllMessages = (username, otherUser, utaiId, callback) ->
-    room = getRoomName username, otherUser
+    room = common.getRoomName username, otherUser
     getAllMessages room, (err, messages) ->
       return callback err if err?
 
@@ -1452,7 +1463,7 @@ else
 
 
   deleteMessage = (from, to, messageId, sendControlMessage, multi, callback) ->
-    room = getRoomName to, from
+    room = common.getRoomName to, from
     #get the message we're modifying
     getMessage room, messageId, (err, dMessage) ->
       return callback err if err?
@@ -1570,7 +1581,7 @@ else
 
     username = req.user.username
     otherUser = req.params.username
-    room = getRoomName username, otherUser
+    room = common.getRoomName username, otherUser
     #get the message we're modifying
     getMessage room, messageId, (err, dMessage) ->
       return next err if err?
@@ -1726,7 +1737,7 @@ else
       checkPermissions ->
         #todo validate versions
 
-        room = getRoomName username, req.params.username
+        room = common.getRoomName username, req.params.username
         getNextMessageId room, null, (id) ->
           #todo send message error on socket
           if not id?
@@ -1910,7 +1921,7 @@ else
   #get remote messages before id
   app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
     #return messages since id
-    getMessagesBeforeId req.user.username, getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
+    getMessagesBeforeId req.user.username, common.getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
       return next err if err?
       logger.debug "sending #{data}"
       res.send data
@@ -1928,7 +1939,7 @@ else
         res.send 204
 
   getMessagesAndControlMessages = (username, friendname, messageId, controlMessageId, callback) ->
-    spot = getRoomName(username, friendname)
+    spot = common.getRoomName(username, friendname)
     getMessagesAfterId username, spot, parseInt(messageId), (err, messageData) ->
       return callback err if err?
       #return messages since id
@@ -2940,7 +2951,7 @@ else
           return next err if err?
           next()
       else
-        room = getRoomName username, theirUsername
+        room = common.getRoomName username, theirUsername
 
         #delete the conversation with this user from the set of my conversations
         multi.srem "c:#{username}", room
