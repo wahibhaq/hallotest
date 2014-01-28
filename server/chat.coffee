@@ -82,12 +82,58 @@ exports.getAllMessages = (room, fn) ->
     rc.zrange "m:#{room}", 0, -1, fn
 
 
-exports.getMessages = (username, room, count, fn) ->
-    #return last x messages
-    #args = []
-    rc.zrange "m:#{room}", -count, -1, 'withscores', (err, data) ->
-      return fn err if err?
-      filterDeletedMessages username, room, data, fn
+exports.remapMessages = (results) ->
+  messages = []
+  #map to array of json messages
+  results.forEach (row) ->
+    message = {}
+    row.forEach (name, value, ts, ttl) ->
+      switch name
+        when 'username','spotname'
+          return
+        when 'touser'
+          message['to'] = value
+        when 'fromuser'
+          message['from'] = value
+        when 'datetime'
+          message[name] = value.getTime()
+        when 'mimetype'
+          message['mimeType'] = value
+        when 'toversion'
+          message['toVersion'] = value
+        when 'fromversion'
+          message['fromVersion'] = value
+        when 'datasize'
+          message['dataSize'] = value
+        else
+          if value? then message[name] = value else return
+
+    #insert at begining to reverse order
+    messages.unshift message
+
+  return messages
+
+exports.getMessages = (username, room, count, callback) ->
+  cql = "select * from chatmessages where username=? and spotname=? order by spotname desc limit #{count};"
+  pool.cql cql, [username, room], (err, results) =>
+    return callback err if err?
+    return callback null, @remapMessages results
+
+
+
+
+exports.getMessagesAfterId = (username, room, id, callback) ->
+  if id is -1
+    callback null, null
+  else
+    if id is 0
+      this.getMessages username, room, 30, callback
+    else
+      cql = "select * from chatmessages where username=? and spotname=? and id > ? order by spotname desc;"
+      pool.cql cql, [username, room, id], (err, results) =>
+        return callback err if err?
+        return callback null, @remapMessages results
+
 
 exports.getControlMessages = (room, count, fn) ->
     rc.zrange "cm:" + room, -count, -1, fn
@@ -95,59 +141,9 @@ exports.getControlMessages = (room, count, fn) ->
 exports.getUserControlMessages = (user, count, fn) ->
     rc.zrange "cu:" + user, -count, -1, fn
 
-exports.getMessagesAfterId = (username, room, id, fn) ->
-    if id is -1
-      fn null, null
-    else
-      if id is 0
-        getMessages username, room, 30, fn
-      else
-        #args = []
-        rc.zrangebyscore "m:#{room}", "(" + id, "+inf", 'withscores', (err, data) ->
-          filterDeletedMessages username, room, data, fn
 
 exports.getMessagesBeforeId = (username, room, id, fn) ->
     rc.zrangebyscore "m:#{room}", id - 60, "(" + id, 'withscores', (err, data) ->
       filterDeletedMessages username, room, data, fn
 
-exports.checkForDuplicateMessage = (resendId, username, room, message, callback) ->
-    if (resendId?)
-      if (resendId > 0)
-        logger.debug "searching room: #{room} from id: #{resendId} for duplicate messages"
-        #check messages client doesn't have for dupes
-        getMessagesAfterId username, room, resendId, (err, data) ->
-          logger.error "error getting messages" if err?
-          return callback err if err
-          found = _.find data, (checkMessageJSON) ->
-            checkMessage = undefined
-            try
-              logger.debug "parsing #{checkMessageJSON}"
-              checkMessage = JSON.parse(checkMessageJSON)
-            catch error
-              logger.debug "error parsing #{checkMessageJSON}"
-              return callback error
 
-            logger.debug "comparing ivs"
-            checkMessage.iv == message.iv
-
-          callback null, found
-      else
-        logger.debug "searching 30 messages from room: #{room} for duplicates"
-        #check last 30 for dupes
-        getMessages username, room, 30, (err, data) ->
-          logger.error "error getting messages" if err?
-          return callback err if err
-          found = _.find data, (checkMessageJSON) ->
-            try
-              logger.debug "parsing #{checkMessageJSON}"
-              checkMessage = JSON.parse(checkMessageJSON)
-            catch error
-              logger.error "error parsing #{checkMessageJSON}"
-              return callback error
-
-            logger.debug "comparing ivs"
-            checkMessage.iv == message.iv
-
-          callback null, found
-    else
-      callback null, false

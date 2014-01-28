@@ -38,7 +38,8 @@
     "bunyan": "~0.22.1",
     "express-bunyan-logger": "0.0.2",
     "jade": "~1.0.0",
-    "iap_verifier": "https://github.com/surespot/iap_verifier/tarball/master"
+    "iap_verifier": "https://github.com/surespot/iap_verifier/tarball/master",
+    "cassandra-client": "~0.14.8"
   },
   "subdomain": "2fours.com",
   "scripts": {

@@ -809,30 +809,12 @@ else
   getAllMessages = (room, fn) ->
     rc.zrange "m:#{room}", 0, -1, fn
 
-
-  getMessages = (username, room, count, fn) ->
-    #return last x messages
-    #args = []
-    rc.zrange "m:#{room}", -count, -1, 'withscores', (err, data) ->
-      return fn err if err?
-      filterDeletedMessages username, room, data, fn
-
   getControlMessages = (room, count, fn) ->
     rc.zrange "cm:" + room, -count, -1, fn
 
   getUserControlMessages = (user, count, fn) ->
     rc.zrange "cu:" + user, -count, -1, fn
 
-  getMessagesAfterId = (username, room, id, fn) ->
-    if id is -1
-      fn null, null
-    else
-      if id is 0
-        getMessages username, room, 30, fn
-      else
-        #args = []
-        rc.zrangebyscore "m:#{room}", "(" + id, "+inf", 'withscores', (err, data) ->
-          filterDeletedMessages username, room, data, fn
 
   getMessagesBeforeId = (username, room, id, fn) ->
     rc.zrangebyscore "m:#{room}", id - 60, "(" + id, 'withscores', (err, data) ->
@@ -843,18 +825,10 @@ else
       if (resendId > 0)
         logger.debug "searching room: #{room} from id: #{resendId} for duplicate messages"
         #check messages client doesn't have for dupes
-        getMessagesAfterId username, room, resendId, (err, data) ->
+        chat.getMessagesAfterId username, room, resendId, (err, data) ->
           logger.error "error getting messages" if err?
           return callback err if err
-          found = _.find data, (checkMessageJSON) ->
-            checkMessage = undefined
-            try
-              logger.debug "parsing #{checkMessageJSON}"
-              checkMessage = JSON.parse(checkMessageJSON)
-            catch error
-              logger.debug "error parsing #{checkMessageJSON}"
-              return callback error
-
+          found = _.find data, (checkMessage) ->
             logger.debug "comparing ivs"
             checkMessage.iv == message.iv
 
@@ -862,17 +836,10 @@ else
       else
         logger.debug "searching 30 messages from room: #{room} for duplicates"
         #check last 30 for dupes
-        getMessages username, room, 30, (err, data) ->
+        chat.getMessages username, room, 30, (err, data) ->
           logger.error "error getting messages" if err?
           return callback err if err
-          found = _.find data, (checkMessageJSON) ->
-            try
-              logger.debug "parsing #{checkMessageJSON}"
-              checkMessage = JSON.parse(checkMessageJSON)
-            catch error
-              logger.error "error parsing #{checkMessageJSON}"
-              return callback error
-
+          found = _.find data, (checkMessage) ->
             logger.debug "comparing ivs"
             checkMessage.iv == message.iv
 
@@ -902,7 +869,7 @@ else
     #we will alread have an id if we uploaded a file
     return callback id if id?
     #INCR message id
-    rc.incr "m:#{room}:id", (err, newId) ->
+    rc.hincrby "messagecounters","#{room}",1, (err, newId) ->
       if err?
         logger.error "ERROR: getNextMessageId, room: #{room}, error: #{err}"
         callback null
@@ -1782,8 +1749,8 @@ else
     rc.smembers "c:" + username, (err, conversations) ->
       return callback err if err?
       if (conversations.length > 0)
-        conversationsWithId = _.map conversations, (conversation) -> "m:#{conversation}:id"
-        rc.mget conversationsWithId, (err, ids) ->
+        conversationsWithId = _.map conversations, (conversation) -> "#{conversation}"
+        rc.hmget "messagecounters", conversationsWithId, (err, ids) ->
           return next err if err?
           conversationIds = []
           _.each conversations, (conversation, i) -> conversationIds.push { conversation: conversation, id: ids[i] }
@@ -1936,7 +1903,7 @@ else
 
   getMessagesAndControlMessages = (username, friendname, messageId, controlMessageId, callback) ->
     spot = common.getRoomName(username, friendname)
-    getMessagesAfterId username, spot, parseInt(messageId), (err, messageData) ->
+    chat.getMessagesAfterId username, spot, parseInt(messageId), (err, messageData) ->
       return callback err if err?
       #return messages since id
       getControlMessagesAfterId spot, parseInt(controlMessageId), (err, controlData) ->
@@ -2913,7 +2880,7 @@ else
           if not theyHaveDeletedMe
             #delete our messages with the other user
             #get the latest id
-            rc.get "m:#{room}:id", (err, id) ->
+            rc.hget "messagecounters", "#{room}", (err, id) ->
               return next err if err?
               #handle no id
               deleteMessages = (messageId, callback) ->
@@ -2963,7 +2930,7 @@ else
                 deleteLastUserScraps (err) ->
                   return next err if err?
 
-                  rc.get "m:#{room}:id", (err, id) ->
+                  rc.hget "messagecounters","#{room}", (err, id) ->
                     return next err if err?
                     deleteMessages = (callback) ->
                       if id?
@@ -2989,7 +2956,9 @@ else
                       #delete the set that held message ids of mine that they deleted
                       multi.del "d:#{theirUsername}:#{room}"
 
-                      multi.del "m:#{room}:id"
+                      multi.hdel "messagecounters", "#{room}"
+
+                      #todo delete from cassandra
                       multi.del "m:#{room}"
                       next()
 
