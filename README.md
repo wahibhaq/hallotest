@@ -74,7 +74,7 @@ terms of a separate license:
 * [node-bunyan](https://github.com/trentm/node-bunyan) - Copyright (c) 2011-2012 Joyent Inc.
 * [express-bunyan-logger](https://github.com/villadora/express-bunyan-logger) - Copyright (c) 2013, Villa.Gao <jky239@gmail.com>
 * [jade](https://github.com/visionmedia/jade) - Copyright (c) 2009-2010 TJ Holowaychuk <tj@vision-media.ca>
-* [iap_verifier](https://github.com/pcrawfor/iap_verifier) - Copyright (c) Paul Crawford <tj@vision-media.ca>
+* [iap_verifier](https://github.com/pcrawfor/iap_verifier) - Copyright (c) Paul Crawford 
 * [redis-sentinel-client](https://github.com/DocuSignDev/node-redis-sentinel-client) - Copyright (c) Node.js team at DocuSign
 * [redis](https://redis.io/) -
 redis: http://redis.io/
