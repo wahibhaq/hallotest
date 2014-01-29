@@ -1465,9 +1465,9 @@ else
           res.send token
 
   app.put "/messages/:username/:id/shareable", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
-    messageId = req.params.id
+    messageId = parseInt req.params.id
     shareable = req.body.shareable
-    return next new Error 'id required' unless messageId?
+    return next new Error 'id required' unless messageId? and messageId isnt NaN
     return next new Error 'shareable required' unless shareable?
 
     username = req.user.username
@@ -1476,6 +1476,7 @@ else
     bShareable = shareable is 'true'
 
     chat.updateMessageShareable spot, messageId, bShareable, (err) ->
+      return next err if err?
       newStatus = if bShareable then "shareable" else "notshareable"
       createAndSendMessageControlMessage username, otherUser, spot, newStatus, spot, messageId, (err) ->
         return next err if err?
