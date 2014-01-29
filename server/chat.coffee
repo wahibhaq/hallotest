@@ -84,7 +84,8 @@ exports.remapMessages = (results) ->
         when 'fromversion'
           message['fromVersion'] = value
         when 'datasize'
-          message['dataSize'] = value
+          if value?
+            message['dataSize'] = value
         else
           if value? then message[name] = value else return
 
@@ -107,17 +108,19 @@ exports.getMessagesBeforeId = (username, room, id, callback) ->
     return callback null, @remapMessages results
 
 
-exports.getMessagesAfterId = (username, room, id, callback) ->
+exports.getMessagesAfterId = (username, spot, id, callback) ->
+  logger.debug "getMessagesAfterId, username: #{username}, spot: #{spot}, id: #{id}"
   if id is -1
     callback null, null
   else
     if id is 0
-      this.getMessages username, room, 30, callback
+      this.getMessages username, spot, 30, callback
     else
       cql = "select * from chatmessages where username=? and spotname=? and id > ? order by spotname desc;"
-      pool.cql cql, [username, room, id], (err, results) =>
+      pool.cql cql, [username, spot, id], (err, results) =>
         return callback err if err?
-        return callback null, @remapMessages results
+        messages = @remapMessages results
+        return callback null, messages
 
 
 exports.deleteMessage = (deletingUser, fromUser, spot, id) ->
