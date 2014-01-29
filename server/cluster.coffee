@@ -527,10 +527,6 @@ else
       rc.sismember "ir:#{friendname}", username, callback
 
 
-  getOtherUser = (room, user) ->
-    users = room.split ":"
-    if user == users[0] then return users[1] else return users[0]
-
   getPublicKeys = (req, res, next) ->
     username = req.params.username
     version = req.params.version
@@ -543,22 +539,6 @@ else
       getLatestKeys username, (err, keys) ->
         return next err if err
         res.send keys
-
-
-  getMessage = (room, id, fn) ->
-    rc.zrangebyscore "m:" + room, id, id, (err, data) ->
-      return fn err if err?
-      if data.length is 1
-        message = undefined
-        try
-          message = JSON.parse(data[0])
-        catch error
-          return fn error
-
-        fn null,message
-      else
-        fn null, null
-
 
   #oauth crap
   getAuthToken = (oauth2client, callback) ->
@@ -767,58 +747,23 @@ else
   app.post "/updatePurchaseTokens", ensureAuthenticated, updatePurchaseTokensMiddleware, (req, res, next) ->
     res.send 204
 
-  removeRoomMessage = (room, id, fn) ->
-    #remove message data from set of room messages
-    rc.zremrangebyscore "m:" + room, id, id, fn
-
-  removeMessage = (to, room, id, multi, fn) ->
-    user = getOtherUser room, to
-
+  removeMessage = (deletingUser, messageFromUser, room, id, multi, callback) ->
     multi = rc.multi() unless multi?
-    #remove message data from set of room messages
-    multi.zremrangebyscore "m:" + room, id, id
 
-    #remove from other user's deleted messages set
-    multi.srem "d:#{to}:#{room}", id
+    #remove message data from cassandra
+    chat.deleteMessage deletingUser, messageFromUser, room, id
 
-    #remove from my total message pointer set
-    multi.zrem "m:#{user}", "m:#{room}:#{id}"
+    #remove from my message pointer set if i sent it
+    if deletingUser is messageFromUser
+      multi.zrem "m:#{deletingUser}", "m:#{room}:#{id}"
 
-    multi.exec fn
-
-  filterDeletedMessages = (username, room, messages, callback) ->
-    return callback null, messages unless messages?
-
-    rc.smembers "d:#{username}:#{room}", (err, deleted) ->
-      scoredMessages = []
-      sendMessages = []
-      index = 0
-      for index in [0..messages.length-1] by 2
-        scoredMessages.push { id: messages[index+1], message: messages[index] }
-
-      async.each(
-        scoredMessages
-        (item, icallback) ->
-          if not (item.id in deleted)
-            sendMessages.push item.message
-          icallback()
-        (err) ->
-          return callback err if err?
-          callback null, sendMessages)
-
-  getAllMessages = (room, fn) ->
-    rc.zrange "m:#{room}", 0, -1, fn
+    multi.exec callback
 
   getControlMessages = (room, count, fn) ->
     rc.zrange "cm:" + room, -count, -1, fn
 
   getUserControlMessages = (user, count, fn) ->
     rc.zrange "cu:" + user, -count, -1, fn
-
-
-  getMessagesBeforeId = (username, room, id, fn) ->
-    rc.zrangebyscore "m:#{room}", id - 60, "(" + id, 'withscores', (err, data) ->
-      filterDeletedMessages username, room, data, fn
 
   checkForDuplicateMessage = (resendId, username, room, message, callback) ->
     if (resendId?)
@@ -929,7 +874,7 @@ else
     message.data = data
     message.mimeType = mimeType
     message.dataSize = dataSize if dataSize
-    room = common.getRoomName(from,to)
+    room = common.getSpotName(from,to)
 
 
     #INCR message id
@@ -945,14 +890,13 @@ else
       chat.insertTextMessage message, (err, results) ->
         return callback new MessageError(err, 500) if err?
 
-        #store messages in sorted sets
+        #store message pointer in sorted sets so we know the oldest to delete
         multi = rc.multi()
 
-        #userMessagesKey = "m:#{from}"
-        #multi.zadd "m:#{room}", id, newMessage
         #keep track of all the users message so we can remove the earliest when we cross their threshold
         #we use a sorted set here so we can easily remove when message is deleted O(N) vs O(M*log(N))
-        #multi.zadd userMessagesKey, time, "m:#{room}:#{id}"
+        userMessagesKey = "m:#{from}"
+        multi.zadd userMessagesKey, time, "m:#{room}:#{id}"
 
         #make sure conversation is present
         multi.sadd "c:" + from, room
@@ -973,74 +917,67 @@ else
             multi.hincrby "u:#{from}", "vc", 1
             multi.incr "tvc"
 
+        deleteEarliestMessage = (callback) ->
+          #check how many messages the user has total
+          rc.zcard userMessagesKey, (err, card) ->
+            return callback err if err?
+            #TODO per user threshold based on pay status
+            #delete the oldest message(s)
+            deleteCount = (card - MESSAGES_PER_USER) + 1
+            logger.debug "deleteCount #{deleteCount}"
+            if deleteCount > 0
+
+              rc.zrange userMessagesKey,  0, deleteCount-1, (err, messagePointers) ->
+                return callback err if err?
+                myDeleteControlMessages = []
+                theirDeleteControlMessages = []
+                async.each(
+                  messagePointers,
+                  (item, callback) ->
+                    messageData = getMessagePointerData from, item
+
+                    #if the message we deleted is not part of the same conversation,send a control message
+                    deletedFromSameSpot = room is messageData.spot
+                    deleteMessage from, messageData.spot, messageData.id, not deletedFromSameSpot, multi, (err, deleteControlMessage) ->
+                      if not err? and deleteControlMessage?
+                        myDeleteControlMessages.push deleteControlMessage
+
+                        #don't send control message to other user in the message if it pertains to a different conversation
+                        if deletedFromSameSpot
+                          theirDeleteControlMessages.push deleteControlMessage
 
 
+                      callback()
+                  (err) ->
+                    logger.warn "error getting old messages to delete: #{err}" if err?
+                    callback null, myDeleteControlMessages, theirDeleteControlMessages)
 
+            else
+              callback()
 
-  #      deleteEarliestMessage = (callback) ->
-  #        #check how many messages the user has total
-  #        rc.zcard userMessagesKey, (err, card) ->
-  #          return callback err if err?
-  #          #TODO per user threshold based on pay status
-  #          #delete the oldest message(s)
-  #          deleteCount = (card - MESSAGES_PER_USER) + 1
-  #          logger.debug "deleteCount #{deleteCount}"
-  #          if deleteCount > 0
-  #
-  #            rc.zrange userMessagesKey,  0, deleteCount-1, (err, messagePointers) ->
-  #              return callback err if err?
-  #              myDeleteControlMessages = []
-  #              theirDeleteControlMessages = []
-  #              async.each(
-  #                messagePointers,
-  #                (item, callback) ->
-  #                  messageData = getMessagePointerData from, item
-  #
-  #
-  #                  #if the message we deleted is not part of the same conversation,send a control message
-  #                  deletedSpot = common.getRoomName messageData.from, messageData.to
-  #                  deletedFromSameSpot = room is deletedSpot
-  #
-  #                  deleteMessage from, messageData.to, messageData.id, not deletedFromSameSpot, multi, (err, deleteControlMessage) ->
-  #                    if not err? and deleteControlMessage?
-  #                      myDeleteControlMessages.push deleteControlMessage
-  #
-  #                      #don't send control message to other user in the message if it pertains to a different conversation
-  #                      if deletedFromSameSpot
-  #                        theirDeleteControlMessages.push deleteControlMessage
-  #
-  #
-  #                    callback()
-  #                (err) ->
-  #                  logger.warn "error getting old messages to delete: #{err}" if err?
-  #                  callback null, myDeleteControlMessages, theirDeleteControlMessages)
-  #
-  #          else
-  #            callback null, null
+        deleteEarliestMessage (err, myDeleteControlMessages, theirDeleteControlMessages) ->
+          return callback err if err?
 
-      #  deleteEarliestMessage (err, myDeleteControlMessages, theirDeleteControlMessages) ->
-       #   return callback err if err?
+          multi.exec  (err, results) ->
+            if err?
+              logger.error ("ERROR: Socket.io onmessage, " + err)
+              return callback new MessageError(iv, 500)
 
-        multi.exec  (err, results) ->
-          if err?
-            logger.error ("ERROR: Socket.io onmessage, " + err)
-            return callback new MessageError(iv, 500)
-
-          myMessage = newMessage
-          theirMessage = newMessage
+          myMessage = null
+          theirMessage = null
 
           #if we deleted messages, add the delete control message(s) to this message to save sending the delete control message separately
-    #      if myDeleteControlMessages?.length > 0
-    #        message.deleteControlMessages = myDeleteControlMessages
-    #        myMessage = JSON.stringify message
-    #      else
-    #        myMessage = newMessage
-    #
-    #      if theirDeleteControlMessages?.length > 0
-    #        message.deleteControlMessages = theirDeleteControlMessages
-    #        theirMessage = JSON.stringify message
-    #      else
-    #        theirMessage = newMessage
+          if myDeleteControlMessages?.length > 0
+            message.deleteControlMessages = myDeleteControlMessages
+            myMessage = JSON.stringify message
+          else
+            myMessage = newMessage
+
+          if theirDeleteControlMessages?.length > 0
+            message.deleteControlMessages = theirDeleteControlMessages
+            theirMessage = JSON.stringify message
+          else
+            theirMessage = newMessage
 
           sio.sockets.to(to).emit "message", theirMessage
           sio.sockets.to(from).emit "message", myMessage
@@ -1117,12 +1054,9 @@ else
     #delete message
     messageData = messagePointer.split(":")
     data = {}
-    data.id =  messageData[3]
-    room =  messageData[1] + ":" + messageData[2]
-    data.to = getOtherUser room, from
+    data.id =  parseInt messageData[3]
+    data.spot =  messageData[1] + ":" + messageData[2]
     return data
-
-
 
   createMessageControlMessage = (from, to, room, action, data, moredata, callback)  ->
     message = {}
@@ -1222,7 +1156,7 @@ else
       rc.smembers "c:#{who}", (err, convos) ->
         return callback err if err?
         async.each convos, (room, callback) ->
-          to = getOtherUser(room, who)
+          to = common.getOtherSpotUser(room, who)
           createAndSendUserControlMessage to, "revoke", who, newVersion, (err) ->
             logger.error ("ERROR: adding user control message, " + err) if err?
             return callback new error 'could not send user controlmessage' if err?
@@ -1309,7 +1243,7 @@ else
 
             cipherdata = message.data
             resendId = message.resendId
-            room = common.getRoomName(from, to)
+            room = common.getSpotName(from, to)
 
             mimeType = message.mimeType
             #todo validate mimetype
@@ -1345,7 +1279,7 @@ else
 
     username = req.user.username
     otherUser = req.params.username
-    room = common.getRoomName username, otherUser
+    room = common.getSpotName username, otherUser
     id = req.params.id
 
     return res.send 400 unless id?
@@ -1357,7 +1291,7 @@ else
 
 
   deleteAllMessages = (username, otherUser, utaiId, callback) ->
-    room = common.getRoomName username, otherUser
+    room = common.getSpotName username, otherUser
     getAllMessages room, (err, messages) ->
       return callback err if err?
 
@@ -1425,44 +1359,36 @@ else
               callback())
 
 
-  deleteMessage = (from, to, messageId, sendControlMessage, multi, callback) ->
-    room = common.getRoomName to, from
-    #get the message we're modifying
-    getMessage room, messageId, (err, dMessage) ->
+  deleteMessage = (deletingUser, spot, messageId, sendControlMessage, multi, callback) ->
+    logger.debug "user #{deletingUser} deleting message from: #{spot} id: #{messageId}"
+    otherUser = common.getOtherSpotUser spot, deletingUser
+    #get the message we're deleting
+    chat.getMessage deletingUser, spot, messageId, (err, messages) ->
       return callback err if err?
-      return callback null, null unless dMessage?
+      return callback null, null unless messages.length is 1
 
+      dMessage = messages[0]
       deleteMessageInternal = (callback) ->
-        #if we sent it, delete the data
-        if (from is dMessage.from)
 
-          #update message data
-          removeMessage dMessage.to, room, messageId, multi, (err, count) ->
-            return callback err if err?
+        #delete message data
+        removeMessage deletingUser, dMessage.from, spot, messageId, multi, (err, count) ->
+          return callback err if err?
 
+          #if we sent it, delete the data
+          if (deletingUser is dMessage.from)
             #delete the file from the cloud if necessary
             deleteFile dMessage.data, dMessage.mimeType
-            callback()
-        else
-          #check if user is a user (ie. not deleted) before adding deleted message ids to the set
-          rc.sismember "u", from, (err, isUser) ->
-            return callback err if err?
 
-            if isUser
-              rc.sadd "d:#{from}:#{room}", messageId, (err, count) ->
-                return callback err if err?
-                callback()
-            else
-                callback()
+          callback()
 
       deleteMessageInternal (err) ->
         return callback err if err?
         if (sendControlMessage)
-          createAndSendMessageControlMessage from, to, room, "delete", room, messageId, (err, message) ->
+          createAndSendMessageControlMessage deletingUser, otherUser, spot, "delete", spot, messageId, (err, message) ->
             return callback err if err?
             callback null, message
         else
-          createMessageControlMessage from, to, room, "delete", room, messageId, (err, message) ->
+          createMessageControlMessage deletingUser, otherUser, spot, "delete", spot, messageId, (err, message) ->
             return callback err if err?
             callback null, message
 
@@ -1488,13 +1414,15 @@ else
   #delete single message
   app.delete "/messages/:username/:id", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, (req, res, next) ->
 
-    messageId = req.params.id
-    return next new Error 'id required' unless messageId?
+    messageId = parseInt req.params.id
+    return next new Error 'id required' unless messageId? and messageId isnt NaN
 
     username = req.user.username
     otherUser = req.params.username
+    
+    spot = common.getSpotName username, otherUser
 
-    deleteMessage username, otherUser, messageId, true, null, (err, deleteControlMessage) ->
+    deleteMessage username, spot, messageId, true, null, (err, deleteControlMessage) ->
       return next err if err?
       res.send (if deleteControlMessage? then 204 else 404)
 
@@ -1544,24 +1472,14 @@ else
 
     username = req.user.username
     otherUser = req.params.username
-    room = common.getRoomName username, otherUser
-    #get the message we're modifying
-    getMessage room, messageId, (err, dMessage) ->
-      return next err if err?
-      return res.send 404 unless dMessage?
+    spot = common.getSpotName username, otherUser
+    bShareable = shareable is 'true'
 
-      #update message data
-      removeRoomMessage room, messageId, (err, count) ->
+    chat.updateMessageShareable spot, messageId, bShareable, (err) ->
+      newStatus = if bShareable then "shareable" else "notshareable"
+      createAndSendMessageControlMessage username, otherUser, spot, newStatus, spot, messageId, (err) ->
         return next err if err?
-
-        bShareable = shareable is 'true'
-        dMessage.shareable = bShareable
-        rc.zadd "m:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
-          return next err if err?
-          newStatus = if bShareable then "shareable" else "notshareable"
-          createAndSendMessageControlMessage username, otherUser, room, newStatus, room, messageId, (err) ->
-            return next err if err?
-            res.send newStatus
+        res.send newStatus
 
 
 
@@ -1700,7 +1618,7 @@ else
       checkPermissions ->
         #todo validate versions
 
-        room = common.getRoomName username, req.params.username
+        room = common.getSpotName username, req.params.username
         getNextMessageId room, null, (id) ->
           #todo send message error on socket
           if not id?
@@ -1884,7 +1802,7 @@ else
   #get remote messages before id
   app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
     #return messages since id
-    getMessagesBeforeId req.user.username, common.getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
+    chat.getMessagesBeforeId req.user.username, common.getSpotName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
       return next err if err?
       logger.debug "sending #{data}"
       res.send data
@@ -1902,7 +1820,7 @@ else
         res.send 204
 
   getMessagesAndControlMessages = (username, friendname, messageId, controlMessageId, callback) ->
-    spot = common.getRoomName(username, friendname)
+    spot = common.getSpotName(username, friendname)
     chat.getMessagesAfterId username, spot, parseInt(messageId), (err, messageData) ->
       return callback err if err?
       #return messages since id
@@ -2858,7 +2776,7 @@ else
           return next err if err?
           next()
       else
-        room = common.getRoomName username, theirUsername
+        room = common.getSpotName username, theirUsername
 
         #delete the conversation with this user from the set of my conversations
         multi.srem "c:#{username}", room

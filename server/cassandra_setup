@@ -1,0 +1,21 @@
+CREATE KEYSPACE surespot
+WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor': 1};
+
+USE surespot;
+
+CREATE TABLE chatmessages (
+  username    varchar,
+  spotname    varchar,
+  id          varint,
+  iv          varchar,
+  fromuser        varchar,
+  fromversion varchar,
+  touser          varchar,
+  toversion   varchar,
+  datetime    timestamp,
+  data        varchar,
+  mimetype    varchar,
+  datasize    int,
+  shareable   boolean,
+  PRIMARY KEY (username, spotname, id));
+
