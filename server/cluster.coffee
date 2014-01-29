@@ -1065,7 +1065,8 @@ else
     message.data = data
 
     if moredata?
-      message.moredata = moredata
+      #make sure it's a string
+      message.moredata = "#{moredata}"
 
     #add control message
     getNextMessageControlId room, (id) ->
