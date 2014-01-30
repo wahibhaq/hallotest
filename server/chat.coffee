@@ -59,7 +59,7 @@ exports.insertTextMessage = (message, callback) ->
   ], callback
 
 
-exports.remapMessages = (results) ->
+exports.remapMessages = (results, reverse) ->
   messages = []
   #map to array of json messages
   results.forEach (row) ->
@@ -87,7 +87,10 @@ exports.remapMessages = (results) ->
           if value? then message[name] = value else return
 
     #insert at begining to reverse order
-    messages.unshift message
+    if reverse
+      messages.unshift message
+    else
+      messages.push message
 
   return messages
 
@@ -97,20 +100,21 @@ exports.getAllMessages = (username, spot, callback) ->
   cql = "select * from chatmessages where username=? and spotname=?;"
   pool.cql cql, [username, spot], (err, results) =>
     return callback err if err?
-    return callback null, @remapMessages results
+    return callback null, @remapMessages results, true
 
 exports.getMessages = (username, room, count, callback) ->
-  cql = "select * from chatmessages where username=? and spotname=? order by spotname desc limit #{count};"
+  cql = "select * from chatmessages where username=? and spotname=? limit #{count};"
   pool.cql cql, [username, room], (err, results) =>
     return callback err if err?
-    return callback null, @remapMessages results
+    return callback null, @remapMessages results, false
 
 
-exports.getMessagesBeforeId = (username, room, id, callback) ->
-  cql = "select * from chatmessages where username=? and spotname=? and id < ? order by spotname desc limit 60;"
-  pool.cql cql, [username, room, id], (err, results) =>
+exports.getMessagesBeforeId = (username, spot, id, callback) ->
+  logger.debug "getMessagesBeforeId, username: #{username}, spot: #{spot}, id: #{id}"
+  cql = "select * from chatmessages where username=? and spotname=? and id<? limit 60;"
+  pool.cql cql, [username, spot, id], (err, results) =>
     return callback err if err?
-    return callback null, @remapMessages results
+    return callback null, @remapMessages results, false
 
 
 exports.getMessagesAfterId = (username, spot, id, callback) ->
@@ -121,10 +125,10 @@ exports.getMessagesAfterId = (username, spot, id, callback) ->
     if id is 0
       this.getMessages username, spot, 30, callback
     else
-      cql = "select * from chatmessages where username=? and spotname=? and id > ? order by spotname desc;"
+      cql = "select * from chatmessages where username=? and spotname=? and id > ?;"
       pool.cql cql, [username, spot, id], (err, results) =>
         return callback err if err?
-        messages = @remapMessages results
+        messages = @remapMessages results, false
         return callback null, messages
 
 
@@ -156,12 +160,13 @@ exports.deleteAllMessages = (username, spot, messageIds, callback) ->
   params = [username, spot]
 
   #delete all messages for username in spot
-  #delete all username's messages for the other user where ids match
+
 
   cql = "begin batch
          delete from chatmessages where username=? and spotname=? "
 
-  #add delete statements for my messages in their chat table because we can't use in with ids, or equal with fromuser which can't be in the primary key because it fucks up the other queries
+  #delete all username's messages for the other user where ids match
+  # add delete statements for my messages in their chat table because we can't use in with ids, or equal with fromuser which can't be in the primary key because it fucks up the other queries
   #https://issues.apache.org/jira/browse/CASSANDRA-6173
   #cheesy as fuck but it'll do for now until we can delete by secondary columns or use < >, or even IN with primary key columns
 
@@ -179,7 +184,7 @@ exports.getMessage = (username, room, id, callback) ->
   cql = "select * from chatmessages where username=? and spotname=? and id = ?;"
   pool.cql cql, [username, room, id], (err, results) =>
     return callback err if err?
-    return callback null, @remapMessages results
+    return callback null, @remapMessages results, false
 
 
 exports.updateMessageShareable = (room, id, bShareable, callback) ->

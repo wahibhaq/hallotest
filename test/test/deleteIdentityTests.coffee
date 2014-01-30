@@ -14,7 +14,7 @@ socketPort = process.env.SURESPOT_SOCKET ? 8080
 redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 6379
 redisSentinelHostname = process.env.SURESPOT_REDIS_SENTINEL_HOSTNAME ? "127.0.0.1"
 dontUseSSL = process.env.SURESPOT_DONT_USE_SSL is "true"
-baseUri = process.env.SURESPOT_TEST_BASEURI
+baseUri = process.env.SURESPOT_TEST_BASEURI ? "http://127.0.0.1:8080"
 cleanupDb = process.env.SURESPOT_TEST_CLEANDB is "true"
 useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
 
@@ -159,7 +159,7 @@ sendMessages = (clientNum, to, number, callback) ->
     (item, callback) ->
       jsonMessage.from = "test#{clientNum}"
       jsonMessage.to = to
-      jsonMessage.iv = localid++
+      jsonMessage.iv = "#{localid++}"
       clients[clientNum].once 'message', ->
         callback()
       clients[clientNum].send JSON.stringify(jsonMessage)
@@ -284,9 +284,9 @@ describe "delete identity tests", () ->
           data = JSON.parse(body)
           data.length.should.equal 3
 
-          JSON.parse(data[0]).from.should.equal "test1"
-          JSON.parse(data[1]).from.should.equal "test1"
-          JSON.parse(data[2]).from.should.equal "test1"
+          data[0].from.should.equal "test1"
+          data[1].from.should.equal "test1"
+          data[2].from.should.equal "test1"
 
           request.get
             jar: jars[1]
@@ -299,9 +299,9 @@ describe "delete identity tests", () ->
                 data = JSON.parse(body)
                 data.messages.length.should.equal 3
 
-                JSON.parse(data.messages[0]).from.should.equal "test1"
-                JSON.parse(data.messages[1]).from.should.equal "test1"
-                JSON.parse(data.messages[2]).from.should.equal "test1"
+                data.messages[0].from.should.equal "test1"
+                data.messages[1].from.should.equal "test1"
+                data.messages[2].from.should.equal "test1"
 
                 request.get
                   jar: jars[2]
@@ -314,9 +314,9 @@ describe "delete identity tests", () ->
                       data = JSON.parse(body)
                       data.length.should.equal 3
 
-                      JSON.parse(data[0]).from.should.equal "test2"
-                      JSON.parse(data[1]).from.should.equal "test2"
-                      JSON.parse(data[2]).from.should.equal "test2"
+                      data[0].from.should.equal "test2"
+                      data[1].from.should.equal "test2"
+                      data[2].from.should.equal "test2"
 
                       request.get
                         jar: jars[2]
@@ -329,9 +329,9 @@ describe "delete identity tests", () ->
                             data = JSON.parse(body)
                             data.messages.length.should.equal 3
 
-                            JSON.parse(data.messages[0]).from.should.equal "test2"
-                            JSON.parse(data.messages[1]).from.should.equal "test2"
-                            JSON.parse(data.messages[2]).from.should.equal "test2"
+                            data.messages[0].from.should.equal "test2"
+                            data.messages[1].from.should.equal "test2"
+                            data.messages[2].from.should.equal "test2"
 
                             done()
 

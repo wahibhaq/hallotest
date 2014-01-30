@@ -1283,7 +1283,7 @@ else
     room = common.getSpotName username, otherUser
     id = parseInt req.params.id
 
-    return res.send 400 unless id? and id isnt NaN
+    return res.send 400 unless id? and not Number.isNaN(id)
 
     logger.debug "deleting messages, user: #{username}, otherUser: #{otherUser}, utaiId: #{id}"
     deleteAllMessages username, otherUser, id, (err) ->
@@ -1401,7 +1401,7 @@ else
   app.delete "/messages/:username/:id", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, (req, res, next) ->
 
     messageId = parseInt req.params.id
-    return next new Error 'id required' unless messageId? and messageId isnt NaN
+    return next new Error 'id required' unless messageId? and not Number.isNaN(messageId)
 
     username = req.user.username
     otherUser = req.params.username
@@ -1453,7 +1453,7 @@ else
   app.put "/messages/:username/:id/shareable", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
     messageId = parseInt req.params.id
     shareable = req.body.shareable
-    return next new Error 'id required' unless messageId? and messageId isnt NaN
+    return next new Error 'id required' unless messageId? and not Number.isNaN(messageId)
     return next new Error 'shareable required' unless shareable?
 
     username = req.user.username
@@ -1789,9 +1789,15 @@ else
   #get remote messages before id
   app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
     #return messages since id
-    chat.getMessagesBeforeId req.user.username, common.getSpotName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
+    id = parseInt req.params.messageid
+    return res.send 400 unless id? and not Number.isNaN(id)
+
+    chat.getMessagesBeforeId req.user.username, common.getSpotName(req.user.username, req.params.username), id, (err, data) ->
       return next err if err?
-      logger.debug "sending #{data}"
+      #sData = JSON.stringify(data)
+
+      #logger.debug "sending #{sData}"
+      res.set {'Content-Type': 'application/json'}
       res.send data
 
   app.get "/messagedata/:username/:messageid/:controlmessageid", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
