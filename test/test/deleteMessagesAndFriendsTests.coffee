@@ -58,7 +58,7 @@ cleanup = (done) ->
   multi = rc.multi()
   multi.del keys
   multi.srem "u", "test0", "test1"
-  multi.hdel "messagecounters", "test0:test1"
+  multi.hdel "mcounters", "test0:test1"
   multi.exec (err, results) ->
     if err
       done err

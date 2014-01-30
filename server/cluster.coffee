@@ -814,7 +814,7 @@ else
     #we will alread have an id if we uploaded a file
     return callback id if id?
     #INCR message id
-    rc.hincrby "messagecounters","#{room}",1, (err, newId) ->
+    rc.hincrby "mcounters","#{room}",1, (err, newId) ->
       if err?
         logger.error "ERROR: getNextMessageId, room: #{room}, error: #{err}"
         callback null
@@ -1660,7 +1660,7 @@ else
       return callback err if err?
       if (conversations.length > 0)
         conversationsWithId = _.map conversations, (conversation) -> "#{conversation}"
-        rc.hmget "messagecounters", conversationsWithId, (err, ids) ->
+        rc.hmget "mcounters", conversationsWithId, (err, ids) ->
           return next err if err?
           conversationIds = []
           _.each conversations, (conversation, i) -> conversationIds.push { conversation: conversation, id: ids[i] }
@@ -2796,7 +2796,7 @@ else
           if not theyHaveDeletedMe
             #delete our messages with the other user
             #get the latest id
-            rc.hget "messagecounters", "#{room}", (err, id) ->
+            rc.hget "mcounters", "#{room}", (err, id) ->
               return next err if err?
               #handle no id
               deleteMessages = (messageId, callback) ->
@@ -2846,7 +2846,7 @@ else
                 deleteLastUserScraps (err) ->
                   return next err if err?
 
-                  rc.hget "messagecounters","#{room}", (err, id) ->
+                  rc.hget "mcounters","#{room}", (err, id) ->
                     return next err if err?
                     deleteMessages = (callback) ->
                       if id?
@@ -2867,7 +2867,7 @@ else
                       multi.srem "ud:#{username}", theirUsername
 
                       #remove message counters for their conversation
-                      multi.hdel "messagecounters", "#{room}"
+                      multi.hdel "mcounters", "#{room}"
                       multi.del "m:#{room}"
                       next()
 

@@ -56,8 +56,8 @@ cleanup = (done) ->
     "cu:test1:id"]
 
   multi = rc.multi()
-  multi.hdel "messagecounters", "test0:test1"
-  multi.hdel "messagecounters", "test0:test2"
+  multi.hdel "mcounters", "test0:test1"
+  multi.hdel "mcounters", "test0:test2"
   multi.del keys
   multi.srem "u", "test0", "test1"
   multi.exec (err, results) ->
