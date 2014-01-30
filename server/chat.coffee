@@ -58,9 +58,6 @@ exports.insertTextMessage = (message, callback) ->
     message.mimeType
   ], callback
 
-exports.getAllMessages = (room, fn) ->
-    rc.zrange "m:#{room}", 0, -1, fn
-
 
 exports.remapMessages = (results) ->
   messages = []
@@ -93,6 +90,14 @@ exports.remapMessages = (results) ->
     messages.unshift message
 
   return messages
+
+
+exports.getAllMessages = (username, spot, callback) ->
+  #get all messages for a user in a spot
+  cql = "select * from chatmessages where username=? and spotname=?;"
+  pool.cql cql, [username, spot], (err, results) =>
+    return callback err if err?
+    return callback null, @remapMessages results
 
 exports.getMessages = (username, room, count, callback) ->
   cql = "select * from chatmessages where username=? and spotname=? order by spotname desc limit #{count};"
@@ -142,6 +147,32 @@ exports.deleteMessage = (deletingUser, fromUser, spot, id) ->
     cql = "delete from chatmessages where username=? and spotname=? and id = ?;"
     pool.cql cql, [deletingUser, spot, id], (err, results) =>
       logger.error err if err?
+
+
+exports.deleteAllMessages = (username, spot, messageIds, callback) ->
+  #logger.debug "deleteAllMessages messageIds: #{JSON.stringify(messageIds)}"
+  otherUser = common.getOtherSpotUser spot, username
+
+  params = [username, spot]
+
+  #delete all messages for username in spot
+  #delete all username's messages for the other user where ids match
+
+  cql = "begin batch
+         delete from chatmessages where username=? and spotname=? "
+
+  #add delete statements for my messages in their chat table because we can't use in with ids, or equal with fromuser which can't be in the primary key because it fucks up the other queries
+  #https://issues.apache.org/jira/browse/CASSANDRA-6173
+
+  for id in messageIds
+    cql += "delete from chatmessages where username=? and spotname=? and id = ? "
+    params = params.concat([otherUser, spot, id])
+
+  cql += "apply batch"
+
+  #logger.debug "sending cql: #{cql}"
+  #logger.debug "params: #{JSON.stringify(params)}"
+  pool.cql cql, params, callback
 
 exports.getMessage = (username, room, id, callback) ->
   cql = "select * from chatmessages where username=? and spotname=? and id = ?;"

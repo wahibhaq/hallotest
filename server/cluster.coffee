@@ -1281,9 +1281,9 @@ else
     username = req.user.username
     otherUser = req.params.username
     room = common.getSpotName username, otherUser
-    id = req.params.id
+    id = parseInt req.params.id
 
-    return res.send 400 unless id?
+    return res.send 400 unless id? and id isnt NaN
 
     logger.debug "deleting messages, user: #{username}, otherUser: #{otherUser}, utaiId: #{id}"
     deleteAllMessages username, otherUser, id, (err) ->
@@ -1292,72 +1292,57 @@ else
 
 
   deleteAllMessages = (username, otherUser, utaiId, callback) ->
-    room = common.getSpotName username, otherUser
-    getAllMessages room, (err, messages) ->
+    spot = common.getSpotName username, otherUser
+    chat.getAllMessages username, spot, (err, messages) ->
       return callback err if err?
 
       lastMessageId = null
+
       if messages?.length > 0
-        lastMessageId = JSON.parse(messages[messages.length-1]).id
-        logger.debug "lastMessageId: #{lastMessageId}"
-        #client could have passed anything in, dooming us for eternity, don't let this happen
-        if utaiId > lastMessageId
-          logger.debug "setting utaiId to lastMessageId: #{lastMessageId}"
-          utaiId = lastMessageId
-      else
-        return callback()
+        #messageCount = messages.length
+        #ordered by id so newest will be first
+        lastMessageId = messages[0].id
 
+        #todo do we need to do this?
+        #if there are messages > than those we want to delete we need to insert them after
+        #the delete because fucking cassandra doesn't let you delect from with < or > check (why on select but not delete?)
+        #messagesToInsert = []
+#        if lastMessageId > utaiId
+#          for i in [messageCount..0]
+#            message = messages[i]
+#            if message.id > utaiId
+#              messagesToInsert.push message
 
-      ourMessageIds = []
-      theirMessageIds = []
-      multi = rc.multi()
-      async.filter(
-        messages
-        (item, callback) ->
-          oMessage = undefined
-          try
-            oMessage = JSON.parse(item)
-          catch error
-            return callback false
+        idsToDelete = []
+        multi = rc.multi()
+        async.each(
+          messages
+          (item, callback) ->
 
-          #don't delete newer messages than specified
-          return callback false if oMessage.id > utaiId
+            oMessage = item
 
-          if oMessage.from is username
-            ourMessageIds.push oMessage.id
-            multi.zrem "m:#{username}", "m:#{room}:#{oMessage.id}"
+            #if we sent it remove it from our set of pointers and remove data from rackspace if we need to
+            if oMessage.from is username
+              multi.zrem "m:#{username}", "m:#{spot}:#{oMessage.id}"
 
-            #delete file from rackspace if necessary
-            deleteFile oMessage.data, oMessage.mimeType
-            callback true
-          else
-            theirMessageIds.push oMessage.id
-            callback false
-        (results) ->
+              #delete file from rackspace if necessary
+              deleteFile oMessage.data, oMessage.mimeType
 
-          if ourMessageIds.length > 0
-            #zrem does not handle array as last parameter https://github.com/mranney/node_redis/issues/404
-            results.unshift "m:#{room}"
-            #need z remove by score here :( http://redis.io/commands/zrem#comment-845220154
-            #remove the messages
-            multi.zrem results
-            #remove deleted message ids from other user's deleted set as the message is gone now
-            multi.srem "d:#{otherUser}:#{room}", ourMessageIds
-            #remove message pointers
+              idsToDelete.push oMessage.id
 
+            callback()
 
-          #todo remove the associated control messages
-
-          if theirMessageIds.length > 0
-            #add their message id's to our deleted message set
-            multi.sadd "d:#{username}:#{room}", theirMessageIds
-
-
-          multi.exec (err, mResults) ->
-            return callback err if err?
-            createAndSendMessageControlMessage username, otherUser, room, "deleteAll", room, lastMessageId, (err) ->
+          (err) ->
+            chat.deleteAllMessages username, spot, idsToDelete, (err) ->
               return callback err if err?
-              callback())
+
+              multi.exec (err, mResults) ->
+                return callback err if err?
+                createAndSendMessageControlMessage username, otherUser, spot, "deleteAll", spot, lastMessageId, (err) ->
+                  return callback err if err?
+                  callback())
+      else
+        callback()
 
 
   deleteMessage = (deletingUser, spot, messageId, sendControlMessage, multi, callback) ->
