@@ -2866,15 +2866,8 @@ else
                       #remove them from my deleted set
                       multi.srem "ud:#{username}", theirUsername
 
-                      #delete the set that held message ids of theirs that we deleted
-                      multi.del "d:#{username}:#{room}"
-
-                      #delete the set that held message ids of mine that they deleted
-                      multi.del "d:#{theirUsername}:#{room}"
-
+                      #remove message counters for their conversation
                       multi.hdel "messagecounters", "#{room}"
-
-                      #todo delete from cassandra
                       multi.del "m:#{room}"
                       next()
 
