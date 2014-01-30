@@ -1351,6 +1351,11 @@ else
     #get the message we're deleting
     chat.getMessage deletingUser, spot, messageId, (err, messages) ->
       return callback err if err?
+
+      #if it's not in cassandra just delete it from redis
+      if messages.length is 0
+        rc.zrem "m:#{deletingUser}", "m:#{spot}:#{messageId}"
+
       return callback null, null unless messages.length is 1
 
       dMessage = messages[0]
