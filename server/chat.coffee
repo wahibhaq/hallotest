@@ -163,6 +163,7 @@ exports.deleteAllMessages = (username, spot, messageIds, callback) ->
 
   #add delete statements for my messages in their chat table because we can't use in with ids, or equal with fromuser which can't be in the primary key because it fucks up the other queries
   #https://issues.apache.org/jira/browse/CASSANDRA-6173
+  #cheesy as fuck but it'll do for now until we can delete by secondary columns or use < >, or even IN with primary key columns
 
   for id in messageIds
     cql += "delete from chatmessages where username=? and spotname=? and id = ? "
