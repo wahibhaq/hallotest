@@ -153,15 +153,13 @@ exports.deleteMessage = (deletingUser, fromUser, spot, id) ->
       logger.error err if err?
 
 
-exports.deleteAllMessages = (username, spot, messageIds, callback) ->
+exports.deleteMessages = (username, spot, messageIds, callback) ->
   #logger.debug "deleteAllMessages messageIds: #{JSON.stringify(messageIds)}"
   otherUser = common.getOtherSpotUser spot, username
 
   params = [username, spot]
 
   #delete all messages for username in spot
-
-
   cql = "begin batch
          delete from chatmessages where username=? and spotname=? "
 
@@ -179,6 +177,18 @@ exports.deleteAllMessages = (username, spot, messageIds, callback) ->
   #logger.debug "sending cql: #{cql}"
   #logger.debug "params: #{JSON.stringify(params)}"
   pool.cql cql, params, callback
+
+
+exports.deleteAllMessages = (spot, callback) ->
+  users = spot.split ":"
+
+  cql = "begin batch
+         delete from chatmessages where username=? and spotname=?
+         delete from chatmessages where username=? and spotname=?
+         apply batch"
+
+  pool.cql cql, [users[0], spot, users[1], spot], callback
+
 
 exports.getMessage = (username, room, id, callback) ->
   cql = "select * from chatmessages where username=? and spotname=? and id = ?;"
@@ -221,6 +231,23 @@ exports.remapControlMessages = (results, reverse) ->
       messages.push message
 
   return messages
+
+
+exports.remapControlMessageIds = (results) ->
+  ids = []
+  #map to array of ids
+  results.forEach (row) ->
+    row.forEach (name, value, ts, ttl) ->
+      switch name
+        when 'id'
+          if value? then ids.push value else return
+  return ids
+
+exports.getAllControlMessageIds = (username, spot,  callback) ->
+  cql = "select id from messagecontrolmessages where username=? and spotname=?;"
+  pool.cql cql, [username, spot], (err, results) =>
+    return callback err if err?
+    return callback null, @remapControlMessageIds results
 
 
 exports.getControlMessages = (username, room, count, callback) ->
@@ -279,9 +306,38 @@ exports.insertMessageControlMessage = (spot, message, callback) ->
 
 
 
+exports.deleteControlMessages = (spot, messageIds, callback) ->
+  #logger.debug "deleteAllMessages messageIds: #{JSON.stringify(messageIds)}"
+  users = spot.split ":"
 
+  #delete control messages for username in spot by id
+  cql = "begin batch "
+  params = [];
 
+  #delete all username'scontrol messages for the user where ids match
+  # add delete statements for my messages in their chat table because we can't use in with ids, or equal with fromuser which can't be in the primary key because it fucks up the other queries
+  #https://issues.apache.org/jira/browse/CASSANDRA-6173
+  #cheesy as fuck but it'll do for now until we can delete by secondary columns or use < >, or even IN with primary key columns
+  for id in messageIds
+    cql += "delete from messagecontrolmessages where username=? and spotname=? and id = ? "
+    params = params.concat([users[0], spot, id])
+    cql += "delete from messagecontrolmessages where username=? and spotname=? and id = ? "
+    params = params.concat([users[1], spot, id])
 
+  cql += "apply batch"
+
+  #logger.debug "sending cql: #{cql}"
+  logger.debug "params: #{JSON.stringify(params)}"
+  pool.cql cql, params, callback
+
+exports.deleteAllControlMessages = (spot, callback) ->
+  users = spot.split ":"
+  cql = "begin batch
+         delete from messagecontrolmessages where username=? and spotname=?
+         delete from messagecontrolmessages where username=? and spotname=?
+         apply batch"
+
+  pool.cql cql, [users[0], spot, users[1], spot], callback
 
 
 

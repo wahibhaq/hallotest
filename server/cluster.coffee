@@ -38,7 +38,7 @@ common = require './common'
 
 #constants
 USERNAME_LENGTH = 20
-CONTROL_MESSAGE_HISTORY = 100
+CONTROL_MESSAGE_HISTORY = 3
 MAX_MESSAGE_LENGTH = 500000
 MAX_HTTP_REQUEST_LENGTH = 500000
 NUM_CORES =  parseInt(process.env.SURESPOT_CORES) ? 4
@@ -1048,7 +1048,7 @@ else
     data.spot =  messageData[1] + ":" + messageData[2]
     return data
 
-  createMessageControlMessage = (from, to, room, action, data, moredata, callback)  ->
+  createMessageControlMessage = (from, to, spot, action, data, moredata, callback)  ->
     message = {}
     message.type = "message"
     message.action = action
@@ -1059,29 +1059,20 @@ else
       message.moredata = "#{moredata}"
 
     #add control message
-    getNextMessageControlId room, (id) ->
+    getNextMessageControlId spot, (id) ->
       return callback new Error 'could not create next message control id' unless id?
       message.id = id
       message.from = from
       sMessage = JSON.stringify message
-      #controlMessageKey = "cm:#{room}"
-      #multi = rc.multi()
 
-#      deleteEarliestControlMessage = (callback) ->
-#        #check how many control messages the user has total
-#        rc.zcard controlMessageKey, (err, card) ->
-#          return callback err if err?
-#          #delete the oldest control message(s)
-#          deleteCount = (card - CONTROL_MESSAGE_HISTORY) + 1
-#          logger.debug "control message deleteCount #{deleteCount}"
-#          multi.zremrangebyrank controlMessageKey, 0, deleteCount-1 if deleteCount > 0
-#          callback()
-#
-#      deleteEarliestControlMessage (err) ->
-        #logger.warn "delete earliest control message error: #{err}" if err?
-      chat.insertMessageControlMessage room, message, (err, results) ->
-         #multi.zadd "cm:#{room}", id, sMessage
-         #multi.exec (err, results) ->
+      chat.getAllControlMessageIds from, spot, (err, cmessageIds) ->
+        logger.debug "got #{cmessageIds.length} control messages for #{spot}"
+        if (cmessageIds.length >= CONTROL_MESSAGE_HISTORY)
+          deleteIds = cmessageIds.slice 0, cmessageIds.length - CONTROL_MESSAGE_HISTORY + 1
+          chat.deleteControlMessages spot, deleteIds, (err, results) ->
+            logger.error "error deleting control messages from spot #{spot}: #{err}" if err?
+
+      chat.insertMessageControlMessage spot, message, (err, results) ->
         return callback err if err?
         callback null, sMessage
 
@@ -1324,7 +1315,7 @@ else
             callback()
 
           (err) ->
-            chat.deleteAllMessages username, spot, idsToDelete, (err) ->
+            chat.deleteMessages username, spot, idsToDelete, (err) ->
               return callback err if err?
 
               multi.exec (err, mResults) ->
@@ -2852,8 +2843,9 @@ else
                     deleteMessages (err) ->
                       return next err if err?
 
-                      #todo delete control message data from cassandra
-                      #multi.del "cm:#{room}"
+
+                      chat.deleteAllControlMessages room, (err, results) ->
+                        logger.error "Could not delete spot #{room} control messages" if err?
                       #delete counters
                       multi.hdel "mcmcounters","#{room}"
 
@@ -2863,8 +2855,8 @@ else
                       #remove message counters for their conversation
                       multi.hdel "mcounters", "#{room}"
 
-                      #todo delete messages from cassandra
-                      #multi.del "m:#{room}"
+                      chat.deleteAllMessages room, (err, results) ->
+                        logger.error "Could not delete spot #{room} messages" if err?
 
 
                       next()
