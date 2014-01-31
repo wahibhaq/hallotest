@@ -223,13 +223,13 @@ rc.keys "ud:*", (err, uds) ->
             c = common.getSpotName ou, ud
             rc.smembers "d:#{ud}:#{c}", (err, deletedids) ->
               console.log "deleting ud deleted messages from d:#{ud}:#{c}"
-              chat.deleteMessages ud, c, deletedids, (err, results) ->
+              chat.migrateDeleteMessages ud, c, deletedids, (err, results) ->
 
                 console.log "deleting ud deleted messages set d:#{ud}:#{c}"
                 rc.del "d:#{ud}:#{c}", (err, result) ->
             rc.smembers "d:#{ou}:#{c}", (err, deletedids) ->
               console.log "deleting ud deleted messages from d:#{ou}:#{c}"
-              chat.deleteMessages ou, c, deletedids, (err, results) ->
+              chat.migrateDeleteMessages ou, c, deletedids, (err, results) ->
 
                 console.log "deleting ud deleted messages set d:#{ou}:#{c}"
                 rc.del "d:#{ou}:#{c}", (err, result) ->

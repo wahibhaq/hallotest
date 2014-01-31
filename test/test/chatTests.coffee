@@ -48,8 +48,6 @@ cleanup = (done) ->
     "k:test0",
     "kv:test1",
     "k:test1",
-    "cm:test0:test1",
-    "cm:test0:test1:id"
     "cu:test0",
     "cu:test1",
     "cu:test0:id",
@@ -58,6 +56,8 @@ cleanup = (done) ->
   multi = rc.multi()
   multi.hdel "mcounters", "test0:test1"
   multi.hdel "mcounters", "test0:test2"
+  multi.hdel "mcmcounters", "test0:test1"
+  multi.hdel "mcmcounters", "test0:test2"
   multi.del keys
   multi.srem "u", "test0", "test1"
   multi.exec (err, results) ->
@@ -70,9 +70,11 @@ cleanup = (done) ->
         cql = "begin batch
                delete from chatmessages where username = ?
                delete from chatmessages where username = ?
+               delete from messagecontrolmessages where username = ?
+               delete from messagecontrolmessages where username = ?
                apply batch"
 
-        pool.cql cql, ["test0", "test1"], (err, results) ->
+        pool.cql cql, ["test0", "test1", "test0", "test1"], (err, results) ->
           if err
             done err
           else
@@ -453,7 +455,7 @@ describe "surespot chat test", () ->
 
               controlData = messageData.controlMessages
               controlData.length.should.equal 2
-              receivedControlMessage = JSON.parse(controlData[0])
+              receivedControlMessage = controlData[0]
               receivedControlMessage.type.should.equal "message"
               receivedControlMessage.action.should.equal "delete"
               receivedControlMessage.data.should.equal "test0:test1"
@@ -462,7 +464,7 @@ describe "surespot chat test", () ->
               receivedControlMessage.id.should.equal 1
 
 
-              receivedControlMessage = JSON.parse(controlData[1])
+              receivedControlMessage = controlData[1]
               receivedControlMessage.type.should.equal "message"
               receivedControlMessage.action.should.equal "delete"
               receivedControlMessage.data.should.equal "test0:test1"

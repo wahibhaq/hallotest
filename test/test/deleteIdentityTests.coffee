@@ -9,6 +9,7 @@ crypto = require 'crypto'
 dcrypt = require 'dcrypt'
 async = require 'async'
 redisSentinel = require 'redis-sentinel-client'
+helenus = require 'helenus'
 
 socketPort = process.env.SURESPOT_SOCKET ? 8080
 redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 6379
@@ -17,6 +18,9 @@ dontUseSSL = process.env.SURESPOT_DONT_USE_SSL is "true"
 baseUri = process.env.SURESPOT_TEST_BASEURI ? "http://127.0.0.1:8080"
 cleanupDb = process.env.SURESPOT_TEST_CLEANDB is "true"
 useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
+
+pool = new helenus.ConnectionPool({host:'127.0.0.1', port:9160, keyspace:'surespot'});
+
 
 rc = if useRedisSentinel then redisSentinel.createClient(redisSentinelPort, redisSentinelHostname) else redis.createClient(redisSentinelPort, redisSentinelHostname)
 port = socketPort
@@ -46,24 +50,41 @@ cleanup = (done) ->
     multi.del "ir:test#{i}"
     multi.del "c:test#{i}"
     multi.srem "u", "test#{i}"
+    multi.srem "d", "test#{i}"
 
   for i in [0..2]
     buildKeys i
 
+  multi.hdel "mcounters", "test0:test1"
+  multi.hdel "mcounters", "test0:test2"
+  multi.hdel "mcmcounters", "test0:test1"
+  multi.hdel "mcmcounters", "test0:test2"
   multi.del("d:test0")
-  multi.del("m:test0:test1:id")
-  multi.del("m:test0:test2:id")
-  multi.del("m:test0:test1")
-  multi.del("m:test0:test2")
-  multi.del("cm:test0:test1")
-  multi.del("cm:test0:test2")
   multi.del("m:test1")
   multi.del("m:test2")
 
 
   multi.exec (err, blah) ->
     return done err if err?
-    done()
+    pool.connect (err, keyspace) ->
+      return done err if err?
+
+      cql = "begin batch
+                     delete from chatmessages where username = ?
+                     delete from chatmessages where username = ?
+                     delete from chatmessages where username = ?
+                     delete from messagecontrolmessages where username = ?
+                     delete from messagecontrolmessages where username = ?
+                     delete from messagecontrolmessages where username = ?
+                     apply batch"
+
+      pool.cql cql, ["test0", "test1", "test2","test0", "test1","test2"], (err, results) ->
+        if err
+          done err
+        else
+          console.log "cleanup done"
+          done()
+
 
 
 
@@ -498,6 +519,7 @@ describe "delete identity tests", () ->
     clients[1].disconnect()
     clients[2].disconnect()
     if cleanupDb
-      cleanup done
+      #cleanup done
+      done()
     else
       done()

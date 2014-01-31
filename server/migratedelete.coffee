@@ -221,12 +221,12 @@ rc.smembers "u", (err, users) ->
             #delete deleted messages
             rc.smembers "d:#{user}:#{c}", (err, deleted) ->
               console.log "deleting deleted messages user: #{user} spot: #{c}"
-              chat.deleteMessages user, c, deleted, (err, results) ->
+              chat.migrateDeleteMessages user, c, deleted, (err, results) ->
                 console.log "deleting deleted messages set d:#{user}:#{c}"
                 rc.del "d:#{user}:#{c}", (err, result) ->
             rc.smembers "d:#{otherUser}:#{c}", (err, deleted) ->
               console.log "deleting deleted messages user: #{otherUser} spot: #{c}"
-              chat.deleteMessages user, c, deleted, (err, results) ->
+              chat.migrateDeleteMessages user, c, deleted, (err, results) ->
                 console.log "deleting deleted messages set d:#{otherUser}:#{c}"
                 rc.del "d:#{otherUser}:#{c}", (err, result) ->
         return

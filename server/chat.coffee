@@ -344,9 +344,9 @@ exports.deleteAllControlMessages = (spot, callback) ->
 
 #migration crap
 
-exports.deleteMessages = (username, spot, messageIds, callback) ->
+exports.migrateDeleteMessages = (username, spot, messageIds, callback) ->
   params = []
-  logger.debug "deleting #{username} #{spot}"
+  logger.debug "deleting #{username} #{spot} #{messageIds}"
 
   #delete all username's messages for the other user where ids match
   # add delete statements for my messages in their chat table because we can't use in with ids, or equal with fromuser which can't be in the primary key because it fucks up the other queries

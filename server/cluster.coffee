@@ -38,7 +38,7 @@ common = require './common'
 
 #constants
 USERNAME_LENGTH = 20
-CONTROL_MESSAGE_HISTORY = 3
+CONTROL_MESSAGE_HISTORY = 100
 MAX_MESSAGE_LENGTH = 500000
 MAX_HTTP_REQUEST_LENGTH = 500000
 NUM_CORES =  parseInt(process.env.SURESPOT_CORES) ? 4
@@ -1284,6 +1284,7 @@ else
         #messageCount = messages.length
         #ordered by id so newest will be first
         lastMessageId = messages[0].id
+        logger.debug "lastMessageID #{lastMessageId}"
 
         #todo do we need to do this?
         #if there are messages > than those we want to delete we need to insert them after
@@ -2781,6 +2782,7 @@ else
             #delete our messages with the other user
             #get the latest id
             rc.hget "mcounters", "#{room}", (err, id) ->
+              logger.debug "deleting messages for #{room}, #{id}"
               return next err if err?
               #handle no id
               deleteMessages = (messageId, callback) ->
