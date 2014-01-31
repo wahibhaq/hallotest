@@ -102,9 +102,9 @@ exports.getAllMessages = (username, spot, callback) ->
     return callback err if err?
     return callback null, @remapMessages results, true
 
-exports.getMessages = (username, room, count, callback) ->
+exports.getMessages = (username, spot, count, callback) ->
   cql = "select * from chatmessages where username=? and spotname=? limit #{count};"
-  pool.cql cql, [username, room], (err, results) =>
+  pool.cql cql, [username, spot], (err, results) =>
     return callback err if err?
     return callback null, @remapMessages results, false
 
@@ -200,12 +200,115 @@ exports.updateMessageShareable = (room, id, bShareable, callback) ->
 
 
 
-exports.getControlMessages = (room, count, fn) ->
-    rc.zrange "cm:" + room, -count, -1, fn
+exports.remapControlMessages = (results, reverse) ->
+  messages = []
+  #map to array of json messages
+  results.forEach (row) ->
+    message = {}
+    row.forEach (name, value, ts, ttl) ->
+      switch name
+        when 'username','spotname'
+          return
+        when 'fromuser'
+          message['from'] = value
+        else
+          if value? then message[name] = value else return
 
-exports.getUserControlMessages = (user, count, fn) ->
-    rc.zrange "cu:" + user, -count, -1, fn
+    #insert at begining to reverse order
+    if reverse
+      messages.unshift message
+    else
+      messages.push message
+
+  return messages
 
 
+exports.getControlMessages = (username, room, count, callback) ->
+  cql = "select * from messagecontrolmessages where username=? and spotname=? limit #{count};"
+  pool.cql cql, [username, room], (err, results) =>
+    return callback err if err?
+    return callback null, @remapControlMessages results, false
+
+
+exports.getControlMessagesAfterId = (username, spot, id, callback) ->
+  logger.debug "getControlMessagesAfterId, username: #{username}, spot: #{spot}, id: #{id}"
+  if id is -1
+    callback null, null
+  else
+    if id is 0
+      this.getControlMessages username, spot, 60, callback
+    else
+      cql = "select * from messagecontrolmessages where username=? and spotname=? and id > ?;"
+      pool.cql cql, [username, spot, id], (err, results) =>
+        return callback err if err?
+        messages = @remapControlMessages results, false
+        return callback null, messages
+
+exports.insertMessageControlMessage = (spot, message, callback) ->
+  #denormalize using username as partition key so all retrieval for a user
+  #occurs on the same node as we are going to be pulling multiple
+  users = spot.split ":"
+  cql =
+    "BEGIN BATCH
+          INSERT INTO messagecontrolmessages (username, spotname, id, type, action, data, moredata, fromuser)
+          VALUES (?,?,?,?,?,?,?,?)
+          INSERT INTO messagecontrolmessages (username, spotname, id, type, action, data, moredata, fromuser)
+          VALUES (?,?,?,?,?,?,?,?)
+          APPLY BATCH"
+
+  logger.debug "sending cql #{cql}"
+
+  pool.cql cql, [
+    users[0],
+    spot,
+    message.id,
+    message.type,
+    message.action,
+    message.data,
+    message.moredata,
+    message.from,
+    users[1],
+    spot,
+    message.id,
+    message.type,
+    message.action,
+    message.data,
+    message.moredata,
+    message.from
+  ], callback
+
+
+
+
+
+
+
+
+
+
+#migration crap
+
+exports.deleteMessages = (username, spot, messageIds, callback) ->
+  params = []
+  logger.debug "deleting #{username} #{spot}"
+
+  #delete all username's messages for the other user where ids match
+  # add delete statements for my messages in their chat table because we can't use in with ids, or equal with fromuser which can't be in the primary key because it fucks up the other queries
+  #https://issues.apache.org/jira/browse/CASSANDRA-6173
+  #cheesy as fuck but it'll do for now until we can delete by secondary columns or use < >, or even IN with primary key columns
+  cql = "begin batch "
+
+  for id in messageIds
+    cql += "delete from chatmessages where username=? and spotname=? and id = ? "
+    params = params.concat([username, spot, parseInt(id)])
+
+  cql += "apply batch"
+
+  #logger.debug "sending cql: #{cql}"
+  #logger.debug "params: #{JSON.stringify(params)}"
+  pool.cql cql, params, (err, results) ->
+    logger.debug "err: #{err}" if err?
+    logger.debug "results: #{results}"
+    callback err, results
 
 

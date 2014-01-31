@@ -759,9 +759,6 @@ else
 
     multi.exec callback
 
-  getControlMessages = (room, count, fn) ->
-    rc.zrange "cm:" + room, -count, -1, fn
-
   getUserControlMessages = (user, count, fn) ->
     rc.zrange "cu:" + user, -count, -1, fn
 
@@ -792,14 +789,7 @@ else
     else
       callback null, false
 
-  getControlMessagesAfterId = (room, id, fn) ->
-    if id is -1
-      fn null, null
-    else
-      if id is 0
-        getControlMessages room, 60, fn
-      else
-        rc.zrangebyscore "cm:" + room, "(" + id, "+inf", fn
+
 
   getUserControlMessagesAfterId = (user, id, fn) ->
     if id is -1
@@ -823,7 +813,7 @@ else
 
   getNextMessageControlId = (room, callback) ->
     #INCR message id
-    rc.incr "cm:#{room}:id", (err, newId) ->
+    rc.hincrby "mcmcounters","#{room}",1, (err, newId) ->
       if err?
         logger.error "ERROR: getNextMessageControlId, room: #{room}, error: #{err}"
         callback null
@@ -1070,29 +1060,30 @@ else
 
     #add control message
     getNextMessageControlId room, (id) ->
-      callback new Error 'could not create next message control id' unless id?
+      return callback new Error 'could not create next message control id' unless id?
       message.id = id
       message.from = from
       sMessage = JSON.stringify message
-      controlMessageKey = "cm:#{room}"
-      multi = rc.multi()
+      #controlMessageKey = "cm:#{room}"
+      #multi = rc.multi()
 
-      deleteEarliestControlMessage = (callback) ->
-        #check how many control messages the user has total
-        rc.zcard controlMessageKey, (err, card) ->
-          return callback err if err?
-          #delete the oldest control message(s)
-          deleteCount = (card - CONTROL_MESSAGE_HISTORY) + 1
-          logger.debug "control message deleteCount #{deleteCount}"
-          multi.zremrangebyrank controlMessageKey, 0, deleteCount-1 if deleteCount > 0
-          callback()
-
-      deleteEarliestControlMessage (err) ->
-        logger.warn "delete earliest control message error: #{err}" if err?
-        multi.zadd "cm:#{room}", id, sMessage
-        multi.exec (err, results) ->
-          return callback err if err?
-          callback null, sMessage
+#      deleteEarliestControlMessage = (callback) ->
+#        #check how many control messages the user has total
+#        rc.zcard controlMessageKey, (err, card) ->
+#          return callback err if err?
+#          #delete the oldest control message(s)
+#          deleteCount = (card - CONTROL_MESSAGE_HISTORY) + 1
+#          logger.debug "control message deleteCount #{deleteCount}"
+#          multi.zremrangebyrank controlMessageKey, 0, deleteCount-1 if deleteCount > 0
+#          callback()
+#
+#      deleteEarliestControlMessage (err) ->
+        #logger.warn "delete earliest control message error: #{err}" if err?
+      chat.insertMessageControlMessage room, message, (err, results) ->
+         #multi.zadd "cm:#{room}", id, sMessage
+         #multi.exec (err, results) ->
+        return callback err if err?
+        callback null, sMessage
 
 
   createAndSendMessageControlMessage = (from, to, room, action, data, moredata, callback) ->
@@ -1305,7 +1296,7 @@ else
 
         #todo do we need to do this?
         #if there are messages > than those we want to delete we need to insert them after
-        #the delete because fucking cassandra doesn't let you delect from with < or > check (why on select but not delete?)
+        #the delete because fucking cassandra doesn't let you delete from with < or > check (why on select but not delete?)
         #messagesToInsert = []
 #        if lastMessageId > utaiId
 #          for i in [messageCount..0]
@@ -1701,12 +1692,12 @@ else
         async.each(
           conversationIds
           (item, callback) ->
-            controlIdKeys.push "cm:#{item.conversation}:id"
+            controlIdKeys.push "#{item.conversation}"
             callback()
           (err) ->
             return next err if err?
             #Get control ids
-            rc.mget controlIdKeys, (err, rControlIds) ->
+            rc.hmget "mcmcounters", controlIdKeys, (err, rControlIds) ->
               return next err if err?
               controlIds = []
               _.each(
@@ -1767,12 +1758,12 @@ else
         async.each(
           conversationIds
           (item, callback) ->
-            controlIdKeys.push "cm:#{item.conversation}:id"
+            controlIdKeys.push "#{item.conversation}"
             callback()
           (err) ->
             return next err if err?
             #Get control ids
-            rc.mget controlIdKeys, (err, rControlIds) ->
+            rc.hmget "mcmcounters", controlIdKeys, (err, rControlIds) ->
               return next err if err?
               controlIds = []
               _.each(
@@ -1822,7 +1813,7 @@ else
     chat.getMessagesAfterId username, spot, parseInt(messageId), (err, messageData) ->
       return callback err if err?
       #return messages since id
-      getControlMessagesAfterId spot, parseInt(controlMessageId), (err, controlData) ->
+      chat.getControlMessagesAfterId username, spot, parseInt(controlMessageId), (err, controlData) ->
         return callback err if err?
         data = {}
         data.username = friendname
@@ -2758,6 +2749,8 @@ else
 
   deleteRemainingIdentityData = (multi, username) ->
     #cleanup stuff
+    #delete message pointers
+    multi.del "m:#{username}"
     multi.srem "d", username
     multi.del "k:#{username}"
     multi.del "kv:#{username}"
@@ -2859,16 +2852,21 @@ else
                     deleteMessages (err) ->
                       return next err if err?
 
-                      #delete control message data
-                      multi.del "cm:#{room}"
-                      multi.del "cm:#{room}:id"
+                      #todo delete control message data from cassandra
+                      #multi.del "cm:#{room}"
+                      #delete counters
+                      multi.hdel "mcmcounters","#{room}"
 
                       #remove them from my deleted set
                       multi.srem "ud:#{username}", theirUsername
 
                       #remove message counters for their conversation
                       multi.hdel "mcounters", "#{room}"
-                      multi.del "m:#{room}"
+
+                      #todo delete messages from cassandra
+                      #multi.del "m:#{room}"
+
+
                       next()
 
 

@@ -19,3 +19,15 @@ CREATE TABLE chatmessages (
   shareable   boolean,
   PRIMARY KEY (username, spotname, id));
 
+
+CREATE TABLE messagecontrolmessages (
+  username  varchar,
+  spotname  varchar,
+  id        varint,
+  type      varchar,
+  action    varchar,
+  data      varchar,
+  moredata  varchar,
+  fromuser  varchar,
+  PRIMARY KEY (username, spotname, id));
+
