@@ -206,43 +206,40 @@ createRedisClient = (database, port, host, password) ->
 
 rc = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
 
-#migrate ud users
-rc.keys "ud:*", (err, uds) ->
+#migrate active users
+rc.smembers "u", (err, users) ->
   console.log "migrating users"
-  for udskey in uds
-    do (udskey) ->
-      console.log "migrating #{udskey}"
+  for user in users
+    do (user) ->
+      console.log "migrating user #{user}"
       #insert messages for both users
       #get conversations
-      rc.smembers udskey, (err, deletedUsers) ->
-        for ud in deletedUsers
-          do (ud) ->
-            c = common.getSpotName udskey.split(":")[1], ud
-
+      rc.smembers "c:#{user}", (err, conversations) ->
+        for c in conversations
+          do (c) ->
             #copy counter
-            rc.get "m:#{c}:id", (err, counter) ->
-              console.log "#{c} counter: #{counter}"
+            rc.get "cm:#{c}:id", (err, counter) ->
+              console.log "#{c} cm counter: #{counter}"
               if counter?
-                console.log "moving #{c} counter to hash"
-                rc.hset "mcounters", "#{c}", counter, (err, d) ->
-                  rc.del "m:#{c}:id", (err, d) ->
+                console.log "moving #{c} cm counter to hash"
+                rc.hset "mcmcounters", "#{c}", counter, (err, d) ->
+                  rc.del "cm:#{c}:id", (err, d) ->
 
-                    #move  messages
-              console.log "moving messages m:#{c}"
+              #move control messages
+              console.log "moving control messages cm:#{c}"
 
-              rc.zrange "m:#{c}", 0,  -1, (err, messages) ->
+              rc.zrange "cm:#{c}", 0,  -1, (err, messages) ->
                 #insert messages into cassandra
                 for m in messages
                   do(m) ->
                     message = JSON.parse(m)
 
-
                     console.log "inserting message to cassandra #{m}"
-                    chat.insertTextMessage message, (err, result) ->
+                    chat.insertMessageControlMessage c, message, (err, result) ->
 
                 #                    console.log "inserted message to cassandra"
-                console.log "deleting messages m:#{c}"
-                rc.del "m:#{c}", (err, result) ->
+                console.log "deleting control messages cm:#{c}"
+                rc.del "cm:#{c}", (err, result) ->
                 return
         return
   return

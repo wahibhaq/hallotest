@@ -208,25 +208,32 @@ rc = createRedisClient database, redisSentinelPort, redisSentinelHostname, redis
 
 
 
-
-#migrate active users
-rc.smembers "d", (err, users) ->
+#migrate ud users
+rc.keys "ud:*", (err, uds) ->
   console.log "migrating users"
-  for user in users
-    do (user) ->
-      console.log "migrating user #{user}"
-
-      #get deleted users
-      rc.smembers "ud:#{user}", (err, deletedusers) ->
-        for ud in deletedusers
+  for udskey in uds
+    do (udskey) ->
+      console.log "migrating #{udskey}"
+      #insert messages for both users
+      #get conversations
+      rc.smembers udskey, (err, deletedUsers) ->
+        for ud in deletedUsers
           do (ud) ->
-            c = common.getSpotName user, ud
+            ou = udskey.split(":")[1]
+            c = common.getSpotName ou, ud
             rc.smembers "d:#{ud}:#{c}", (err, deletedids) ->
               console.log "deleting ud deleted messages from d:#{ud}:#{c}"
               chat.deleteMessages ud, c, deletedids, (err, results) ->
 
                 console.log "deleting ud deleted messages set d:#{ud}:#{c}"
                 rc.del "d:#{ud}:#{c}", (err, result) ->
+            rc.smembers "d:#{ou}:#{c}", (err, deletedids) ->
+              console.log "deleting ud deleted messages from d:#{ou}:#{c}"
+              chat.deleteMessages ou, c, deletedids, (err, results) ->
+
+                console.log "deleting ud deleted messages set d:#{ou}:#{c}"
+                rc.del "d:#{ou}:#{c}", (err, result) ->
+
 
         return
   return
