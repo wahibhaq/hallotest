@@ -33,8 +33,8 @@ apn = require 'apn'
 uaparser = require 'ua-parser'
 bunyan = require 'bunyan'
 IAPVerifier = require 'iap_verifier'
-chat = require './chat'
-common = require './common'
+cdb = require '../cdb'
+common = require '../common'
 
 #constants
 USERNAME_LENGTH = 20
@@ -152,7 +152,7 @@ ssloptions = undefined
 oauth2Client = undefined
 iapClient = undefined
 
-chat.connect (err) ->
+cdb.connect (err) ->
   if err?
     logger.error 'could not connect to cassandra'
     process.exit(1)
@@ -235,7 +235,7 @@ rc.smembers "u", (err, users) ->
                     message = JSON.parse(m)
 
                     console.log "inserting message to cassandra #{m}"
-                    chat.insertMessageControlMessage c, message, (err, result) ->
+                    cdb.insertMessageControlMessage c, message, (err, result) ->
 
                 #                    console.log "inserted message to cassandra"
                 console.log "deleting control messages cm:#{c}"

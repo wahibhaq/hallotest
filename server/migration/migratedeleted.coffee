@@ -33,8 +33,8 @@ apn = require 'apn'
 uaparser = require 'ua-parser'
 bunyan = require 'bunyan'
 IAPVerifier = require 'iap_verifier'
-chat = require './chat'
-common = require './common'
+cdb = require '../cdb'
+common = require '../common'
 
 #constants
 USERNAME_LENGTH = 20
@@ -152,7 +152,7 @@ ssloptions = undefined
 oauth2Client = undefined
 iapClient = undefined
 
-chat.connect (err) ->
+cdb.connect (err) ->
   if err?
     logger.error 'could not connect to cassandra'
     process.exit(1)
@@ -221,12 +221,12 @@ rc.smembers "d", (err, users) ->
             #delete deleted messages
             rc.smembers "d:#{user}:#{c}", (err, deleted) ->
               console.log "deleting deleted messages user: #{user} spot: #{c}"
-              chat.migrateDeleteMessages user, c, deleted, (err, results) ->
+              cdb.migrateDeleteMessages user, c, deleted, (err, results) ->
                 console.log "deleting deleted messages set d:#{user}:#{c}"
                 rc.del "d:#{user}:#{c}", (err, result) ->
             rc.smembers "d:#{otherUser}:#{c}", (err, deleted) ->
               console.log "deleting deleted messages user: #{otherUser} spot: #{c}"
-              chat.migrateDeleteMessages user, c, deleted, (err, results) ->
+              cdb.migrateDeleteMessages otherUser, c, deleted, (err, results) ->
                 console.log "deleting deleted messages set d:#{otherUser}:#{c}"
                 rc.del "d:#{otherUser}:#{c}", (err, result) ->
         return

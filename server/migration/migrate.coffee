@@ -33,8 +33,8 @@ apn = require 'apn'
 uaparser = require 'ua-parser'
 bunyan = require 'bunyan'
 IAPVerifier = require 'iap_verifier'
-chat = require './chat'
-common = require './common'
+cdb = require '../cdb'
+common = require '../common'
 
 #constants
 USERNAME_LENGTH = 20
@@ -152,7 +152,7 @@ ssloptions = undefined
 oauth2Client = undefined
 iapClient = undefined
 
-chat.connect (err) ->
+cdb.connect (err) ->
   if err?
     logger.error 'could not connect to cassandra'
     process.exit(1)
@@ -206,19 +206,17 @@ createRedisClient = (database, port, host, password) ->
 
 rc = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
 
-#migrate ud users
-rc.keys "ud:*", (err, uds) ->
+#migrate active users
+rc.smembers "u", (err, users) ->
   console.log "migrating users"
-  for udskey in uds
-    do (udskey) ->
-      console.log "migrating #{udskey}"
+  for user in users
+    do (user) ->
+      console.log "migrating user #{user}"
       #insert messages for both users
       #get conversations
-      rc.smembers udskey, (err, deletedUsers) ->
-        for ud in deletedUsers
-          do (ud) ->
-            c = common.getSpotName udskey.split(":")[1], ud
-
+      rc.smembers "c:#{user}", (err, conversations) ->
+        for c in conversations
+          do (c) ->
             #copy counter
             rc.get "m:#{c}:id", (err, counter) ->
               console.log "#{c} counter: #{counter}"
@@ -238,7 +236,7 @@ rc.keys "ud:*", (err, uds) ->
 
 
                     console.log "inserting message to cassandra #{m}"
-                    chat.insertTextMessage message, (err, result) ->
+                    cdb.insertTextMessage message, (err, result) ->
 
                 #                    console.log "inserted message to cassandra"
                 console.log "deleting messages m:#{c}"

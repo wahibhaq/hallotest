@@ -212,34 +212,30 @@ rc.smembers "d", (err, users) ->
   for user in users
     do (user) ->
       console.log "migrating user #{user}"
-      #insert messages for both users
-      #get conversations
-      rc.smembers "c:#{user}", (err, conversations) ->
-        for c in conversations
-          do (c) ->
-            #copy counter
-            rc.get "cm:#{c}:id", (err, counter) ->
-              console.log "#{c} cm counter: #{counter}"
-              if counter?
-                console.log "moving #{c} cm counter to hash"
-                rc.hset "mcmcounters", "#{c}", counter, (err, d) ->
-                  rc.del "cm:#{c}:id", (err, d) ->
 
-              #move control messages
-              console.log "moving control messages cm:#{c}"
+      #copy counter
+      rc.get "cu:#{user}:id", (err, counter) ->
+        console.log "#{user} cu counter: #{counter}"
+        if counter?
+          console.log "moving #{user} cu counter to hash"
+          rc.hset "ucmcounters", "#{user}", counter, (err, d) ->
+            rc.del "cu:#{user}:id", (err, d) ->
 
-              rc.zrange "cm:#{c}", 0,  -1, (err, messages) ->
-                #insert messages into cassandra
-                for m in messages
-                  do(m) ->
-                    message = JSON.parse(m)
+        #move control messages
+        console.log "moving  usercontrol messages cu:#{user}"
 
-                    console.log "inserting message to cassandra #{m}"
-                    cdb.insertMessageControlMessage c, message, (err, result) ->
+        rc.zrange "cu:#{user}", 0,  -1, (err, messages) ->
+          #insert messages into cassandra
+          for m in messages
+            do(m) ->
+              message = JSON.parse(m)
 
-                #                    console.log "inserted message to cassandra"
-                console.log "deleting control messages cm:#{c}"
-                rc.del "cm:#{c}", (err, result) ->
-                return
-        return
+              console.log "inserting user control message to cassandra #{m}"
+              cdb.insertUserControlMessage user, message, (err, result) ->
+
+          #                    console.log "inserted message to cassandra"
+          console.log "deleting user control messages cu:#{user}"
+          rc.del "cu:#{user}", (err, result) ->
+          return
+
   return
