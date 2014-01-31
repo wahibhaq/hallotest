@@ -211,22 +211,10 @@ rc = createRedisClient database, redisSentinelPort, redisSentinelHostname, redis
 
 #migrate active users
 rc.smembers "u", (err, users) ->
-  console.log "migrating users #{users}"
+  console.log "migrating users"
   for user in users
     do (user) ->
       console.log "migrating user #{user}"
-      #insert messages for both users
-      #get conversations
-      rc.smembers "c:#{user}", (err, conversations) ->
-        for c in conversations
-          do (c) ->
-            #delete deleted messages
-            rc.smembers "d:#{user}:#{c}", (err, deleted) ->
-              console.log "deleting deleted messages user: #{user} spot: #{c}"
-              chat.deleteMessages user, c, deleted, (err, results) ->
-                console.log "deleting deleted messages set d:#{user}:#{c}"
-                rc.del "d:#{user}:#{c}", (err, result) ->
-        return
 
       #get deleted users
       rc.smembers "ud:#{user}", (err, deletedusers) ->

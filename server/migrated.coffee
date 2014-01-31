@@ -207,7 +207,7 @@ createRedisClient = (database, port, host, password) ->
 rc = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
 
 #migrate active users
-rc.smembers "u", (err, users) ->
+rc.smembers "d", (err, users) ->
   console.log "migrating users"
   for user in users
     do (user) ->

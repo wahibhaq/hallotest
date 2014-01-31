@@ -206,12 +206,9 @@ createRedisClient = (database, port, host, password) ->
 
 rc = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
 
-
-
-
 #migrate active users
 rc.smembers "u", (err, users) ->
-  console.log "migrating users #{users}"
+  console.log "migrating users"
   for user in users
     do (user) ->
       console.log "migrating user #{user}"
@@ -220,53 +217,11 @@ rc.smembers "u", (err, users) ->
       rc.smembers "c:#{user}", (err, conversations) ->
         for c in conversations
           do (c) ->
-            #copy counter
-            rc.get "m:#{c}:id", (err, counter) ->
-              console.log "#{c} counter: #{counter}"
-              if counter?
-                console.log "moving #{c} counter to hash"
-                rc.hset "mcounters", "#{c}", counter, (err, d) ->
-                  rc.del "m:#{c}:id", (err, d) ->
-
-                    #move  messages
-              console.log "moving messages m:#{c}"
-
-              rc.zrange "m:#{c}", 0,  -1, (err, messages) ->
-                #insert messages into cassandra
-                for m in messages
-                  do(m) ->
-                    message = JSON.parse(m)
-
-
-                    console.log "inserting message to cassandra #{m}"
-                    chat.insertTextMessage message, (err, result) ->
-
-                #                    console.log "inserted message to cassandra"
-                console.log "deleting messages m:#{c}"
-                rc.del "m:#{c}", (err, result) ->
-                return
-
-
-
             #delete deleted messages
             rc.smembers "d:#{user}:#{c}", (err, deleted) ->
               console.log "deleting deleted messages user: #{user} spot: #{c}"
               chat.deleteMessages user, c, deleted, (err, results) ->
                 console.log "deleting deleted messages set d:#{user}:#{c}"
                 rc.del "d:#{user}:#{c}", (err, result) ->
-        return
-
-      #get deleted users
-      rc.smembers "ud:#{user}", (err, deletedusers) ->
-        for ud in deletedusers
-          do (ud) ->
-            c = common.getSpotName user, ud
-            rc.smembers "d:#{ud}:#{c}", (err, deletedids) ->
-              console.log "deleting ud deleted messages from d:#{ud}:#{c}"
-              chat.deleteMessages ud, c, deletedids, (err, results) ->
-
-                console.log "deleting ud deleted messages set d:#{ud}:#{c}"
-                rc.del "d:#{ud}:#{c}", (err, result) ->
-
         return
   return

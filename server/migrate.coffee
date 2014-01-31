@@ -206,18 +206,17 @@ createRedisClient = (database, port, host, password) ->
 
 rc = createRedisClient database, redisSentinelPort, redisSentinelHostname, redisPassword
 
-
 #migrate active users
 rc.smembers "u", (err, users) ->
-  console.log "migrating users #{users}"
+  console.log "migrating users"
   for user in users
     do (user) ->
       console.log "migrating user #{user}"
+      #insert messages for both users
       #get conversations
-      rc.smembers "f:#{user}", (err, friends) ->
-        for f in friends
-          do (f) ->
-            c = common.getSpotName user, f
+      rc.smembers "c:#{user}", (err, conversations) ->
+        for c in conversations
+          do (c) ->
             #copy counter
             rc.get "m:#{c}:id", (err, counter) ->
               console.log "#{c} counter: #{counter}"
@@ -225,66 +224,23 @@ rc.smembers "u", (err, users) ->
                 console.log "moving #{c} counter to hash"
                 rc.hset "mcounters", "#{c}", counter, (err, d) ->
                   rc.del "m:#{c}:id", (err, d) ->
+
                     #move  messages
-                    console.log "moving messages m:#{c}"
-                    rc.zrange "m:#{c}", 0,  -1, (err, messages) ->
-                      #insert messages into cassandra
-                      for m in messages
-                        do(m) ->
-                          message = JSON.parse(m)
-                          console.log "inserting message to cassandra #{m}"
-                          chat.insertTextMessage message, (err, result) ->
-                          #                    console.log "inserted message to cassandra"
-                      console.log "deleting messages m:#{c}"
-                      rc.del "m:#{c}", (err, result) ->
-                      return
+              console.log "moving messages m:#{c}"
 
-              else
-                #move  messages
-                console.log "moving messages m:#{c}"
-                rc.zrange "m:#{c}", 0,  -1, (err, messages) ->
-                  #insert messages into cassandra
-                  for m in messages
-                    do (m) ->
-                      message = JSON.parse(m)
-                      console.log "inserting message to cassandra #{m}"
-                      chat.insertTextMessage message, (err, result) ->
-                        #console.log "inserted message to cassandra"
-                  console.log "deleting messages m:#{c}"
-                  rc.del "m:#{c}", (err, result) ->
-                  return
+              rc.zrange "m:#{c}", 0,  -1, (err, messages) ->
+                #insert messages into cassandra
+                for m in messages
+                  do(m) ->
+                    message = JSON.parse(m)
 
 
+                    console.log "inserting message to cassandra #{m}"
+                    chat.insertTextMessage message, (err, result) ->
 
+                #                    console.log "inserted message to cassandra"
+                console.log "deleting messages m:#{c}"
+                rc.del "m:#{c}", (err, result) ->
+                return
         return
   return
-
-#migrate deleted users
-#rc.smembers "d", (err, users) ->
-#  logger.debug "migrating users #{users}"
-#  for user in users
-#
-#    #get conversations
-#    rc.smembers "c:#{user}", (err, conversations) ->
-#      logger.debug "migrating user #{user} conversations: #{conversations}"
-#      for c in conversations
-#        #copy counter
-#        rc.get "m:#{c}:id", (err, counter) ->
-#          rc.hset "mcounters", "#{c}", counter, (err, d) ->
-#            rc.del "m:#{c}:id", (err, d) ->
-#              logger.debug "moved #{c} counter to hash"
-#
-#
-#
-#        #move  messages
-#        rc.zrange "m:#{c}", 0,  -1, (err, messages) ->
-#          #insert messages into cassandra
-#          for m in messages
-#            message = JSON.parse(m)
-#            chat.insertTextMessage message, (err, result) ->
-#              logger.debug "inserted message to cassandra #{m}"
-#          rc.del "m:#{c}", (err, result) ->
-#            logger.debug "deleted messages m:#{c}"
-#          return
-#      return
-#  return
