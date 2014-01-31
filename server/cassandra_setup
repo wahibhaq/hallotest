@@ -39,3 +39,13 @@ CREATE TABLE usercontrolmessages (
   data      varchar,
   moredata  varchar,
   PRIMARY KEY (username, id));
+
+CREATE TABLE publickeys (
+    username  varchar,
+    version   varint,
+    dhpub     varchar,
+    dhpubsig  varchar,
+    dsapub    varchar,
+    dsapubsig varchar,
+
+    PRIMARY KEY (username, version));

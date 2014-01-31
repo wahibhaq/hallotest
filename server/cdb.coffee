@@ -342,7 +342,7 @@ exports.deleteAllControlMessages = (spot, callback) ->
 
 #user control message stuff
 
-exports.insertUserControlMessage = (user, message, callback) ->
+exports.insertUserControlMessage = (username, message, callback) ->
   #denormalize using username as partition key so all retrieval for a user
   #occurs on the same node as we are going to be pulling multiple
   cql =
@@ -352,7 +352,7 @@ exports.insertUserControlMessage = (user, message, callback) ->
   #logger.debug "sending cql #{cql}"
 
   pool.cql cql, [
-    user,
+    username,
     message.id,
     message.type,
     message.action,
@@ -380,21 +380,21 @@ exports.remapUserControlMessages = (results, reverse) ->
 
   return messages
 
-exports.getUserControlMessages = (user, count, callback) ->
+exports.getUserControlMessages = (username, count, callback) ->
   cql = "select * from usercontrolmessages where username=? order by id desc limit #{count};"
-  pool.cql cql, [user], (err, results) =>
+  pool.cql cql, [username], (err, results) =>
     return callback err if err?
     return callback null, @remapUserControlMessages results, true
 
-exports.getUserControlMessagesAfterId = (user, id, callback) ->
+exports.getUserControlMessagesAfterId = (username, id, callback) ->
     if id is -1
       callback null, null
     else
       if id is 0
-        this.getUserControlMessages user, 20, callback
+        this.getUserControlMessages username, 20, callback
       else
         cql = "select * from usercontrolmessages where username=? and id > ? order by id desc;"
-        pool.cql cql, [user, id], (err, results) =>
+        pool.cql cql, [username, id], (err, results) =>
           return callback err if err?
           messages = @remapUserControlMessages results, true
           return callback null, messages
@@ -406,7 +406,7 @@ exports.getAllUserControlMessageIds = (username, callback) ->
     return callback err if err?
     return callback null, @remapControlMessageIds results
 
-exports.deleteUserControlMessages = (user, messageIds, callback) ->
+exports.deleteUserControlMessages = (username, messageIds, callback) ->
   #logger.debug "deleteAllMessages messageIds: #{JSON.stringify(messageIds)}"
 
   #delete user control messages for username by id
@@ -419,7 +419,7 @@ exports.deleteUserControlMessages = (user, messageIds, callback) ->
   #cheesy as fuck but it'll do for now until we can delete by secondary columns or use < >, or even IN with primary key columns
   for id in messageIds
     cql += "delete from usercontrolmessages where username=? and id = ? "
-    params = params.concat([user, id])
+    params = params.concat([username, id])
 
   cql += "apply batch"
 
@@ -427,16 +427,69 @@ exports.deleteUserControlMessages = (user, messageIds, callback) ->
   #logger.debug "params: #{JSON.stringify(params)}"
   pool.cql cql, params, callback
 
-exports.deleteAllUserControlMessages = (user, callback) ->
+exports.deleteAllUserControlMessages = (username, callback) ->
   cql = "delete from usercontrolmessages where username=?;"
-  pool.cql cql, [user], callback
+  pool.cql cql, [username], callback
+
+
+#public keys
+exports.insertPublicKeys = (username, keys, callback) ->
+  cql =
+    "INSERT INTO publickeys (username, version, dhPub, dhPubSig, dsaPub, dsaPubSig)
+         VALUES (?,?,?,?,?,?);"
+
+  #logger.debug "sending cql #{cql}"
+
+  pool.cql cql, [
+    username,
+    keys.version,
+    keys.dhPub,
+    keys.dhPubSig,
+    keys.dsaPub,
+    keys.dsaPubSig
+  ], callback
+
+
+exports.remapPublicKeys = (results) ->
+  keys = {}
+  #map to array of json messages
+  results.forEach (row) ->
+
+    row.forEach (name, value, ts, ttl) ->
+      switch name
+        when 'dhpub'
+          keys['dhPub'] = value
+        when 'dhpubsig'
+          keys['dhPubSig'] = value
+        when 'dsapub'
+          keys['dsaPub'] = value
+        when 'dsapubsig'
+          keys['dsaPubSig'] = value
+        when 'username'
+          return
+        else
+          if value? then keys[name] = value else return
+
+  return keys
+
+
+exports.getPublicKeys = (username, version, callback) ->
+  cql = "select * from publickeys where username=? and version=?;"
+  pool.cql cql, [username,version], (err, results) =>
+    return callback err if err?
+    return callback null, @remapPublicKeys results
+
+
+exports.deletePublicKeys = (username, callback) ->
+  cql = "delete from publickeys where username=?;"
+  pool.cql cql, [username], callback
 
 
 #migration crap
 
 exports.migrateDeleteMessages = (username, spot, messageIds, callback) ->
   params = []
-  logger.debug "deleting #{username} #{spot} #{messageIds}"
+  logger.debug "deleting #{username} #{spot}"
 
   #delete all username's messages for the other user where ids match
   # add delete statements for my messages in their chat table because we can't use in with ids, or equal with fromuser which can't be in the primary key because it fucks up the other queries

@@ -38,7 +38,7 @@ common = require './common'
 
 #constants
 USERNAME_LENGTH = 20
-CONTROL_MESSAGE_HISTORY = 5
+CONTROL_MESSAGE_HISTORY = 100
 MAX_MESSAGE_LENGTH = 500000
 MAX_HTTP_REQUEST_LENGTH = 500000
 NUM_CORES =  parseInt(process.env.SURESPOT_CORES) ? 4
@@ -766,7 +766,7 @@ else
         #check messages client doesn't have for dupes
         cdb.getMessagesAfterId username, room, resendId, (err, data) ->
           logger.error "error getting messages" if err?
-          return callback err if err
+          return callback err if err?
           found = _.find data, (checkMessage) ->
             logger.debug "comparing ivs"
             checkMessage.iv == message.iv
@@ -777,7 +777,7 @@ else
         #check last 30 for dupes
         cdb.getMessages username, room, 30, (err, data) ->
           logger.error "error getting messages" if err?
-          return callback err if err
+          return callback err if err?
           found = _.find data, (checkMessage) ->
             logger.debug "comparing ivs"
             checkMessage.iv == message.iv
@@ -1289,7 +1289,7 @@ else
             callback()
 
           (err) ->
-            cdb.deleteMessages username, spot, idsToDelete, (err) ->
+            cdb.deleteMessages username, spot, idsToDelete, (err, results) ->
               return callback err if err?
 
               multi.exec (err, mResults) ->
@@ -1422,7 +1422,7 @@ else
     spot = common.getSpotName username, otherUser
     bShareable = shareable is 'true'
 
-    cdb.updateMessageShareable spot, messageId, bShareable, (err) ->
+    cdb.updateMessageShareable spot, messageId, bShareable, (err, results) ->
       return next err if err?
       newStatus = if bShareable then "shareable" else "notshareable"
       createAndSendMessageControlMessage username, otherUser, spot, newStatus, spot, messageId, (err) ->
@@ -1794,7 +1794,7 @@ else
   app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, getPublicKeys
   app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setCache(oneYear), getPublicKeys
   app.get "/keyversion/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted,(req, res, next) ->
-    rc.get "kv:#{req.params.username}", (err, version) ->
+    rc.hget "u:#{req.params.username}", "kv", (err, version) ->
       return next err if err?
       res.send version
 
@@ -1893,8 +1893,10 @@ else
 
         user = {}
         user.username = username
+        user.kv = 1
 
         keys = {}
+        keys.version = 1
         if req.body?.dhPub?
           keys.dhPub = req.body.dhPub
         else
@@ -1935,34 +1937,27 @@ else
             keys.dsaPubSig = crypto.createSign('sha256').update(new Buffer(keys.dsaPub)).sign(serverPrivateKey, 'base64')
             logger.debug "#{username}, dhPubSig: #{keys.dhPubSig}, dsaPubSig: #{keys.dsaPubSig}"
 
-            multi2 = rc.multi()
             #user id
-            multi2.incr "uid"
-            #get key version
-            multi2.incr "kv:#{username}"
-            multi2.exec (err, results) ->
+            rc.incr "uid", (err, newid) ->
               return next err if err?
 
-              user.id = results[0]
-              kv = results[1]
+              user.id = newid
 
-              multi = rc.multi()
-              userKey = "u:#{username}"
-              keysKey = "k:#{username}"
-              keys.version = kv + ""
-              multi.hmset userKey, user
-              multi.hset keysKey, kv, JSON.stringify(keys)
-              multi.sadd "u", username
-              multi.exec (err,replies) ->
+              cdb.insertPublicKeys username, keys, (err, result) ->
                 return next err if err?
-                logger.info "#{username} created, uid: #{user.id}"
-                req.login user, ->
-                  req.user = user
+                multi = rc.multi()
+                multi.hmset "u:#{username}", user
+                multi.sadd "u", username
+                multi.exec (err,replies) ->
+                  return next err if err?
+                  logger.info "#{username} created, uid: #{user.id}"
+                  req.login user, ->
+                    req.user = user
 
-                  if referrers
-                    handleReferrers username, referrers, next
-                  else
-                    next()
+                    if referrers
+                      handleReferrers username, referrers, next
+                    else
+                      next()
 
 
   # unauth'd methods
@@ -2088,7 +2083,7 @@ else
 
       #the user wants to update their key so we will generate a token that the user signs to make sure they're not using a replay attack of some kind
       #get the current version
-      rc.get "kv:#{username}", (err, currkv) ->
+      rc.hget "u:#{username}", "kv", (err, currkv) ->
         return next err if err?
 
         #inc key version
@@ -2113,19 +2108,22 @@ else
     username = req.body.username
 
     kv = req.body.keyVersion
-    rc.get "kv:#{username}", (err, storedkv) ->
+    rc.hget "u:#{username}", "kv",(err, storedkv) ->
       return next err if err?
 
-      storedkv++
-      return next new Error 'key versions do not match' unless storedkv is parseInt(kv)
+      newkv = parseInt storedkv
+      newkv++
+      return next new Error 'key versions do not match' unless newkv is parseInt(kv)
 
       #todo transaction
       #make sure the tokens match
       rc.get "kt:#{username}", (err, rtoken) ->
         return next new Error 'no keytoken exists' unless rtoken?
         newKeys = {}
+        newKeys.version = newkv;
         newKeys.dhPub = req.body.dhPub
         newKeys.dsaPub = req.body.dsaPub
+
         logger.debug "received token signature: " + req.body.tokenSig
         logger.debug "received auth signature: " + req.body.authSig
         logger.debug "token: " + rtoken
@@ -2156,43 +2154,45 @@ else
               newKeys.dsaPubSig = crypto.createSign('sha256').update(new Buffer(newKeys.dsaPub)).sign(serverPrivateKey, 'base64')
               logger.debug "saving keys #{username}, dhPubSig: #{newKeys.dhPubSig}, dsaPubSig: #{newKeys.dsaPubSig}"
 
-              keysKey = "k:#{username}"
-              newKeys.version = storedkv + ""
+
               #add the keys to the key set and add revoke message in transaction
-              multi = rc.multi()
-              multi.hset keysKey, kv, JSON.stringify(newKeys)
-              #update the version
-              multi.set "kv:#{username}", storedkv
-
-              #if we have a gcm Id or apn token set it as the only one as other devices shouldn't be receiving push messages when they have old keys
-
-              gcmId = req.body.gcmId
-
-              if gcmId?
-                logger.debug "setting gcmid and removing apnToken for #{username}"
-                multi.hset "u:#{username}", "gcmId", gcmId
-                multi.hdel "u:#{username}", "apnToken"
-              else
-                apnToken = req.body.apnToken
-                if apnToken?
-                  logger.debug "setting apnToken and removing gcmId for #{username}"
-                  multi.hset "u:#{username}", "apnToken", apnToken
-                  multi.hdel "u:#{username}", "gcmId"
-                else
-                  #if we were not sent the id by a recent version, blow it away
-                  #todo remove this check once we are restricting versions
-                  version = req.body.version
-                  if version?
-                    logger.debug "keys regenerated by client that knows to send version (#{version}), removing gcmid and apnToken from #{username}"
-                    multi.hdel "u:#{username}", "gcmId"
-                    multi.hdel "u:#{username}", "apnToken"
-
-
-              #send revoke message
-              multi.exec (err, replies) ->
+              cdb.insertPublicKeys username, newKeys, (err, results) ->
                 return next err if err?
-                sendRevokeMessages username, kv
-                res.send 201
+
+                multi = rc.multi()
+
+                #update the key version for user
+                userKey = "u:#{username}"
+                multi.hset userKey, "kv", newkv
+
+                #if we have a gcm Id or apn token set it as the only one as other devices shouldn't be receiving push messages when they have old keys
+                gcmId = req.body.gcmId
+
+                if gcmId?
+                  logger.debug "setting gcmid and removing apnToken for #{username}"
+                  multi.hset userKey, "gcmId", gcmId
+                  multi.hdel userKey, "apnToken"
+                else
+                  apnToken = req.body.apnToken
+                  if apnToken?
+                    logger.debug "setting apnToken and removing gcmId for #{username}"
+                    multi.hset userKey, "apnToken", apnToken
+                    multi.hdel userKey, "gcmId"
+                  else
+                    #if we were not sent the id by a recent version, blow it away
+                    #todo remove this check once we are restricting versions
+                    version = req.body.version
+                    if version?
+                      logger.debug "keys regenerated by client that knows to send version (#{version}), removing gcmid and apnToken from #{username}"
+                      multi.hdel userKey, "gcmId"
+                      multi.hdel userKey, "apnToken"
+
+
+                #send revoke message
+                multi.exec (err, replies) ->
+                  return next err if err?
+                  sendRevokeMessages username, kv
+                  res.send 201
 
 
   app.post "/validate", (req, res, next) ->
@@ -2718,9 +2718,11 @@ else
     #delete message pointers
     multi.del "m:#{username}"
     multi.srem "d", username
-    multi.del "k:#{username}"
-    multi.del "kv:#{username}"
-    cdb.deleteAllUserControlMessages username
+    cdb.deletePublicKeys username, (err, results) ->
+      logger.error "error deleting public keys for #{username}: #{err}" if err?
+    multi.hdel "u:#{username}", "kv"
+    cdb.deleteAllUserControlMessages username, (err, results) ->
+      logger.error "error deleting user control messages for #{username}: #{err}" if err?
     multi.hdel "ucmcounters", username
 
 
@@ -2855,22 +2857,13 @@ else
     bcrypt.compare password, dbpassword, callback
 
   getLatestKeys = (username, callback) ->
-    rc.get "kv:#{username}", (err, version) ->
+    rc.hget "u:#{username}", "kv", (err, version) ->
       return callback err if err?
       return callback new Error 'no keys exist for user: #{username}' unless version?
       getKeys username, version, callback
 
   getKeys = (username, version, callback) ->
-    rc.hget "k:#{username}", version, (err, keys) ->
-      return callback err if err?
-
-      jkeys = undefined
-      try
-        jkeys = JSON.parse(keys)
-      catch error
-        return callback error
-
-      callback null, jkeys
+    cdb.getPublicKeys username, parseInt(version), callback
 
 
   verifySignature = (b1, b2, sigString, pubKey) ->
