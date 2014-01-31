@@ -33,7 +33,7 @@ apn = require 'apn'
 uaparser = require 'ua-parser'
 bunyan = require 'bunyan'
 IAPVerifier = require 'iap_verifier'
-chat = require './chat'
+cdb = require './cdb'
 common = require './common'
 
 #constants
@@ -200,7 +200,7 @@ else
   oauth2Client = undefined
   iapClient = undefined
 
-  chat.connect (err) ->
+  cdb.connect (err) ->
     if err?
       logger.error 'could not connect to cassandra'
       process.exit(1)
@@ -751,7 +751,7 @@ else
     multi = rc.multi() unless multi?
 
     #remove message data from cassandra
-    chat.deleteMessage deletingUser, messageFromUser, room, id
+    cdb.deleteMessage deletingUser, messageFromUser, room, id
 
     #remove from my message pointer set if i sent it
     if deletingUser is messageFromUser
@@ -764,7 +764,7 @@ else
       if (resendId > 0)
         logger.debug "searching room: #{room} from id: #{resendId} for duplicate messages"
         #check messages client doesn't have for dupes
-        chat.getMessagesAfterId username, room, resendId, (err, data) ->
+        cdb.getMessagesAfterId username, room, resendId, (err, data) ->
           logger.error "error getting messages" if err?
           return callback err if err
           found = _.find data, (checkMessage) ->
@@ -775,7 +775,7 @@ else
       else
         logger.debug "searching 30 messages from room: #{room} for duplicates"
         #check last 30 for dupes
-        chat.getMessages username, room, 30, (err, data) ->
+        cdb.getMessages username, room, 30, (err, data) ->
           logger.error "error getting messages" if err?
           return callback err if err
           found = _.find data, (checkMessage) ->
@@ -863,7 +863,7 @@ else
 
 
       #store message in cassandra
-      chat.insertTextMessage message, (err, results) ->
+      cdb.insertTextMessage message, (err, results) ->
         return callback new MessageError(err, 500) if err?
 
         #store message pointer in sorted sets so we know the oldest to delete
@@ -1051,14 +1051,14 @@ else
       message.from = from
       sMessage = JSON.stringify message
 
-      chat.getAllControlMessageIds from, spot, (err, cmessageIds) ->
+      cdb.getAllControlMessageIds from, spot, (err, cmessageIds) ->
         logger.debug "got #{cmessageIds.length} control messages for #{spot}"
         if (cmessageIds.length >= CONTROL_MESSAGE_HISTORY)
           deleteIds = cmessageIds.slice 0, cmessageIds.length - CONTROL_MESSAGE_HISTORY + 1
-          chat.deleteControlMessages spot, deleteIds, (err, results) ->
+          cdb.deleteControlMessages spot, deleteIds, (err, results) ->
             logger.error "error deleting control messages from spot #{spot}: #{err}" if err?
 
-      chat.insertMessageControlMessage spot, message, (err, results) ->
+      cdb.insertMessageControlMessage spot, message, (err, results) ->
         return callback err if err?
         callback null, sMessage
 
@@ -1087,14 +1087,14 @@ else
         message.id = id
         newMessage = JSON.stringify(message)
 
-        chat.getAllUserControlMessageIds to, (err, cmessageIds) ->
+        cdb.getAllUserControlMessageIds to, (err, cmessageIds) ->
           logger.debug "got #{cmessageIds.length} user control messages for #{to}"
           if (cmessageIds.length >= CONTROL_MESSAGE_HISTORY)
             deleteIds = cmessageIds.slice 0, cmessageIds.length - CONTROL_MESSAGE_HISTORY + 1
-            chat.deleteUserControlMessages to, deleteIds, (err, results) ->
+            cdb.deleteUserControlMessages to, deleteIds, (err, results) ->
               logger.error "error deleting user control messages from user #{to}: #{err}" if err?
 
-          chat.insertUserControlMessage to, message, (err, results) ->
+          cdb.insertUserControlMessage to, message, (err, results) ->
             return callback err if err?
             sio.sockets.to(to).emit "control", newMessage
             callback()
@@ -1248,7 +1248,7 @@ else
 
   deleteAllMessages = (username, otherUser, utaiId, callback) ->
     spot = common.getSpotName username, otherUser
-    chat.getAllMessages username, spot, (err, messages) ->
+    cdb.getAllMessages username, spot, (err, messages) ->
       return callback err if err?
 
       lastMessageId = null
@@ -1289,7 +1289,7 @@ else
             callback()
 
           (err) ->
-            chat.deleteMessages username, spot, idsToDelete, (err) ->
+            cdb.deleteMessages username, spot, idsToDelete, (err) ->
               return callback err if err?
 
               multi.exec (err, mResults) ->
@@ -1305,7 +1305,7 @@ else
     logger.debug "user #{deletingUser} deleting message from: #{spot} id: #{messageId}"
     otherUser = common.getOtherSpotUser spot, deletingUser
     #get the message we're deleting
-    chat.getMessage deletingUser, spot, messageId, (err, messages) ->
+    cdb.getMessage deletingUser, spot, messageId, (err, messages) ->
       return callback err if err?
 
       #if it's not in cassandra just delete it from redis
@@ -1422,7 +1422,7 @@ else
     spot = common.getSpotName username, otherUser
     bShareable = shareable is 'true'
 
-    chat.updateMessageShareable spot, messageId, bShareable, (err) ->
+    cdb.updateMessageShareable spot, messageId, bShareable, (err) ->
       return next err if err?
       newStatus = if bShareable then "shareable" else "notshareable"
       createAndSendMessageControlMessage username, otherUser, spot, newStatus, spot, messageId, (err) ->
@@ -1642,7 +1642,7 @@ else
 
     return next new Error 'no userControlId' unless userControlId?
 
-    chat.getUserControlMessagesAfterId username, parseInt(userControlId), (err, userControlMessages) ->
+    cdb.getUserControlMessagesAfterId username, parseInt(userControlId), (err, userControlMessages) ->
       return next err if err?
 
       data =  {}
@@ -1709,7 +1709,7 @@ else
     return next new Error 'no userControlId' unless userControlId?
 
 
-    chat.getUserControlMessagesAfterId req.user.username, parseInt(userControlId), (err, userControlMessages) ->
+    cdb.getUserControlMessagesAfterId req.user.username, parseInt(userControlId), (err, userControlMessages) ->
       return next err if err?
 
       data =  {}
@@ -1754,7 +1754,7 @@ else
     id = parseInt req.params.messageid
     return res.send 400 unless id? and not Number.isNaN(id)
 
-    chat.getMessagesBeforeId req.user.username, common.getSpotName(req.user.username, req.params.username), id, (err, data) ->
+    cdb.getMessagesBeforeId req.user.username, common.getSpotName(req.user.username, req.params.username), id, (err, data) ->
       return next err if err?
       #sData = JSON.stringify(data)
 
@@ -1776,10 +1776,10 @@ else
 
   getMessagesAndControlMessages = (username, friendname, messageId, controlMessageId, callback) ->
     spot = common.getSpotName(username, friendname)
-    chat.getMessagesAfterId username, spot, parseInt(messageId), (err, messageData) ->
+    cdb.getMessagesAfterId username, spot, parseInt(messageId), (err, messageData) ->
       return callback err if err?
       #return messages since id
-      chat.getControlMessagesAfterId username, spot, parseInt(controlMessageId), (err, controlData) ->
+      cdb.getControlMessagesAfterId username, spot, parseInt(controlMessageId), (err, controlData) ->
         return callback err if err?
         data = {}
         data.username = friendname
@@ -2720,7 +2720,7 @@ else
     multi.srem "d", username
     multi.del "k:#{username}"
     multi.del "kv:#{username}"
-    chat.deleteAllUserControlMessages username
+    cdb.deleteAllUserControlMessages username
     multi.hdel "ucmcounters", username
 
 
@@ -2819,7 +2819,7 @@ else
                     deleteMessages (err) ->
                       return next err if err?
 
-                      chat.deleteAllControlMessages room, (err, results) ->
+                      cdb.deleteAllControlMessages room, (err, results) ->
                         logger.error "Could not delete spot #{room} control messages" if err?
                       #delete counters
                       multi.hdel "mcmcounters",room
@@ -2830,7 +2830,7 @@ else
                       #remove them from my deleted set
                       multi.srem "ud:#{username}", theirUsername
 
-                      chat.deleteAllMessages room, (err, results) ->
+                      cdb.deleteAllMessages room, (err, results) ->
                         logger.error "Could not delete spot #{room} messages" if err?
                       next()
 
