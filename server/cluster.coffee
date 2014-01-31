@@ -38,7 +38,7 @@ common = require './common'
 
 #constants
 USERNAME_LENGTH = 20
-CONTROL_MESSAGE_HISTORY = 100
+CONTROL_MESSAGE_HISTORY = 5
 MAX_MESSAGE_LENGTH = 500000
 MAX_HTTP_REQUEST_LENGTH = 500000
 NUM_CORES =  parseInt(process.env.SURESPOT_CORES) ? 4
@@ -759,9 +759,6 @@ else
 
     multi.exec callback
 
-  getUserControlMessages = (user, count, fn) ->
-    rc.zrange "cu:" + user, -count, -1, fn
-
   checkForDuplicateMessage = (resendId, username, room, message, callback) ->
     if (resendId?)
       if (resendId > 0)
@@ -789,22 +786,11 @@ else
     else
       callback null, false
 
-
-
-  getUserControlMessagesAfterId = (user, id, fn) ->
-    if id is -1
-      fn null, null
-    else
-      if id is 0
-        getUserControlMessages user, 20, fn
-      else
-        rc.zrangebyscore "cu:" + user, "(" + id, "+inf", fn
-
   getNextMessageId = (room, id, callback) ->
     #we will alread have an id if we uploaded a file
     return callback id if id?
     #INCR message id
-    rc.hincrby "mcounters","#{room}",1, (err, newId) ->
+    rc.hincrby "mcounters",room, 1, (err, newId) ->
       if err?
         logger.error "ERROR: getNextMessageId, room: #{room}, error: #{err}"
         callback null
@@ -813,7 +799,7 @@ else
 
   getNextMessageControlId = (room, callback) ->
     #INCR message id
-    rc.hincrby "mcmcounters","#{room}",1, (err, newId) ->
+    rc.hincrby "mcmcounters",room,1, (err, newId) ->
       if err?
         logger.error "ERROR: getNextMessageControlId, room: #{room}, error: #{err}"
         callback null
@@ -822,7 +808,7 @@ else
 
   getNextUserControlId = (user, callback) ->
           #INCR message id
-    rc.incr "cu:#{user}:id", (err, newId) ->
+    rc.hincrby "ucmcounters", user, 1, (err, newId) ->
       if err?
         logger.error "ERROR: getNextUserControlId, user: #{user}, error: #{err}"
         callback null
@@ -1086,7 +1072,7 @@ else
 
   createAndSendUserControlMessage = (to, action, data, moredata, callback) ->
     userExists to, (err, exists) ->
-      return callback null unless exists
+      return callback() unless exists
       message = {}
       message.type = "user"
       message.action = action
@@ -1100,39 +1086,26 @@ else
         return callback new Error 'could not get user control id' unless id?
         message.id = id
         newMessage = JSON.stringify(message)
-        #store messages in sorted sets
 
-        multi = rc.multi()
-        controlMessageKey = "cu:#{to}"
+        chat.getAllUserControlMessageIds to, (err, cmessageIds) ->
+          logger.debug "got #{cmessageIds.length} user control messages for #{to}"
+          if (cmessageIds.length >= CONTROL_MESSAGE_HISTORY)
+            deleteIds = cmessageIds.slice 0, cmessageIds.length - CONTROL_MESSAGE_HISTORY + 1
+            chat.deleteUserControlMessages to, deleteIds, (err, results) ->
+              logger.error "error deleting user control messages from user #{to}: #{err}" if err?
 
-        deleteEarliestControlMessage = (callback) ->
-          #check how many control messages the user has total
-          rc.zcard controlMessageKey, (err, card) ->
-            return callback err if err?
-            #delete the oldest control message(s)
-            deleteCount = (card - CONTROL_MESSAGE_HISTORY) + 1
-            logger.debug "user control message deleteCount: #{deleteCount}"
-            multi.zremrangebyrank controlMessageKey, 0, deleteCount-1 if deleteCount > 0
-            callback()
-
-
-        deleteEarliestControlMessage (err) ->
-
-          multi.zadd controlMessageKey, id, newMessage
-          multi.exec (err, results) ->
+          chat.insertUserControlMessage to, message, (err, results) ->
             return callback err if err?
             sio.sockets.to(to).emit "control", newMessage
-            callback null
+            callback()
 
   # broadcast a key revocation message to who's conversations
   sendRevokeMessages = (who, newVersion, callback) ->
-    logger.debug "new message"
-
     logger.debug "sending user control message to #{who}: #{who} has completed a key roll"
 
-    createAndSendUserControlMessage who, "revoke", who, newVersion, (err) ->
-      logger.error ("ERROR: adding user control message, " + err) if err?
-      return callback new error 'could not send user controlmessage' if err?
+    createAndSendUserControlMessage who, "revoke", who, "#{newVersion}", (err) ->
+      logger.error "ERROR: adding user control message, #{err}" if err?
+      return callback new Error "could not send user controlmessage: #{err}" if err?
 
 
       #Get all the dude's conversations
@@ -1140,7 +1113,7 @@ else
         return callback err if err?
         async.each convos, (room, callback) ->
           to = common.getOtherSpotUser(room, who)
-          createAndSendUserControlMessage to, "revoke", who, newVersion, (err) ->
+          createAndSendUserControlMessage to, "revoke", who, "#{newVersion}", (err) ->
             logger.error ("ERROR: adding user control message, " + err) if err?
             return callback new error 'could not send user controlmessage' if err?
             callback()
@@ -1513,7 +1486,7 @@ else
                 deleteFile url, "image/"
                 return next err
 
-              createAndSendUserControlMessage username, "friendImage", otherUser, { url: url, iv: iv, version: version }, (err) ->
+              createAndSendUserControlMessage username, "friendImage", otherUser, JSON.stringify({ url: url, iv: iv, version: version }), (err) ->
                 if err?
                   logger.error "POST /images/:username/:version, error: #{err}"
                   deleteFile url, "image/"
@@ -1669,7 +1642,7 @@ else
 
     return next new Error 'no userControlId' unless userControlId?
 
-    getUserControlMessagesAfterId username, parseInt(userControlId), (err, userControlMessages) ->
+    chat.getUserControlMessagesAfterId username, parseInt(userControlId), (err, userControlMessages) ->
       return next err if err?
 
       data =  {}
@@ -1732,16 +1705,17 @@ else
 
   app.get "/latestids/:userControlId", ensureAuthenticated, setNoCache, (req, res, next) ->
     userControlId = req.params.userControlId
+    logger.debug "/latestids/#{userControlId}"
     return next new Error 'no userControlId' unless userControlId?
 
 
-    getUserControlMessagesAfterId req.user.username, parseInt(userControlId), (err, userControlMessages) ->
+    chat.getUserControlMessagesAfterId req.user.username, parseInt(userControlId), (err, userControlMessages) ->
       return next err if err?
 
       data =  {}
       if userControlMessages?.length > 0
         data.userControlMessages = userControlMessages
-        logger.debug "/latestids userControlMessages: #{userControlMessages}"
+        #logger.debug "/latestids userControlMessages: #{userControlMessages}"
       getConversationIds req.user.username, (err, conversationIds) ->
         return next err if err?
 
@@ -2528,7 +2502,7 @@ else
               else
                 friends.push new Friend name, 1
 
-            rc.get "cu:#{username}:id", (err, id) ->
+            rc.hget "ucmcounters", username, (err, id) ->
               friendstate = {}
               friendstate.userControlId = id ? 0
               friendstate.friends = friends
@@ -2662,7 +2636,7 @@ else
                                 if friends.length is 0
                                   deleteRemainingIdentityData multi, username
 
-                                createAndSendUserControlMessage username, "revoke", username, parseInt(kv) + 1, (err) ->
+                                createAndSendUserControlMessage username, "revoke", username, "#{parseInt(kv) + 1}", (err) ->
                                   return next err if err?
                                   multi.exec (err, replies) ->
                                     return next err if err?
@@ -2746,8 +2720,8 @@ else
     multi.srem "d", username
     multi.del "k:#{username}"
     multi.del "kv:#{username}"
-    multi.del "cu:#{username}"
-    multi.del "cu:#{username}:id"
+    chat.deleteAllUserControlMessages username
+    multi.hdel "ucmcounters", username
 
 
   deleteUser = (username, theirUsername, multi, next) ->
@@ -2781,7 +2755,7 @@ else
           if not theyHaveDeletedMe
             #delete our messages with the other user
             #get the latest id
-            rc.hget "mcounters", "#{room}", (err, id) ->
+            rc.hget "mcounters", room, (err, id) ->
               logger.debug "deleting messages for #{room}, #{id}"
               return next err if err?
               #handle no id
@@ -2832,7 +2806,7 @@ else
                 deleteLastUserScraps (err) ->
                   return next err if err?
 
-                  rc.hget "mcounters","#{room}", (err, id) ->
+                  rc.hget "mcounters", room, (err, id) ->
                     return next err if err?
                     deleteMessages = (callback) ->
                       if id?
@@ -2845,22 +2819,19 @@ else
                     deleteMessages (err) ->
                       return next err if err?
 
-
                       chat.deleteAllControlMessages room, (err, results) ->
                         logger.error "Could not delete spot #{room} control messages" if err?
                       #delete counters
-                      multi.hdel "mcmcounters","#{room}"
+                      multi.hdel "mcmcounters",room
+
+                      #remove message counters for the conversation
+                      multi.hdel "mcounters", room
 
                       #remove them from my deleted set
                       multi.srem "ud:#{username}", theirUsername
 
-                      #remove message counters for their conversation
-                      multi.hdel "mcounters", "#{room}"
-
                       chat.deleteAllMessages room, (err, results) ->
                         logger.error "Could not delete spot #{room} messages" if err?
-
-
                       next()
 
 

@@ -209,6 +209,7 @@ exports.updateMessageShareable = (room, id, bShareable, callback) ->
     callback()
 
 
+#message control message stuff
 
 exports.remapControlMessages = (results, reverse) ->
   messages = []
@@ -283,7 +284,7 @@ exports.insertMessageControlMessage = (spot, message, callback) ->
           VALUES (?,?,?,?,?,?,?,?)
           APPLY BATCH"
 
-  logger.debug "sending cql #{cql}"
+  #logger.debug "sending cql #{cql}"
 
   pool.cql cql, [
     users[0],
@@ -327,7 +328,7 @@ exports.deleteControlMessages = (spot, messageIds, callback) ->
   cql += "apply batch"
 
   #logger.debug "sending cql: #{cql}"
-  logger.debug "params: #{JSON.stringify(params)}"
+  #logger.debug "params: #{JSON.stringify(params)}"
   pool.cql cql, params, callback
 
 exports.deleteAllControlMessages = (spot, callback) ->
@@ -339,7 +340,96 @@ exports.deleteAllControlMessages = (spot, callback) ->
 
   pool.cql cql, [users[0], spot, users[1], spot], callback
 
+#user control message stuff
 
+exports.insertUserControlMessage = (user, message, callback) ->
+  #denormalize using username as partition key so all retrieval for a user
+  #occurs on the same node as we are going to be pulling multiple
+  cql =
+    "INSERT INTO usercontrolmessages (username, id, type, action, data, moredata)
+     VALUES (?,?,?,?,?,?);"
+
+  #logger.debug "sending cql #{cql}"
+
+  pool.cql cql, [
+    user,
+    message.id,
+    message.type,
+    message.action,
+    message.data,
+    message.moredata,
+  ], callback
+
+exports.remapUserControlMessages = (results, reverse) ->
+  messages = []
+  #map to array of json messages
+  results.forEach (row) ->
+    message = {}
+    row.forEach (name, value, ts, ttl) ->
+      switch name
+        when 'username'
+          return
+        else
+          if value? then message[name] = value else return
+
+    #insert at begining to reverse order
+    if reverse
+      messages.unshift message
+    else
+      messages.push message
+
+  return messages
+
+exports.getUserControlMessages = (user, count, callback) ->
+  cql = "select * from usercontrolmessages where username=? limit #{count};"
+  pool.cql cql, [user], (err, results) =>
+    return callback err if err?
+    return callback null, @remapUserControlMessages results, false
+
+exports.getUserControlMessagesAfterId = (user, id, callback) ->
+    if id is -1
+      callback null, null
+    else
+      if id is 0
+        this.getUserControlMessages user, 20, callback
+      else
+        cql = "select * from usercontrolmessages where username=? and id > ?;"
+        pool.cql cql, [user, id], (err, results) =>
+          return callback err if err?
+          messages = @remapUserControlMessages results, false
+          return callback null, messages
+
+
+exports.getAllUserControlMessageIds = (username, callback) ->
+  cql = "select id from usercontrolmessages where username=?;"
+  pool.cql cql, [username], (err, results) =>
+    return callback err if err?
+    return callback null, @remapControlMessageIds results
+
+exports.deleteUserControlMessages = (user, messageIds, callback) ->
+  #logger.debug "deleteAllMessages messageIds: #{JSON.stringify(messageIds)}"
+
+  #delete user control messages for username by id
+  cql = "begin batch "
+  params = [];
+
+  #delete all username'scontrol messages for the user where ids match
+  # add delete statements for my messages in their chat table because we can't use in with ids, or equal with fromuser which can't be in the primary key because it fucks up the other queries
+  #https://issues.apache.org/jira/browse/CASSANDRA-6173
+  #cheesy as fuck but it'll do for now until we can delete by secondary columns or use < >, or even IN with primary key columns
+  for id in messageIds
+    cql += "delete from usercontrolmessages where username=? and id = ? "
+    params = params.concat([user, id])
+
+  cql += "apply batch"
+
+  #logger.debug "sending cql: #{cql}"
+  #logger.debug "params: #{JSON.stringify(params)}"
+  pool.cql cql, params, callback
+
+exports.deleteAllUserControlMessages = (user, callback) ->
+  cql = "delete from usercontrolmessages where username=?;"
+  pool.cql cql, [user], callback
 
 
 #migration crap

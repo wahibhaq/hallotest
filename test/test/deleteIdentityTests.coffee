@@ -40,9 +40,6 @@ cleanup = (done) ->
     multi.del "u:test#{i}"
     multi.del "k:test#{i}"
     multi.del "kv:test#{i}"
-
-    multi.del "cu:test#{i}"
-    multi.del "cu:test#{i}:id"
     multi.del "ud:test#{i}"
     multi.del "f:test#{i}"
     multi.del "f:test#{i}"
@@ -59,6 +56,9 @@ cleanup = (done) ->
   multi.hdel "mcounters", "test0:test2"
   multi.hdel "mcmcounters", "test0:test1"
   multi.hdel "mcmcounters", "test0:test2"
+  multi.hdel "ucmcounters", "test0"
+  multi.hdel "ucmcounters", "test1"
+  multi.hdel "ucmcounters", "test2"
   multi.del("d:test0")
   multi.del("m:test1")
   multi.del("m:test2")
@@ -70,19 +70,21 @@ cleanup = (done) ->
       return done err if err?
 
       cql = "begin batch
-                     delete from chatmessages where username = ?
-                     delete from chatmessages where username = ?
-                     delete from chatmessages where username = ?
-                     delete from messagecontrolmessages where username = ?
-                     delete from messagecontrolmessages where username = ?
-                     delete from messagecontrolmessages where username = ?
-                     apply batch"
+         delete from chatmessages where username = ?
+         delete from chatmessages where username = ?
+         delete from chatmessages where username = ?
+         delete from messagecontrolmessages where username = ?
+         delete from messagecontrolmessages where username = ?
+         delete from messagecontrolmessages where username = ?
+         delete from usercontrolmessages where username = ?
+         delete from usercontrolmessages where username = ?
+         delete from usercontrolmessages where username = ?
+         apply batch"
 
-      pool.cql cql, ["test0", "test1", "test2","test0", "test1","test2"], (err, results) ->
+      pool.cql cql, ["test0", "test1", "test2","test0", "test1","test2","test0", "test1","test2"], (err, results) ->
         if err
           done err
         else
-          console.log "cleanup done"
           done()
 
 

@@ -8,6 +8,9 @@ dcrypt = require 'dcrypt'
 async = require 'async'
 fs = require("fs")
 redisSentinel = require 'redis-sentinel-client'
+helenus = require 'helenus'
+
+
 
 socketPort = process.env.SURESPOT_SOCKET ? 8080
 redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 6379
@@ -17,6 +20,7 @@ baseUri = process.env.SURESPOT_TEST_BASEURI
 cleanupDb = process.env.SURESPOT_TEST_CLEANDB is "true"
 useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
 
+pool = new helenus.ConnectionPool({host:'127.0.0.1', port:9160, keyspace:'surespot'});
 rc = if useRedisSentinel then redisSentinel.createClient(redisSentinelPort, redisSentinelHostname) else redis.createClient(redisSentinelPort, redisSentinelHostname)
 port = socketPort
 
@@ -33,9 +37,7 @@ cleanup = (done) ->
     "ir:test0",
     "is:test1",
     "ir:test1",
-    "m:test0:test1:id",
     "m:test0",
-    "m:test0:test1",
     "c:test1",
     "c:test0",
     "c:test2",
@@ -45,20 +47,33 @@ cleanup = (done) ->
     "kv:test1",
     "k:test1",
     "kv:test2",
-    "k:test2",
-    "cu:test0",
-    "cu:test0:id",
-    "cu:test1"
-    "cu:test1:id"]
+    "k:test2"]
   multi = rc.multi()
 
   multi.del keys
+  multi.hdel "mcounters", "test0:test1"
+  multi.hdel "ucmcounters", "test0"
+  multi.hdel "ucmcounters", "test1"
+
   multi.srem "u", "test0", "test1", "test2"
   multi.exec (err, results) ->
-    if err
-      done err
-    else
-      done()
+    return done err if err?
+    pool.connect (err, keyspace) ->
+      return done err if err?
+
+      cql = "begin batch
+               delete from chatmessages where username = ?
+               delete from chatmessages where username = ?
+               delete from usercontrolmessages where username = ?
+               delete from usercontrolmessages where username = ?
+               apply batch"
+
+      pool.cql cql, ["test0", "test1", "test0", "test1"], (err, results) ->
+        if err
+          done err
+        else
+          done()
+
 
 login = (username, password, authSig, done, callback) ->
   http.post

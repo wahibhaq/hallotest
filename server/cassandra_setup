@@ -31,3 +31,11 @@ CREATE TABLE messagecontrolmessages (
   fromuser  varchar,
   PRIMARY KEY (username, spotname, id));
 
+CREATE TABLE usercontrolmessages (
+  username  varchar,
+  id        varint,
+  type      varchar,
+  action    varchar,
+  data      varchar,
+  moredata  varchar,
+  PRIMARY KEY (username, id));
