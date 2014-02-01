@@ -13,8 +13,14 @@ logger = bunyan.createLogger({
   streams: bunyanStreams
 });
 
+poolIps = process.env.SURESPOT_CASSANDRA_IPS ? '127.0.0.1';
+poolIps = poolIps.split ":"
+
 exports.connect = (callback) ->
-  pool = new helenus.ConnectionPool({host:'127.0.0.1', port:9160, keyspace:'surespot'});
+  pool = new helenus.ConnectionPool(
+    hosts: poolIps
+    keyspace: 'surespot'
+  );
   pool.connect (err, keyspace) ->
     if (err)
       callback err
