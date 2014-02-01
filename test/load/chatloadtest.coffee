@@ -9,13 +9,14 @@ io = require 'socket.io-client'
 async = require 'async'
 _ = require 'underscore'
 crypto = require 'crypto'
+helenus = require 'helenus'
 
-
+pool = new helenus.ConnectionPool({host:'127.0.0.1', port:9160, keyspace:'surespot'});
 
 testkeydir = '../testkeys'
-baseUri = "https://96.126.119.175:443"
-minclient = 0
-maxclient = 199
+baseUri = "http://localhost:8080"
+minclient = 3000
+maxclient = 6999
 clients = maxclient - minclient + 1
 jars = []
 http.globalAgent.maxSockets = 20000
@@ -30,23 +31,37 @@ clean1up = (max ,i, done) ->
   keys.push "f:test#{i}"
   keys.push "is:test#{i}"
   keys.push "ir:test#{i}"
-  keys.push "m:test#{i}:test#{i + 1}:id"
-  keys.push "m:test#{i}:test#{i + 1}"
   keys.push "c:test#{i}"
-  keys.push "c:u:test#{i}"
-  keys.push "c:u:test#{i}:id"
+
   #rc.del keys1, (err, blah) ->
   # return done err if err?
-  rc.del keys, (err, blah) ->
+  multi=rc.multi()
+  multi.del keys
+  multi.hdel "mcounters", "test#{i}:test#{i+1}"
+  multi.hdel "ucmcounters", "test#{i}"
+  multi.exec (err, blah) ->
     return done err if err?
-    if i+1 < max
-      clean1up max, i+1, done
-    else
-      done()
+      cql = "begin batch
+delete from chatmessages where username = ?
+delete from chatmessages where username = ?
+delete from usercontrolmessages where username = ?
+delete from usercontrolmessages where username = ?
+apply batch"
+
+      pool.cql cql, ["test#{i}", "test#{i+1}", "test#{i}", "test#{i+1}"], (err, results) ->
+      if err
+        done err
+      else
+        if i+1 < max
+          clean1up max, i+1, done
+        else
+          done()
 
 
 cleanup = (done) ->
-  clean1up clients, 0, done
+  pool.connect (err,keyspace) ->
+    return done err if err?
+    clean1up clients, 0, done
 
 login = (username, password, jar, authSig, done, callback) ->
   request.post
@@ -91,7 +106,7 @@ connectChats = (cookie, callback) ->
 
 send = (socket, i, callback) ->
   if i % 2 is 0
-    jsonMessage = {to: "test" + (i + 1), from: "test#{i}", iv: i, data: "message data", mimeType: "text/plain", toVersion: 1, fromVersion: 1}
+    jsonMessage = {to: "test" + (i + 1), from: "test#{i}", iv: "#{i}", data: "message data", mimeType: "text/plain", toVersion: "1", fromVersion: "1"}
     socket.send JSON.stringify(jsonMessage)
     callback null, true
   else
