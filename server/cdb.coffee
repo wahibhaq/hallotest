@@ -510,4 +510,18 @@ exports.migrateDeleteMessages = (username, spot, messageIds, callback) ->
     logger.debug "results: #{results}"
     callback err, results
 
+exports.migrateInsertPublicKeys = (username, keys, callback) ->
+  cql =
+    "INSERT INTO publickeys (username, version, dhPub, dhPubSig, dsaPub, dsaPubSig)
+             VALUES (?,?,?,?,?,?);"
 
+  #logger.debug "sending cql #{cql}"
+
+  pool.cql cql, [
+    username,
+    parseInt(keys.version),
+    keys.dhPub,
+    keys.dhPubSig,
+    keys.dsaPub,
+    keys.dsaPubSig
+  ], callback
