@@ -1697,9 +1697,10 @@ else
                   callback()
 
               addNewMessages ->
-                logger.debug "/latestdata sending #{JSON.stringify(data)}"
+                sData = JSON.stringify(data)
+                logger.debug "/latestdata sending #{sData}"
                 res.set {'Content-Type': 'application/json'}
-                res.send data)
+                res.send sData)
 
 
 
