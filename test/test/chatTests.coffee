@@ -277,7 +277,7 @@ describe "surespot chat test", () ->
 
           controlData = messageData.userControlMessages
           controlData.length.should.equal 2
-          receivedControlMessage = controlData[0]
+          receivedControlMessage = JSON.parse(controlData[0])
           receivedControlMessage.type.should.equal "user"
           receivedControlMessage.action.should.equal "invite"
           receivedControlMessage.data.should.equal "test1"
@@ -288,7 +288,7 @@ describe "surespot chat test", () ->
 
 
 
-          receivedControlMessage = controlData[1]
+          receivedControlMessage = JSON.parse(controlData[1])
           receivedControlMessage.type.should.equal "user"
           receivedControlMessage.action.should.equal "added"
           receivedControlMessage.data.should.equal "test1"
@@ -444,7 +444,7 @@ describe "surespot chat test", () ->
 
               messages = messageData.messages
               messages.length.should.equal 1
-              receivedMessage = messages[0]
+              receivedMessage = JSON.parse(messages[0])
               receivedMessage.to.should.equal jsonMessage.to
               receivedMessage.id.should.equal 4
               receivedMessage.from.should.equal jsonMessage.from
@@ -455,7 +455,7 @@ describe "surespot chat test", () ->
 
               controlData = messageData.controlMessages
               controlData.length.should.equal 2
-              receivedControlMessage = controlData[0]
+              receivedControlMessage = JSON.parse(controlData[0])
               receivedControlMessage.type.should.equal "message"
               receivedControlMessage.action.should.equal "delete"
               receivedControlMessage.data.should.equal "test0:test1"
@@ -464,7 +464,7 @@ describe "surespot chat test", () ->
               receivedControlMessage.id.should.equal 1
 
 
-              receivedControlMessage = controlData[1]
+              receivedControlMessage = JSON.parse(controlData[1])
               receivedControlMessage.type.should.equal "message"
               receivedControlMessage.action.should.equal "delete"
               receivedControlMessage.data.should.equal "test0:test1"
@@ -476,6 +476,7 @@ describe "surespot chat test", () ->
 
   it 'resending message should not create new message', (done) ->
     client1.once 'message', (receivedMessage) ->
+      receivedMessage = JSON.parse(receivedMessage)
       receivedMessage.id.should.equal 4
 
 

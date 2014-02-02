@@ -295,9 +295,9 @@ describe "delete messages and friends test", () ->
                   data = JSON.parse(body)
                   data.messages.length.should.equal 3
 
-                  data.messages[0].from.should.equal "test1"
-                  data.messages[1].from.should.equal "test1"
-                  data.messages[2].from.should.equal "test1"
+                  JSON.parse(data.messages[0]).from.should.equal "test1"
+                  JSON.parse(data.messages[1]).from.should.equal "test1"
+                  JSON.parse(data.messages[2]).from.should.equal "test1"
 
                   done()
 
@@ -387,9 +387,9 @@ describe "delete messages and friends test", () ->
                   data = JSON.parse(body)
                   data.messages.length.should.equal 3
 
-                  data.messages[0].from.should.equal "test1"
-                  data.messages[1].from.should.equal "test1"
-                  data.messages[2].from.should.equal "test1"
+                  JSON.parse(data.messages[0]).from.should.equal "test1"
+                  JSON.parse(data.messages[1]).from.should.equal "test1"
+                  JSON.parse(data.messages[2]).from.should.equal "test1"
 
                   done()
 

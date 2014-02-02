@@ -231,7 +231,7 @@ describe "external invite tests", () ->
 
             controlData = messageData.userControlMessages
             controlData.length.should.equal 1
-            receivedControlMessage = controlData[0]
+            receivedControlMessage = JSON.parse(controlData[0])
             receivedControlMessage.type.should.equal "user"
             receivedControlMessage.action.should.equal "invite"
             receivedControlMessage.data.should.equal "test1"

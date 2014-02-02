@@ -767,7 +767,15 @@ else
         cdb.getMessagesAfterId username, room, resendId, (err, data) ->
           logger.error "error getting messages" if err?
           return callback err if err?
-          found = _.find data, (checkMessage) ->
+          found = _.find data, (checkMessageJSON) ->
+            checkMessage = undefined
+            try
+              logger.debug "parsing #{checkMessageJSON}"
+              checkMessage = JSON.parse(checkMessageJSON)
+            catch error
+              logger.debug "error parsing #{checkMessageJSON}"
+              return callback error
+
             logger.debug "comparing ivs"
             checkMessage.iv == message.iv
 
@@ -778,7 +786,13 @@ else
         cdb.getMessages username, room, 30, (err, data) ->
           logger.error "error getting messages" if err?
           return callback err if err?
-          found = _.find data, (checkMessage) ->
+          found = _.find data, (checkMessageJSON) ->
+            try
+              logger.debug "parsing #{checkMessageJSON}"
+              checkMessage = JSON.parse(checkMessageJSON)
+            catch error
+              logger.error "error parsing #{checkMessageJSON}"
+              return callback error
             logger.debug "comparing ivs"
             checkMessage.iv == message.iv
 
@@ -1274,8 +1288,13 @@ else
         async.each(
           messages
           (item, callback) ->
+            oMessage = undefined
+            try
+              oMessage = JSON.parse(item)
+            catch error
+              return callback false
 
-            oMessage = item
+
 
             #if we sent it remove it from our set of pointers and remove data from rackspace if we need to
             if oMessage.from is username

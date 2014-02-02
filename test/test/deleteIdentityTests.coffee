@@ -307,9 +307,9 @@ describe "delete identity tests", () ->
           data = JSON.parse(body)
           data.length.should.equal 3
 
-          data[0].from.should.equal "test1"
-          data[1].from.should.equal "test1"
-          data[2].from.should.equal "test1"
+          JSON.parse(data[0]).from.should.equal "test1"
+          JSON.parse(data[1]).from.should.equal "test1"
+          JSON.parse(data[2]).from.should.equal "test1"
 
           request.get
             jar: jars[1]
@@ -322,9 +322,9 @@ describe "delete identity tests", () ->
                 data = JSON.parse(body)
                 data.messages.length.should.equal 3
 
-                data.messages[0].from.should.equal "test1"
-                data.messages[1].from.should.equal "test1"
-                data.messages[2].from.should.equal "test1"
+                JSON.parse(data.messages[0]).from.should.equal "test1"
+                JSON.parse(data.messages[1]).from.should.equal "test1"
+                JSON.parse(data.messages[2]).from.should.equal "test1"
 
                 request.get
                   jar: jars[2]
@@ -337,9 +337,9 @@ describe "delete identity tests", () ->
                       data = JSON.parse(body)
                       data.length.should.equal 3
 
-                      data[0].from.should.equal "test2"
-                      data[1].from.should.equal "test2"
-                      data[2].from.should.equal "test2"
+                      JSON.parse(data[0]).from.should.equal "test2"
+                      JSON.parse(data[1]).from.should.equal "test2"
+                      JSON.parse(data[2]).from.should.equal "test2"
 
                       request.get
                         jar: jars[2]
@@ -352,9 +352,9 @@ describe "delete identity tests", () ->
                             data = JSON.parse(body)
                             data.messages.length.should.equal 3
 
-                            data.messages[0].from.should.equal "test2"
-                            data.messages[1].from.should.equal "test2"
-                            data.messages[2].from.should.equal "test2"
+                            JSON.parse(data.messages[0]).from.should.equal "test2"
+                            JSON.parse(data.messages[1]).from.should.equal "test2"
+                            JSON.parse(data.messages[2]).from.should.equal "test2"
 
                             done()
 
