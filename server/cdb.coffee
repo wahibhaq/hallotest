@@ -93,10 +93,11 @@ exports.remapMessages = (results, reverse) ->
           if value? then message[name] = value else return
 
     #insert at begining to reverse order
+    #todo change client to handle json object
     if reverse
-      messages.unshift message
+      messages.unshift JSON.stringify(message)
     else
-      messages.push message
+      messages.push JSON.stringify(message)
 
   return messages
 
@@ -233,9 +234,9 @@ exports.remapControlMessages = (results, reverse) ->
 
     #insert at begining to reverse order
     if reverse
-      messages.unshift message
+      messages.unshift JSON.stringify(message)
     else
-      messages.push message
+      messages.push JSON.stringify(message)
 
   return messages
 
@@ -380,9 +381,9 @@ exports.remapUserControlMessages = (results, reverse) ->
 
     #insert at begining to reverse order
     if reverse
-      messages.unshift message
+      messages.unshift JSON.stringify(message)
     else
-      messages.push message
+      messages.push JSON.stringify(message)
 
   return messages
 
@@ -471,6 +472,8 @@ exports.remapPublicKeys = (results) ->
           keys['dsaPub'] = value
         when 'dsapubsig'
           keys['dsaPubSig'] = value
+        when 'version'
+          keys['version'] = "#{value}"
         when 'username'
           return
         else
