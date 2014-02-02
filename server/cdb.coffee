@@ -13,7 +13,7 @@ logger = bunyan.createLogger({
   streams: bunyanStreams
 });
 
-poolIps = process.env.SURESPOT_CASSANDRA_IPS ? '127.0.0.1';
+poolIps = process.env.SURESPOT_CASSANDRA_IPS ? '127.0.0.1'
 poolIps = poolIps.split ":"
 
 exports.connect = (callback) ->

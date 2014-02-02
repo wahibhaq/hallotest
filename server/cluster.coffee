@@ -151,7 +151,7 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "redis sentinel hostname: #{redisSentinelHostname}"
   logger.info "redis sentinel port: #{redisSentinelPort}"
   logger.info "redis password: #{redisPassword}"
-
+  logger.info "cassandra urls: #{process.env.SURESPOT_CASSANDRA_IPS ? '127.0.0.1'}"
 
 else
 
@@ -184,7 +184,7 @@ else
     logger.info "redis sentinel port: #{redisSentinelPort}"
     logger.info "redis password: #{redisPassword}"
     logger.info "use redis sentinel: #{useRedisSentinel}"
-
+    logger.info "cassandra urls: #{process.env.SURESPOT_CASSANDRA_IPS ? '127.0.0.1'}"
 
   sio = undefined
   sessionStore = undefined
@@ -2859,7 +2859,7 @@ else
   getLatestKeys = (username, callback) ->
     rc.hget "u:#{username}", "kv", (err, version) ->
       return callback err if err?
-      return callback new Error 'no keys exist for user: #{username}' unless version?
+      return callback new Error "no keys exist for user: #{username}" unless version?
       getKeys username, version, callback
 
   getKeys = (username, version, callback) ->
@@ -2913,7 +2913,7 @@ else
         when 403 then return done null, false, message: "invalid password or key"
         when 204 then return done null, user
         else
-          return new Error 'unknown validation status: #{status}'
+          return new Error "unknown validation status: #{status}"
 
   passport.serializeUser (user, done) ->
     logger.debug "serializeUser, username: " + user.username
