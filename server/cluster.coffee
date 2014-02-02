@@ -1255,8 +1255,8 @@ else
 
       if messages?.length > 0
         #messageCount = messages.length
-        #ordered by id so newest will be first
-        lastMessageId = messages[0].id
+        #ordered by id so newest will be last
+        lastMessageId = JSON.parse(messages[messages.length-1]).id
         logger.debug "lastMessageID #{lastMessageId}"
 
         #todo do we need to do this?
