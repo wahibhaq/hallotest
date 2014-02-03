@@ -1505,7 +1505,7 @@ else
                 deleteFile url, "image/"
                 return next err
 
-              createAndSendUserControlMessage username, "friendImage", otherUser, JSON.stringify({ url: url, iv: iv, version: version }), (err) ->
+              createAndSendUserControlMessage username, "friendImage", otherUser, { url: url, iv: iv, version: version }, (err) ->
                 if err?
                   logger.error "POST /images/:username/:version, error: #{err}"
                   deleteFile url, "image/"

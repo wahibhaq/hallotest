@@ -357,6 +357,9 @@ exports.insertUserControlMessage = (username, message, callback) ->
      VALUES (?,?,?,?,?,?);"
 
   #logger.debug "sending cql #{cql}"
+  #store moredata object as json string in case of friend image data
+  if message.action is 'friendImage'
+    message.moredata = JSON.stringify(message.moredata)
 
   pool.cql cql, [
     username,
@@ -378,6 +381,11 @@ exports.remapUserControlMessages = (results, reverse) ->
           return
         else
           if value? then message[name] = value else return
+
+
+    #parse json if it's friendImage
+    if message.action is 'friendImage'
+      message.moredata = JSON.parse(message.moredata)
 
     #insert at begining to reverse order
     if reverse
