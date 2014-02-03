@@ -236,7 +236,7 @@ rc.smembers "d", (err, users) ->
 
 
                     console.log "inserting message to cassandra #{m}"
-                    cdb.insertTextMessage message, (err, result) ->
+                    cdb.migrateInsertMessage message, (err, result) ->
 
                 #                    console.log "inserted message to cassandra"
                 console.log "deleting messages m:#{c}"

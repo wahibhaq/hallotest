@@ -25,15 +25,15 @@ exports.connect = (callback) ->
     if (err)
       callback err
 
-exports.insertTextMessage = (message, callback) ->
+exports.insertMessage = (message, callback) ->
   spot = common.getSpotName(message.from, message.to)
 
   cql =
   "BEGIN BATCH
-  INSERT INTO chatmessages (username, spotname, id, datetime, fromuser, fromversion, touser, toversion, iv, data, mimeType)
-  VALUES (?, ?, ?, ?, ?,?,?,?,?,?,? )
-  INSERT INTO chatmessages (username, spotname, id, datetime, fromuser, fromversion, touser, toversion, iv, data, mimeType)
-    VALUES (?, ?, ?, ?, ?,?,?,?,?,?,? )
+  INSERT INTO chatmessages (username, spotname, id, datetime, fromuser, fromversion, touser, toversion, iv, data, mimeType, datasize)
+  VALUES (?, ?, ?, ?, ?,?,?,?,?,?,?,? )
+  INSERT INTO chatmessages (username, spotname, id, datetime, fromuser, fromversion, touser, toversion, iv, data, mimeType, datasize)
+  VALUES (?, ?, ?, ?, ?,?,?,?,?,?,?,? )
   APPLY BATCH"
 
   logger.debug "sending cql #{cql}"
@@ -50,6 +50,7 @@ exports.insertTextMessage = (message, callback) ->
     message.iv,
     message.data,
     message.mimeType,
+    message.dataSize,
 
     message.from,
     spot,
@@ -61,7 +62,8 @@ exports.insertTextMessage = (message, callback) ->
     message.toVersion,
     message.iv,
     message.data,
-    message.mimeType
+    message.mimeType,
+    message.dataSize,
   ], callback
 
 
@@ -503,6 +505,50 @@ exports.deletePublicKeys = (username, callback) ->
 
 
 #migration crap
+exports.migrateInsertMessage = (message, callback) ->
+  spot = common.getSpotName(message.from, message.to)
+
+  cql =
+    "BEGIN BATCH
+      INSERT INTO chatmessages (username, spotname, id, datetime, fromuser, fromversion, touser, toversion, iv, data, mimeType, datasize, shareable)
+      VALUES (?, ?, ?, ?, ?,?,?,?,?,?,?,?,? )
+      INSERT INTO chatmessages (username, spotname, id, datetime, fromuser, fromversion, touser, toversion, iv, data, mimeType, datasize, shareable)
+      VALUES (?, ?, ?, ?, ?,?,?,?,?,?,?,?,? )
+      APPLY BATCH"
+
+  logger.debug "sending cql #{cql}"
+
+  pool.cql cql, [
+    message.to,
+    spot,
+    message.id,
+    message.datetime,
+    message.from,
+    message.fromVersion,
+    message.to,
+    message.toVersion,
+    message.iv,
+    message.data,
+    message.mimeType,
+    message.dataSize,
+    message.shareable,
+
+    message.from,
+    spot,
+    message.id,
+    message.datetime,
+    message.from,
+    message.fromVersion,
+    message.to,
+    message.toVersion,
+    message.iv,
+    message.data,
+    message.mimeType,
+    message.dataSize,
+    message.shareable,
+  ], callback
+
+
 
 exports.migrateDeleteMessages = (username, spot, messageIds, callback) ->
   params = []

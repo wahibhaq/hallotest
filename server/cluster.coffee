@@ -217,14 +217,14 @@ else
   if useRedisSentinel
     redis = require 'redis-sentinel-client'
   else
-    #use forked redis
+    #use forked red
     redis = require 'redis'
 
   createRedisClient = (database, port, host, password) ->
     if port? and host?
       tempclient = null
       if useRedisSentinel
-        sentinel = redis.createClient(port,host, {logger: logger})
+        sentinel = redis.createClient(port,host, {logger: logger, debug: true})
         tempclient = sentinel.getMaster()
 
         sentinel.on 'error', (err) -> logger.error err
@@ -877,7 +877,7 @@ else
 
 
       #store message in cassandra
-      cdb.insertTextMessage message, (err, results) ->
+      cdb.insertMessage message, (err, results) ->
         return callback new MessageError(err, 500) if err?
 
         #store message pointer in sorted sets so we know the oldest to delete
@@ -1523,7 +1523,7 @@ else
     #upload image to rackspace then create a message with the image url and send it to chat recipients
     username = req.user.username
     path = null
-    size = null
+    size = 0
     container = null
     cdn = null
 
