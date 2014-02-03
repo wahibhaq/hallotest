@@ -224,7 +224,7 @@ else
     if port? and host?
       tempclient = null
       if useRedisSentinel
-        sentinel = redis.createClient(port,host, {logger: logger, debug: true})
+        sentinel = redis.createClient(port,host, {logger: logger})
         tempclient = sentinel.getMaster()
 
         sentinel.on 'error', (err) -> logger.error err
