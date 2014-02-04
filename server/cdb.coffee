@@ -21,6 +21,10 @@ exports.connect = (callback) ->
     hosts: poolIps
     keyspace: 'surespot'
   );
+
+  pool.on 'error', (err) ->
+    logger.error "cassandra connection pool error:#{err}"
+
   pool.connect (err, keyspace) ->
     if (err)
       callback err
