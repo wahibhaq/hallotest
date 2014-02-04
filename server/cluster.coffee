@@ -851,9 +851,7 @@ else
     return friend
 
 
-  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, dataSize, time, callback) ->
-    logger.debug "new message"
-
+  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, dataSize, time, resendId, callback) ->
     message = {}
     message.to = to
     message.from = from
@@ -866,115 +864,123 @@ else
     message.dataSize = dataSize if dataSize
     room = common.getSpotName(from,to)
 
-
     #INCR message id
     getNextMessageId room, id, (id) ->
       return callback new MessageError(iv, 500) unless id?
-      message.id = id
 
-      logger.info "#{from}->#{to}, mimeType: #{mimeType} message: #{message}"
-      newMessage = JSON.stringify(message)
-
-
-      #store message in cassandra
-      cdb.insertMessage message, (err, results) ->
-        return callback new MessageError(err, 500) if err?
-
-        #store message pointer in sorted sets so we know the oldest to delete
-        multi = rc.multi()
-
-        #keep track of all the users message so we can remove the earliest when we cross their threshold
-        #we use a sorted set here so we can easily remove when message is deleted O(N) vs O(M*log(N))
-        userMessagesKey = "m:#{from}"
-        multi.zadd userMessagesKey, time, "m:#{room}:#{id}"
-
-        #make sure conversation is present
-        multi.sadd "c:" + from, room
-        multi.sadd "c:" + to, room
-
-        #marketing wanted some stats
-        #increment total user message / image counter
-        switch mimeType
-          when "text/plain"
-            multi.hincrby "u:#{from}", "mc", 1
-            multi.incr "tmc"
-
-          when "image/"
-            multi.hincrby "u:#{from}", "ic", 1
-            multi.incr "tic"
-
-          when "audio/mp4"
-            multi.hincrby "u:#{from}", "vc", 1
-            multi.incr "tvc"
-
-        deleteEarliestMessage = (callback) ->
-          #check how many messages the user has total
-          rc.zcard userMessagesKey, (err, card) ->
-            return callback err if err?
-            #TODO per user threshold based on pay status
-            #delete the oldest message(s)
-            deleteCount = (card - MESSAGES_PER_USER) + 1
-            logger.debug "deleteCount #{deleteCount}"
-            if deleteCount > 0
-
-              rc.zrange userMessagesKey,  0, deleteCount-1, (err, messagePointers) ->
-                return callback err if err?
-                myDeleteControlMessages = []
-                theirDeleteControlMessages = []
-                async.each(
-                  messagePointers,
-                  (item, callback) ->
-                    messageData = getMessagePointerData from, item
-
-                    #if the message we deleted is not part of the same conversation,send a control message
-                    deletedFromSameSpot = room is messageData.spot
-                    deleteMessage from, messageData.spot, messageData.id, not deletedFromSameSpot, multi, (err, deleteControlMessage) ->
-                      if not err? and deleteControlMessage?
-                        myDeleteControlMessages.push deleteControlMessage
-
-                        #don't send control message to other user in the message if it pertains to a different conversation
-                        if deletedFromSameSpot
-                          theirDeleteControlMessages.push deleteControlMessage
-
-
-                      callback()
-                  (err) ->
-                    logger.warn "error getting old messages to delete: #{err}" if err?
-                    callback null, myDeleteControlMessages, theirDeleteControlMessages)
-
-            else
-              callback()
-
-        deleteEarliestMessage (err, myDeleteControlMessages, theirDeleteControlMessages) ->
-          return callback err if err?
-
-          multi.exec  (err, results) ->
-            if err?
-              logger.error ("ERROR: Socket.io onmessage, " + err)
-              return callback new MessageError(iv, 500)
-
-          myMessage = null
-          theirMessage = null
-
-          #if we deleted messages, add the delete control message(s) to this message to save sending the delete control message separately
-          if myDeleteControlMessages?.length > 0
-            message.deleteControlMessages = myDeleteControlMessages
-            myMessage = JSON.stringify message
-          else
-            myMessage = newMessage
-
-          if theirDeleteControlMessages?.length > 0
-            message.deleteControlMessages = theirDeleteControlMessages
-            theirMessage = JSON.stringify message
-          else
-            theirMessage = newMessage
-
-          sio.sockets.to(to).emit "message", theirMessage
-          sio.sockets.to(from).emit "message", myMessage
-
-          process.nextTick ->
-            sendPushMessage message, theirMessage
+      #check for dupes after generating id to preserve ordering
+      #check for dupes if message has been resent
+      checkForDuplicateMessage resendId, from, room, message, (err, found) ->
+        return callback new MessageError(iv, 500) if err?
+        if found
+          logger.debug "found duplicate message, not adding to db"
+          sio.sockets.to(to).emit "message", found
+          sio.sockets.to(from).emit "message", found
           callback()
+        else
+          logger.info "#{from}->#{to}, mimeType: #{mimeType} message: #{message}"
+          message.id = id
+          newMessage = JSON.stringify(message)
+
+          #store message in cassandra
+          cdb.insertMessage message, (err, results) ->
+            return callback new MessageError(err, 500) if err?
+
+            #store message pointer in sorted sets so we know the oldest to delete
+            multi = rc.multi()
+
+            #keep track of all the users message so we can remove the earliest when we cross their threshold
+            #we use a sorted set here so we can easily remove when message is deleted O(N) vs O(M*log(N))
+            userMessagesKey = "m:#{from}"
+            multi.zadd userMessagesKey, time, "m:#{room}:#{id}"
+
+            #make sure conversation is present
+            multi.sadd "c:" + from, room
+            multi.sadd "c:" + to, room
+
+            #marketing wanted some stats
+            #increment total user message / image counter
+            switch mimeType
+              when "text/plain"
+                multi.hincrby "u:#{from}", "mc", 1
+                multi.incr "tmc"
+
+              when "image/"
+                multi.hincrby "u:#{from}", "ic", 1
+                multi.incr "tic"
+
+              when "audio/mp4"
+                multi.hincrby "u:#{from}", "vc", 1
+                multi.incr "tvc"
+
+            deleteEarliestMessage = (callback) ->
+              #check how many messages the user has total
+              rc.zcard userMessagesKey, (err, card) ->
+                return callback err if err?
+                #TODO per user threshold based on pay status
+                #delete the oldest message(s)
+                deleteCount = (card - MESSAGES_PER_USER) + 1
+                logger.debug "deleteCount #{deleteCount}"
+                if deleteCount > 0
+
+                  rc.zrange userMessagesKey,  0, deleteCount-1, (err, messagePointers) ->
+                    return callback err if err?
+                    myDeleteControlMessages = []
+                    theirDeleteControlMessages = []
+                    async.each(
+                      messagePointers,
+                      (item, callback) ->
+                        messageData = getMessagePointerData from, item
+
+                        #if the message we deleted is not part of the same conversation,send a control message
+                        deletedFromSameSpot = room is messageData.spot
+                        deleteMessage from, messageData.spot, messageData.id, not deletedFromSameSpot, multi, (err, deleteControlMessage) ->
+                          if not err? and deleteControlMessage?
+                            myDeleteControlMessages.push deleteControlMessage
+
+                            #don't send control message to other user in the message if it pertains to a different conversation
+                            if deletedFromSameSpot
+                              theirDeleteControlMessages.push deleteControlMessage
+
+
+                          callback()
+                      (err) ->
+                        logger.warn "error getting old messages to delete: #{err}" if err?
+                        callback null, myDeleteControlMessages, theirDeleteControlMessages)
+
+                else
+                  callback()
+
+            deleteEarliestMessage (err, myDeleteControlMessages, theirDeleteControlMessages) ->
+              return callback err if err?
+
+              multi.exec  (err, results) ->
+                if err?
+                  logger.error ("ERROR: Socket.io onmessage, " + err)
+                  return callback new MessageError(iv, 500)
+
+              myMessage = null
+              theirMessage = null
+
+              #if we deleted messages, add the delete control message(s) to this message to save sending the delete control message separately
+              if myDeleteControlMessages?.length > 0
+                message.deleteControlMessages = myDeleteControlMessages
+                myMessage = JSON.stringify message
+              else
+                myMessage = newMessage
+
+              if theirDeleteControlMessages?.length > 0
+                message.deleteControlMessages = theirDeleteControlMessages
+                theirMessage = JSON.stringify message
+              else
+                theirMessage = newMessage
+
+              sio.sockets.to(to).emit "message", theirMessage
+              sio.sockets.to(from).emit "message", myMessage
+
+              process.nextTick ->
+                sendPushMessage message, theirMessage
+              callback()
 
 
   sendPushMessage = (message, messagejson) ->
@@ -1213,22 +1219,10 @@ else
 
             cipherdata = message.data
             resendId = message.resendId
-            room = common.getSpotName(from, to)
-
             mimeType = message.mimeType
             #todo validate mimetype
 
-
-            #check for dupes if message has been resent
-            checkForDuplicateMessage resendId, user, room, message, (err, found) ->
-              return callback new MessageError(iv, 500) if err?
-              if found
-                logger.debug "found duplicate message, not adding to db"
-                sio.sockets.to(to).emit "message", found
-                sio.sockets.to(from).emit "message", found
-                callback()
-              else
-                createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, null, Date.now(), callback
+            createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, null, Date.now(), resendId, callback
 
 
   sio.on "connection", (socket) ->
@@ -1614,7 +1608,7 @@ else
               url = cdn + "/#{path}"
 
               time = Date.now()
-              createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, url, mimeType, id, size, time, (err) ->
+              createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, url, mimeType, id, size, time, null, (err) ->
                 logger.error "error sending message on socket: #{err}" if err?
                 return next err if err?
                 res.send { id: id, url: url, time: time, size: size}
