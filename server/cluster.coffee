@@ -903,7 +903,7 @@ else
 
           #store message in cassandra
           cdb.insertMessage message, (err, results) ->
-            return callback new MessageError(err, 500) if err?
+            return callback new MessageError(iv, 500) if err?
 
             #store message pointer in sorted sets so we know the oldest to delete
             multi = rc.multi()
@@ -935,7 +935,9 @@ else
             deleteEarliestMessage = (callback) ->
               #check how many messages the user has total
               rc.zcard userMessagesKey, (err, card) ->
-                return callback err if err?
+                if err?
+                  logger.warn "error deleting earliest message: #{err}"
+                  return callback()
                 #TODO per user threshold based on pay status
                 #delete the oldest message(s)
                 deleteCount = (card - MESSAGES_PER_USER) + 1
@@ -965,14 +967,12 @@ else
                           callback()
                       (err) ->
                         logger.warn "error getting old messages to delete: #{err}" if err?
-                        callback null, myDeleteControlMessages, theirDeleteControlMessages)
+                        callback myDeleteControlMessages, theirDeleteControlMessages)
 
                 else
                   callback()
 
-            deleteEarliestMessage (err, myDeleteControlMessages, theirDeleteControlMessages) ->
-              return callback err if err?
-
+            deleteEarliestMessage (myDeleteControlMessages, theirDeleteControlMessages) ->
               multi.exec  (err, results) ->
                 if err?
                   logger.error ("ERROR: Socket.io onmessage, " + err)
