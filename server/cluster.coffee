@@ -764,7 +764,7 @@ else
       if (resendId > 0)
         logger.debug "searching room: #{room} from id: #{resendId} for duplicate messages"
         #check messages client doesn't have for dupes
-        cdb.getMessagesAfterId username, room, resendId, (err, data) ->
+        cdb.getMessagesAfterId username, room, parseInt(resendId), (err, data) ->
           logger.error "error getting messages #{err}" if err?
           return callback err if err?
           found = _.find data, (checkMessageJSON) ->
