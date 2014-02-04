@@ -108,13 +108,17 @@ exports.getAllMessages = (username, spot, callback) ->
   #get all messages for a user in a spot
   cql = "select * from chatmessages where username=? and spotname=?;"
   pool.cql cql, [username, spot], (err, results) =>
-    return callback err if err?
+    if err
+      logger.error "error getting all messages for #{username}, spot: #{spot}"
+      return callback err
     return callback null, @remapMessages results, false
 
 exports.getMessages = (username, spot, count, callback) ->
   cql = "select * from chatmessages where username=? and spotname=? order by spotname desc limit #{count};"
   pool.cql cql, [username, spot], (err, results) =>
-    return callback err if err?
+    if err
+      logger.error "error getting messages for #{username}, spot: #{spot}, count: #{count}"
+      return callback err
     return callback null, @remapMessages results, true
 
 
@@ -122,7 +126,9 @@ exports.getMessagesBeforeId = (username, spot, id, callback) ->
   logger.debug "getMessagesBeforeId, username: #{username}, spot: #{spot}, id: #{id}"
   cql = "select * from chatmessages where username=? and spotname=? and id<? order by spotname desc limit 60;"
   pool.cql cql, [username, spot, id], (err, results) =>
-    return callback err if err?
+    if err
+      logger.error "error getting messages before id for #{username}, spot: #{spot}, id: #{id}"
+      return callback err
     return callback null, @remapMessages results, true
 
 
@@ -136,7 +142,9 @@ exports.getMessagesAfterId = (username, spot, id, callback) ->
     else
       cql = "select * from chatmessages where username=? and spotname=? and id > ? order by spotname desc;"
       pool.cql cql, [username, spot, id], (err, results) =>
-        return callback err if err?
+        if err
+          logger.error "error getting messages after id for #{username}, spot: #{spot}, id: #{id}"
+          return callback err
         messages = @remapMessages results, true
         return callback null, messages
 
@@ -202,7 +210,9 @@ exports.deleteAllMessages = (spot, callback) ->
 exports.getMessage = (username, room, id, callback) ->
   cql = "select * from chatmessages where username=? and spotname=? and id = ?;"
   pool.cql cql, [username, room, id], (err, results) =>
-    return callback err if err?
+    if err
+      logger.error "error getting message for #{username}, spot: #{room}, id: #{id}"
+      return callback err
     return callback null, @remapMessages results, false
 
 
@@ -256,14 +266,18 @@ exports.remapControlMessageIds = (results) ->
 exports.getAllControlMessageIds = (username, spot,  callback) ->
   cql = "select id from messagecontrolmessages where username=? and spotname=?;"
   pool.cql cql, [username, spot], (err, results) =>
-    return callback err if err?
+    if err
+      logger.error "error getting message control messages id for #{username}, spot: #{spot}"
+      return callback err
     return callback null, @remapControlMessageIds results, false
 
 
 exports.getControlMessages = (username, room, count, callback) ->
   cql = "select * from messagecontrolmessages where username=? and spotname=? order by spotname desc limit #{count};"
   pool.cql cql, [username, room], (err, results) =>
-    return callback err if err?
+    if err
+      logger.error "error getting message control messages for #{username}, room: #{room}, count: #{count}"
+      return callback err
     return callback null, @remapControlMessages results, true
 
 
@@ -277,7 +291,9 @@ exports.getControlMessagesAfterId = (username, spot, id, callback) ->
     else
       cql = "select * from messagecontrolmessages where username=? and spotname=? and id > ? order by spotname desc;"
       pool.cql cql, [username, spot, id], (err, results) =>
-        return callback err if err?
+        if err
+          logger.error "error getting message control messages for #{username}, spot: #{spot}, id: #{id}"
+          return callback err
         messages = @remapControlMessages results, true
         return callback null, messages
 
@@ -400,7 +416,9 @@ exports.remapUserControlMessages = (results, reverse) ->
 exports.getUserControlMessages = (username, count, callback) ->
   cql = "select * from usercontrolmessages where username=? order by id desc limit #{count};"
   pool.cql cql, [username], (err, results) =>
-    return callback err if err?
+    if err
+      logger.error "error getting user control messages for #{username}, count: #{count}"
+      return callback err
     return callback null, @remapUserControlMessages results, true
 
 exports.getUserControlMessagesAfterId = (username, id, callback) ->
@@ -412,7 +430,9 @@ exports.getUserControlMessagesAfterId = (username, id, callback) ->
       else
         cql = "select * from usercontrolmessages where username=? and id > ? order by id desc;"
         pool.cql cql, [username, id], (err, results) =>
-          return callback err if err?
+          if err
+            logger.error "error getting user control messages for #{username}, id: #{id}"
+            return callback err
           messages = @remapUserControlMessages results, true
           return callback null, messages
 
@@ -464,7 +484,12 @@ exports.insertPublicKeys = (username, keys, callback) ->
     keys.dhPubSig,
     keys.dsaPub,
     keys.dsaPubSig
-  ], callback
+  ], (err, results) ->
+    if err?
+      logger.error "error inserting public keys for #{username}, version: #{keys.version}"
+    callback(err,results)
+
+
 
 
 exports.remapPublicKeys = (results) ->
@@ -495,7 +520,9 @@ exports.remapPublicKeys = (results) ->
 exports.getPublicKeys = (username, version, callback) ->
   cql = "select * from publickeys where username=? and version=?;"
   pool.cql cql, [username,version], (err, results) =>
-    return callback err if err?
+    if err?
+      logger.error "error getting public keys for #{username}, version: #{version}"
+      return callback err
     return callback null, @remapPublicKeys results
 
 
