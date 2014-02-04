@@ -903,7 +903,9 @@ else
 
           #store message in cassandra
           cdb.insertMessage message, (err, results) ->
-            return callback new MessageError(iv, 500) if err?
+            if err?
+              logger.error "error inserting message into cassandra: #{err}"
+              return callback new MessageError(iv, 500)
 
             #store message pointer in sorted sets so we know the oldest to delete
             multi = rc.multi()
@@ -945,7 +947,9 @@ else
                 if deleteCount > 0
 
                   rc.zrange userMessagesKey,  0, deleteCount-1, (err, messagePointers) ->
-                    return callback err if err?
+                    if err?
+                      logger.warn "error deleting earliest message: #{err}"
+                      return callback()
                     myDeleteControlMessages = []
                     theirDeleteControlMessages = []
                     async.each(
