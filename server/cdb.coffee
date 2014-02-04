@@ -518,6 +518,7 @@ exports.remapPublicKeys = (results) ->
 
 
 exports.getPublicKeys = (username, version, callback) ->
+  logger.debug "getPublicKeys username: #{username}, version: #{version}"
   cql = "select * from publickeys where username=? and version=?;"
   pool.cql cql, [username,version], (err, results) =>
     if err?
