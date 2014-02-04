@@ -20,6 +20,7 @@ exports.connect = (callback) ->
   pool = new helenus.ConnectionPool(
     hosts: poolIps
     keyspace: 'surespot'
+    hostPoolSize : 100
   );
 
   pool.on 'error', (err) ->
@@ -85,7 +86,8 @@ exports.remapMessages = (results, reverse) ->
         when 'fromuser'
           message['from'] = value
         when 'datetime'
-          message[name] = value.getTime()
+          if value?
+            message[name] = value.getTime()
         when 'mimetype'
           message['mimeType'] = value
         when 'toversion'
