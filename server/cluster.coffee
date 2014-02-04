@@ -489,6 +489,25 @@ else
           else
             res.send 403
 
+  validateAreFriendsOrDeletedOrMe = (req, res, next) ->
+    return next() if username is friendname
+
+    username = req.user.username
+    friendname = req.params.username
+    isFriend username, friendname, (err, result) ->
+      return next err if err?
+      if result
+        next()
+      else
+        #if we're not friends check if he deleted himself
+        rc.sismember "ud:#{username}", friendname, (err, isDeleted) ->
+          return next err if err?
+          if isDeleted
+            next()
+          else
+            res.send 403
+
+
   validateAreFriendsOrDeletedOrInvited = (req, res, next) ->
     username = req.user.username
     friendname = req.params.username
@@ -1805,8 +1824,8 @@ else
         callback null, if data.messages? or data.controlMessages? then data else null
 
 
-  app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, getPublicKeys
-  app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setCache(oneYear), getPublicKeys
+  app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeletedOrMe, setNoCache, getPublicKeys
+  app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeletedOrMe, setCache(oneYear), getPublicKeys
   app.get "/keyversion/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted,(req, res, next) ->
     rc.hget "u:#{req.params.username}", "kv", (err, version) ->
       return next err if err?
