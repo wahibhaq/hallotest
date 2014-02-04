@@ -765,7 +765,7 @@ else
         logger.debug "searching room: #{room} from id: #{resendId} for duplicate messages"
         #check messages client doesn't have for dupes
         cdb.getMessagesAfterId username, room, resendId, (err, data) ->
-          logger.error "error getting messages" if err?
+          logger.error "error getting messages #{err}" if err?
           return callback err if err?
           found = _.find data, (checkMessageJSON) ->
             checkMessage = undefined
@@ -784,7 +784,7 @@ else
         logger.debug "searching 30 messages from room: #{room} for duplicates"
         #check last 30 for dupes
         cdb.getMessages username, room, 30, (err, data) ->
-          logger.error "error getting messages" if err?
+          logger.error "error getting messages #{err}" if err?
           return callback err if err?
           found = _.find data, (checkMessageJSON) ->
             try
