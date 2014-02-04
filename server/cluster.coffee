@@ -91,7 +91,7 @@ if NUM_CORES > numCPUs then NUM_CORES = numCPUs
 
 #log to stdout to send to journal
 bunyanStreams = [{
-    level: 'debug'
+    level: debugLevel
     stream: process.stdout
   }]
 
