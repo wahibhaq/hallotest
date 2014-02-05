@@ -429,19 +429,20 @@ exports.getUserControlMessages = (username, count, callback) ->
     return callback null, @remapUserControlMessages results, true
 
 exports.getUserControlMessagesAfterId = (username, id, callback) ->
-    if id is -1
-      callback null, null
+  logger.debug "getUserControlMessagesAfterId, username: #{username}, id: #{id}"
+  if id is -1
+    callback null, null
+  else
+    if id is 0
+      this.getUserControlMessages username, 20, callback
     else
-      if id is 0
-        this.getUserControlMessages username, 20, callback
-      else
-        cql = "select * from usercontrolmessages where username=? and id > ? order by id desc;"
-        pool.cql cql, [username, id], (err, results) =>
-          if err
-            logger.error "error getting user control messages for #{username}, id: #{id}"
-            return callback err
-          messages = @remapUserControlMessages results, true
-          return callback null, messages
+      cql = "select * from usercontrolmessages where username=? and id > ? order by id desc;"
+      pool.cql cql, [username, id], (err, results) =>
+        if err
+          logger.error "error getting user control messages for #{username}, id: #{id}"
+          return callback err
+        messages = @remapUserControlMessages results, true
+        return callback null, messages
 
 
 exports.getAllUserControlMessageIds = (username, callback) ->

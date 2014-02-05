@@ -1661,6 +1661,20 @@ else
         callback null, null
 
 
+  getLatestUserControlMessages = (username, userControlId, callback) ->
+    rc.hget "ucmcounters", username, (err, latestUserControlId) ->
+      return callback err if err?
+
+      latestUserControlId = latestUserControlId ? userControlId
+      latestUserControlId = parseInt(latestUserControlId, 10)
+
+      logger.debug "comparing userControlId: #{userControlId} with latestUserControlId: #{latestUserControlId}"
+
+      if userControlId < latestUserControlId
+        cdb.getUserControlMessagesAfterId username, userControlId, callback
+      else
+        callback()
+
   #get all the data we need in one call
   app.post "/latestdata/:userControlId", ensureAuthenticated, setNoCache, (req, res, next) ->
     #need array of {un: username, mid: , cmid: }
@@ -1675,11 +1689,12 @@ else
       spotIds = JSON.parse req.body.spotIds
     catch error
 
-    cdb.getUserControlMessagesAfterId username, userControlId, (err, userControlMessages) ->
+    getLatestUserControlMessages username, userControlId, (err, userControlMessages) ->
       return next err if err?
 
       data =  {}
       if userControlMessages?.length > 0
+        logger.debug "got new user control messages: #{userControlMessages}"
         data.userControlMessages = userControlMessages
 
       getConversationIds req.user.username, (err, conversationIds) ->
@@ -1744,21 +1759,19 @@ else
                 res.set {'Content-Type': 'application/json'}
                 res.send sData)
 
-
-
   app.get "/latestids/:userControlId", ensureAuthenticated, setNoCache, (req, res, next) ->
     userControlId = parseInt req.params.userControlId, 10
     logger.debug "/latestids/#{userControlId}"
     return next new Error 'no userControlId' unless userControlId? and not Number.isNaN(userControlId)
 
-
-    cdb.getUserControlMessagesAfterId req.user.username, userControlId, (err, userControlMessages) ->
+    getLatestUserControlMessages req.user.username, userControlId, (err, userControlMessages) ->
       return next err if err?
 
       data =  {}
       if userControlMessages?.length > 0
+        logger.debug "got new user control messages: #{userControlMessages}"
         data.userControlMessages = userControlMessages
-        #logger.debug "/latestids userControlMessages: #{userControlMessages}"
+
       getConversationIds req.user.username, (err, conversationIds) ->
         return next err if err?
 
