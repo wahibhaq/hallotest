@@ -41,7 +41,7 @@ USERNAME_LENGTH = 20
 CONTROL_MESSAGE_HISTORY = 100
 MAX_MESSAGE_LENGTH = 500000
 MAX_HTTP_REQUEST_LENGTH = 500000
-NUM_CORES =  parseInt(process.env.SURESPOT_CORES) ? 4
+NUM_CORES =  parseInt(process.env.SURESPOT_CORES, 10) ? 4
 GCM_TTL = 604800
 
 oneYear = 31536000000
@@ -74,7 +74,7 @@ iapSecret = process.env.SURESPOT_IAP_SECRET
 sessionSecret = process.env.SURESPOT_SESSION_SECRET
 logConsole = process.env.SURESPOT_LOG_CONSOLE is "true"
 redisPort = process.env.REDIS_PORT
-redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 6379
+redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT, 10) ? 6379
 redisSentinelHostname = process.env.SURESPOT_REDIS_SENTINEL_HOSTNAME ? "127.0.0.1"
 redisPassword = process.env.SURESPOT_REDIS_PASSWORD ? null
 useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
@@ -490,10 +490,9 @@ else
             res.send 403
 
   validateAreFriendsOrDeletedOrMe = (req, res, next) ->
-    return next() if username is friendname
-
     username = req.user.username
     friendname = req.params.username
+    return next() if username is friendname
     isFriend username, friendname, (err, result) ->
       return next err if err?
       if result
@@ -783,7 +782,7 @@ else
       if (resendId > 0)
         logger.debug "searching room: #{room} from id: #{resendId} for duplicate messages"
         #check messages client doesn't have for dupes
-        cdb.getMessagesAfterId username, room, parseInt(resendId), (err, data) ->
+        cdb.getMessagesAfterId username, room, parseInt(resendId, 10), (err, data) ->
           logger.error "error getting messages #{err}" if err?
           return callback err if err?
           found = _.find data, (checkMessageJSON) ->
@@ -1073,7 +1072,7 @@ else
     #delete message
     messageData = messagePointer.split(":")
     data = {}
-    data.id =  parseInt messageData[3]
+    data.id =  parseInt messageData[3], 10
     data.spot =  messageData[1] + ":" + messageData[2]
     return data
 
@@ -1267,7 +1266,7 @@ else
     username = req.user.username
     otherUser = req.params.username
     room = common.getSpotName username, otherUser
-    id = parseInt req.params.id
+    id = parseInt req.params.id, 10
 
     return res.send 400 unless id? and not Number.isNaN(id)
 
@@ -1397,7 +1396,7 @@ else
   #delete single message
   app.delete "/messages/:username/:id", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, (req, res, next) ->
 
-    messageId = parseInt req.params.id
+    messageId = parseInt req.params.id, 10
     return next new Error 'id required' unless messageId? and not Number.isNaN(messageId)
 
     username = req.user.username
@@ -1448,9 +1447,10 @@ else
           res.send token
 
   app.put "/messages/:username/:id/shareable", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
-    messageId = parseInt req.params.id
-    shareable = req.body.shareable
+    messageId = parseInt req.params.id, 10
     return next new Error 'id required' unless messageId? and not Number.isNaN(messageId)
+
+    shareable = req.body.shareable
     return next new Error 'shareable required' unless shareable?
 
     username = req.user.username
@@ -1665,20 +1665,17 @@ else
   app.post "/latestdata/:userControlId", ensureAuthenticated, setNoCache, (req, res, next) ->
     #need array of {un: username, mid: , cmid: }
 
-    # "/messagedata/:username/:messageid/:controlmessageid", e
-
     username = req.user.username
-    userControlId = req.params.userControlId
-    spotIds = undefined
+    userControlId = parseInt req.params.userControlId, 10
+    return next new Error 'no userControlId' unless userControlId? and not Number.isNaN(userControlId)
 
+    spotIds = undefined
     try
       logger.debug "latestdata, spotIds: #{req.body.spotIds}"
       spotIds = JSON.parse req.body.spotIds
     catch error
 
-    return next new Error 'no userControlId' unless userControlId?
-
-    cdb.getUserControlMessagesAfterId username, parseInt(userControlId), (err, userControlMessages) ->
+    cdb.getUserControlMessagesAfterId username, userControlId, (err, userControlMessages) ->
       return next err if err?
 
       data =  {}
@@ -1690,10 +1687,14 @@ else
 
         return res.send data unless conversationIds?
         controlIdKeys = []
+        latestMessageIds = {}
+        latestControlIds = {}
         async.each(
           conversationIds
           (item, callback) ->
             controlIdKeys.push "#{item.conversation}"
+            logger.debug "setting latest message id: #{item.id} for conversation: #{item.conversation}"
+            latestMessageIds[item.conversation] = item.id
             callback()
           (err) ->
             return next err if err?
@@ -1705,7 +1706,11 @@ else
                 rControlIds
                 (controlId, i) ->
                   if controlId isnt null
-                    controlIds.push({conversation: conversationIds[i].conversation, id: controlId}))
+                    conversation = conversationIds[i].conversation
+                    latestControlIds[conversation] = controlId
+
+                    logger.debug "setting latest control id: #{controlId} for conversation: #{conversation}"
+                    controlIds.push({conversation: conversation, id: controlId}))
 
               if conversationIds.length > 0
                 data.conversationIds = conversationIds
@@ -1720,7 +1725,8 @@ else
                   async.each(
                     spotIds,
                     (item, callback1) ->
-                      getMessagesAndControlMessages(username, item.username, item.messageid,item.controlmessageid, (err, data) ->
+                      spot = common.getSpotName username, item.username
+                      getMessagesAndControlMessagesOpt(username, item.username, parseInt(item.messageid, 10),  latestMessageIds[spot], parseInt(item.controlmessageid, 10), latestControlIds[spot],(err, data) ->
                         return callback1() if err?
                         if data?
                           messages.push data
@@ -1741,12 +1747,12 @@ else
 
 
   app.get "/latestids/:userControlId", ensureAuthenticated, setNoCache, (req, res, next) ->
-    userControlId = req.params.userControlId
+    userControlId = parseInt req.params.userControlId, 10
     logger.debug "/latestids/#{userControlId}"
-    return next new Error 'no userControlId' unless userControlId?
+    return next new Error 'no userControlId' unless userControlId? and not Number.isNaN(userControlId)
 
 
-    cdb.getUserControlMessagesAfterId req.user.username, parseInt(userControlId), (err, userControlMessages) ->
+    cdb.getUserControlMessagesAfterId req.user.username, userControlId, (err, userControlMessages) ->
       return next err if err?
 
       data =  {}
@@ -1788,7 +1794,7 @@ else
   #get remote messages before id
   app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
     #return messages since id
-    id = parseInt req.params.messageid
+    id = parseInt req.params.messageid, 10
     return res.send 400 unless id? and not Number.isNaN(id)
 
     cdb.getMessagesBeforeId req.user.username, common.getSpotName(req.user.username, req.params.username), id, (err, data) ->
@@ -1800,31 +1806,83 @@ else
       res.send data
 
   app.get "/messagedata/:username/:messageid/:controlmessageid", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
-    getMessagesAndControlMessages req.user.username, req.params.username, req.params.messageid, req.params.controlmessageid, (err, data) ->
+
+    messageId = parseInt req.params.messageid, 10
+    return next new Error 'message id required' unless messageId? and not Number.isNaN(messageId)
+
+    messageControlId = parseInt req.params.controlmessageid, 10
+    return next new Error 'control message id required' unless messageControlId? and not Number.isNaN(messageControlId)
+
+    #get latest ids
+    spot = common.getSpotName req.user.username, req.params.username
+    multi = rc.multi()
+    multi.hget "mcounters", spot
+    multi.hget "mcmcounters", spot
+    multi.exec (err, results) ->
       return next err if err?
-      if data?
-        sData = JSON.stringify(data)
-        logger.debug "sending: #{sData}"
-        res.set {'Content-Type': 'application/json'}
-        res.send sData
-      else
-        logger.debug "no new messages for user #{req.user.username} for friend #{req.params.username}"
-        res.send 204
+      getMessagesAndControlMessagesOpt req.user.username, req.params.username, messageId, results[0], messageControlId, results[1], (err, data) ->
+        return next err if err?
+        if data?
+          sData = JSON.stringify(data)
+          logger.debug "sending: #{sData}"
+          res.set {'Content-Type': 'application/json'}
+          res.send sData
+        else
+          logger.debug "no new messages for user #{req.user.username} for friend #{req.params.username}"
+          res.send 204
+#
+#  getMessagesAndControlMessages = (username, friendname, messageId, controlMessageId, callback) ->
+#    spot = common.getSpotName(username, friendname)
+#    cdb.getMessagesAfterId username, spot, parseInt(messageId), (err, messageData) ->
+#      return callback err if err?
+#      #return messages since id
+#      cdb.getControlMessagesAfterId username, spot, parseInt(controlMessageId), (err, controlData) ->
+#        return callback err if err?
+#        data = {}
+#        data.username = friendname
+#        if messageData?.length > 0
+#          data.messages = messageData
+#        if controlData?.length > 0
+#          data.controlMessages = controlData
+#
+#        callback null, if data.messages? or data.controlMessages? then data else null
 
-  getMessagesAndControlMessages = (username, friendname, messageId, controlMessageId, callback) ->
+
+
+  getMessagesAndControlMessagesOpt = (username, friendname, messageId, latestMessageId, controlMessageId, latestControlMessageId, callback) ->
+    logger.debug "getMessagesAndControlMessagesOpt username: #{username}, friendname: #{friendname}, messageId: #{messageId}, latestMessageId: #{latestMessageId}, controlMessageId: #{controlMessageId}, latestControlMessageId: #{latestControlMessageId}"
     spot = common.getSpotName(username, friendname)
-    cdb.getMessagesAfterId username, spot, parseInt(messageId), (err, messageData) ->
-      return callback err if err?
-      #return messages since id
-      cdb.getControlMessagesAfterId username, spot, parseInt(controlMessageId), (err, controlData) ->
-        return callback err if err?
-        data = {}
-        data.username = friendname
-        if messageData?.length > 0
-          data.messages = messageData
-        if controlData?.length > 0
-          data.controlMessages = controlData
+    data = {}
+    data.username = friendname
 
+    getLatestMessages = (callback) ->
+
+      if messageId < 0 then messageId = latestMessageId
+      if (messageId < latestMessageId)
+        cdb.getMessagesAfterId username, spot, messageId, (err, messageData) ->
+          return callback err if err?
+          if messageData?.length > 0
+            data.messages = messageData
+          callback()
+      else
+        callback()
+
+    getLatestMessages (err) ->
+      return callback err if err?
+      getLatestControlMessages = (callback) ->
+        if controlMessageId < 0 then controlMessageId = latestControlMessageId
+        if (controlMessageId < latestControlMessageId)
+          #return messages since id
+          cdb.getControlMessagesAfterId username, spot, controlMessageId, (err, controlData) ->
+            return callback err if err?
+            if controlData?.length > 0
+              data.controlMessages = controlData
+            callback()
+        else
+          callback()
+
+      getLatestControlMessages (err) ->
+        return callback err if err?
         callback null, if data.messages? or data.controlMessages? then data else null
 
 
@@ -2124,7 +2182,7 @@ else
         return next err if err?
 
         #inc key version
-        kv = parseInt(currkv) + 1
+        kv = parseInt(currkv, 10) + 1
         generateSecureRandomBytes 'base64',(err, token) ->
           return next err if err?
           rc.set "kt:#{username}", token, (err, result) ->
@@ -2148,9 +2206,9 @@ else
     rc.hget "u:#{username}", "kv",(err, storedkv) ->
       return next err if err?
 
-      newkv = parseInt storedkv
+      newkv = parseInt storedkv, 10
       newkv++
-      return next new Error 'key versions do not match' unless newkv is parseInt(kv)
+      return next new Error 'key versions do not match' unless newkv is parseInt(kv, 10)
 
       #todo transaction
       #make sure the tokens match
@@ -2673,7 +2731,7 @@ else
                                 if friends.length is 0
                                   deleteRemainingIdentityData multi, username
 
-                                createAndSendUserControlMessage username, "revoke", username, "#{parseInt(kv) + 1}", (err) ->
+                                createAndSendUserControlMessage username, "revoke", username, "#{parseInt(kv, 10) + 1}", (err) ->
                                   return next err if err?
                                   multi.exec (err, replies) ->
                                     return next err if err?
@@ -2900,7 +2958,7 @@ else
       getKeys username, version, callback
 
   getKeys = (username, version, callback) ->
-    cdb.getPublicKeys username, parseInt(version), callback
+    cdb.getPublicKeys username, parseInt(version, 10), callback
 
 
   verifySignature = (b1, b2, sigString, pubKey) ->
