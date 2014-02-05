@@ -2994,10 +2994,10 @@ else
     logger.debug "validating: " + username
     rcs.hgetall userKey, (err, user) ->
       return done(err) if err?
-      return done null, 404 if not user
+      return done null, 404 unless user?.password
       comparePassword password, user.password, (err, res) ->
         return done err if err?
-        return done null, 403 if not res
+        return done null, 403 unless res
 
         #not really worried about replay attacks here as we're using ssl but as extra security the server could send a challenge that the client would sign as we do with key roll
         getLatestKeys username, (err, keys) ->
