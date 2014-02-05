@@ -1883,6 +1883,7 @@ else
     getLatestMessages (err) ->
       return callback err if err?
       getLatestControlMessages = (callback) ->
+        latestControlMessageId = latestControlMessageId ? 0
         if controlMessageId < 0 then controlMessageId = latestControlMessageId
         if (controlMessageId < latestControlMessageId)
           #return messages since id
