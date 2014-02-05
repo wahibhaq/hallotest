@@ -1,8 +1,6 @@
 CREATE KEYSPACE surespot
 WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor': 3};
 
-CONSISTENCY QUORUM;
-
 USE surespot;
 
 CREATE TABLE chatmessages (
