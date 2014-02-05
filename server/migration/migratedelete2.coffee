@@ -211,7 +211,7 @@ rc = createRedisClient database, redisSentinelPort, redisSentinelHostname, redis
 
 #migrate active users
 rc.smembers "u", (err, users) ->
-  process.exit(10) if err?
+  console.log "error #{err}" && process.exit(10) if err?
   console.log "migrating users"
   for user in users
     do (user) ->
@@ -219,18 +219,18 @@ rc.smembers "u", (err, users) ->
 
       #get deleted users
       rc.smembers "ud:#{user}", (err, deletedusers) ->
-        process.exit(10) if err?
+        console.log "error #{err}" && process.exit(10) if err?
         for ud in deletedusers
           do (ud) ->
             c = common.getSpotName user, ud
             rc.smembers "d:#{ud}:#{c}", (err, deletedids) ->
-              process.exit(10) if err?
+              console.log "error #{err}" && process.exit(10) if err?
               console.log "deleting ud deleted messages from d:#{ud}:#{c}"
               cdb.deleteMessages ud, c, deletedids, (err, results) ->
-                process.exit(10) if err?
+                console.log "error #{err}" && process.exit(10) if err?
                 console.log "deleting ud deleted messages set d:#{ud}:#{c}"
                 rc.del "d:#{ud}:#{c}", (err, result) ->
-                  process.exit(10) if err?
+                  console.log "error #{err}" && process.exit(10) if err?
 
         return
   return

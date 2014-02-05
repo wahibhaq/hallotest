@@ -208,7 +208,7 @@ rc = createRedisClient database, redisSentinelPort, redisSentinelHostname, redis
 
 #migrate active users
 rc.smembers "d", (err, users) ->
-  process.exit(10) if err?
+  console.log "error #{err}" && process.exit(10) if err?
   console.log "migrating users"
   for user in users
     do (user) ->
@@ -216,34 +216,34 @@ rc.smembers "d", (err, users) ->
 
       #copy counter
       rc.get "kv:#{user}", (err, version) ->
-        process.exit(10) if err?
+        console.log "error #{err}" && process.exit(10) if err?
         console.log "#{user} key version: #{version}"
         if version?
           console.log "moving #{user} key version to hash"
           rc.hset "u:#{user}", "kv", version, (err, d) ->
-            process.exit(10) if err?
+            console.log "error #{err}" && process.exit(10) if err?
             rc.del "kv:#{user}", (err, d) ->
-              process.exit(10) if err?
+              console.log "error #{err}" && process.exit(10) if err?
 
         #move public keys
         console.log "moving public keys for #{user}"
 
         rc.hkeys "k:#{user}", (err, keyKeys) ->
-          process.exit(10) if err?
+          console.log "error #{err}" && process.exit(10) if err?
           for keyKey in keyKeys
             do (keyKey) ->
               rc.hget "k:#{user}", keyKey, (err, keys) ->
-                process.exit(10) if err?
+                console.log "error #{err}" && process.exit(10) if err?
                 console.log "inserting public keys into cassandra #{keys}"
                 #insert keys into cassandra
 
                 k = JSON.parse(keys)
                 cdb.migrateInsertPublicKeys user, k, (err, result) ->
-                  process.exit(10) if err?
+                  console.log "error #{err}" && process.exit(10) if err?
                   console.log "error inserting key #{err}" if err?
           console.log "deleting public keys #{user}"
           rc.del "k:#{user}", (err, result) ->
-            process.exit(10) if err?
+            console.log "error #{err}" && process.exit(10) if err?
           return
 
   return

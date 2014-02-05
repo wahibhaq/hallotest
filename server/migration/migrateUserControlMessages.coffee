@@ -208,7 +208,7 @@ rc = createRedisClient database, redisSentinelPort, redisSentinelHostname, redis
 
 #migrate active users
 rc.smembers "u", (err, users) ->
-  process.exit(10) if err?
+  console.log "error #{err}" && process.exit(10) if err?
   console.log "migrating users"
   for user in users
     do (user) ->
@@ -216,20 +216,20 @@ rc.smembers "u", (err, users) ->
 
       #copy counter
       rc.get "cu:#{user}:id", (err, counter) ->
-        process.exit(10) if err?
+        console.log "error #{err}" && process.exit(10) if err?
         console.log "#{user} cu counter: #{counter}"
         if counter?
           console.log "moving #{user} cu counter to hash"
           rc.hset "ucmcounters", "#{user}", counter, (err, d) ->
-            process.exit(10) if err?
+            console.log "error #{err}" && process.exit(10) if err?
             rc.del "cu:#{user}:id", (err, d) ->
-              process.exit(10) if err?
+              console.log "error #{err}" && process.exit(10) if err?
 
         #move control messages
         console.log "moving  usercontrol messages cu:#{user}"
 
         rc.zrange "cu:#{user}", 0,  -1, (err, messages) ->
-          process.exit(10) if err?
+          console.log "error #{err}" && process.exit(10) if err?
           #insert messages into cassandra
           for m in messages
             do(m) ->
@@ -237,12 +237,12 @@ rc.smembers "u", (err, users) ->
 
               console.log "inserting user control message to cassandra #{m}"
               cdb.insertUserControlMessage user, message, (err, result) ->
-                process.exit(10) if err?
+                console.log "error #{err}" && process.exit(10) if err?
 
           #                    console.log "inserted message to cassandra"
           console.log "deleting user control messages cu:#{user}"
           rc.del "cu:#{user}", (err, result) ->
-            process.exit(10) if err?
+            console.log "error #{err}" && process.exit(10) if err?
           return
 
   return

@@ -208,7 +208,7 @@ rc = createRedisClient database, redisSentinelPort, redisSentinelHostname, redis
 
 #migrate active users
 rc.smembers "d", (err, users) ->
-  process.exit(10) if err?
+  console.log "error #{err}" && process.exit(10) if err?
   console.log "migrating deleted users"
   for user in users
     do (user) ->
@@ -216,26 +216,26 @@ rc.smembers "d", (err, users) ->
       #insert messages for both users
       #get conversations
       rc.smembers "c:#{user}", (err, conversations) ->
-        process.exit(10) if err?
+        console.log "error #{err}" && process.exit(10) if err?
         for c in conversations
           do (c) ->
             otherUser = common.getOtherSpotUser c, user
             #delete deleted messages
             rc.smembers "d:#{user}:#{c}", (err, deleted) ->
-              process.exit(10) if err?
+              console.log "error #{err}" && process.exit(10) if err?
               console.log "deleting deleted messages user: #{user} spot: #{c}"
               cdb.migrateDeleteMessages user, c, deleted, (err, results) ->
-                process.exit(10) if err?
+                console.log "error #{err}" && process.exit(10) if err?
                 console.log "deleting deleted messages set d:#{user}:#{c}"
                 rc.del "d:#{user}:#{c}", (err, result) ->
-                  process.exit(10) if err?
+                  console.log "error #{err}" && process.exit(10) if err?
             rc.smembers "d:#{otherUser}:#{c}", (err, deleted) ->
-              process.exit(10) if err?
+              console.log "error #{err}" && process.exit(10) if err?
               console.log "deleting deleted messages user: #{otherUser} spot: #{c}"
               cdb.migrateDeleteMessages otherUser, c, deleted, (err, results) ->
-                process.exit(10) if err?
+                console.log "error #{err}" && process.exit(10) if err?
                 console.log "deleting deleted messages set d:#{otherUser}:#{c}"
                 rc.del "d:#{otherUser}:#{c}", (err, result) ->
-                  process.exit(10) if err?
+                  console.log "error #{err}" && process.exit(10) if err?
         return
   return

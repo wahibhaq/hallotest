@@ -208,7 +208,7 @@ rc = createRedisClient database, redisSentinelPort, redisSentinelHostname, redis
 
 #migrate active users
 rc.smembers "d", (err, users) ->
-  process.exit(10) if err?
+  console.log "error #{err}" && process.exit(10) if err?
   console.log "migrating users"
   for user in users
     do (user) ->
@@ -216,24 +216,24 @@ rc.smembers "d", (err, users) ->
       #insert messages for both users
       #get conversations
       rc.smembers "c:#{user}", (err, conversations) ->
-        process.exit(10) if err?
+        console.log "error #{err}" && process.exit(10) if err?
         for c in conversations
           do (c) ->
             #copy counter
             rc.get "m:#{c}:id", (err, counter) ->
-              process.exit(10) if err?
+              console.log "error #{err}" && process.exit(10) if err?
               console.log "#{c} counter: #{counter}"
               if counter?
                 console.log "moving #{c} counter to hash"
                 rc.hset "mcounters", "#{c}", counter, (err, d) ->
-                  process.exit(10) if err?
+                  console.log "error #{err}" && process.exit(10) if err?
                   rc.del "m:#{c}:id", (err, d) ->
-                    process.exit(10) if err?
+                    console.log "error #{err}" && process.exit(10) if err?
                     #move  messages
               console.log "moving messages m:#{c}"
 
               rc.zrange "m:#{c}", 0,  -1, (err, messages) ->
-                process.exit(10) if err?
+                console.log "error #{err}" && process.exit(10) if err?
                 #insert messages into cassandra
                 for m in messages
                   do(m) ->
@@ -242,12 +242,12 @@ rc.smembers "d", (err, users) ->
 
                     console.log "inserting message to cassandra #{m}"
                     cdb.migrateInsertMessage message, (err, result) ->
-                      process.exit(10) if err?
+                      console.log "error #{err}" && process.exit(10) if err?
 
                 #                    console.log "inserted message to cassandra"
                 console.log "deleting messages m:#{c}"
                 rc.del "m:#{c}", (err, result) ->
-                  process.exit(10) if err?
+                  console.log "error #{err}" && process.exit(10) if err?
                 return
         return
   return

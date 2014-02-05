@@ -210,7 +210,7 @@ rc = createRedisClient database, redisSentinelPort, redisSentinelHostname, redis
 
 #migrate ud users
 rc.keys "ud:*", (err, uds) ->
-  process.exit(10) if err?
+  console.log "error #{err}" && process.exit(10) if err?
   console.log "migrating users"
   for udskey in uds
     do (udskey) ->
@@ -218,27 +218,27 @@ rc.keys "ud:*", (err, uds) ->
       #insert messages for both users
       #get conversations
       rc.smembers udskey, (err, deletedUsers) ->
-        process.exit(10) if err?
+        console.log "error #{err}" && process.exit(10) if err?
         for ud in deletedUsers
           do (ud) ->
             ou = udskey.split(":")[1]
             c = common.getSpotName ou, ud
             rc.smembers "d:#{ud}:#{c}", (err, deletedids) ->
-              process.exit(10) if err?
+              console.log "error #{err}" && process.exit(10) if err?
               console.log "deleting ud deleted messages from d:#{ud}:#{c}"
               cdb.migrateDeleteMessages ud, c, deletedids, (err, results) ->
-                process.exit(10) if err?
+                console.log "error #{err}" && process.exit(10) if err?
 
                 console.log "deleting ud deleted messages set d:#{ud}:#{c}"
                 rc.del "d:#{ud}:#{c}", (err, result) ->
-                  process.exit(10) if err?
+                  console.log "error #{err}" && process.exit(10) if err?
             rc.smembers "d:#{ou}:#{c}", (err, deletedids) ->
               console.log "deleting ud deleted messages from d:#{ou}:#{c}"
               cdb.migrateDeleteMessages ou, c, deletedids, (err, results) ->
-                process.exit(10) if err?
+                console.log "error #{err}" && process.exit(10) if err?
                 console.log "deleting ud deleted messages set d:#{ou}:#{c}"
                 rc.del "d:#{ou}:#{c}", (err, result) ->
-                  process.exit(10) if err?
+                  console.log "error #{err}" && process.exit(10) if err?
 
 
         return
