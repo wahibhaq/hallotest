@@ -6,33 +6,8 @@
 
 ###
 env = process.env.SURESPOT_ENV ? 'Local' # one of "Local","Stage", "Prod"
-
-cluster = require('cluster')
-cookie = require("cookie")
-express = require("express")
-passport = require("passport")
-LocalStrategy = require("passport-local").Strategy
-crypto = require 'crypto'
-RedisStore = require("connect-redis")(express)
-util = require("util")
-gcm = require("node-gcm")
-fs = require("fs")
-bcrypt = require 'bcrypt'
-mkdirp = require("mkdirp")
 async = require 'async'
 _ = require 'underscore'
-querystring = require 'querystring'
-formidable = require 'formidable'
-pkgcloud = require 'pkgcloud'
-utils = require('connect/lib/utils')
-pause = require 'pause'
-stream = require 'stream'
-redbacklib = require 'redback'
-googleapis = require 'googleapis'
-apn = require 'apn'
-uaparser = require 'ua-parser'
-bunyan = require 'bunyan'
-IAPVerifier = require 'iap_verifier'
 cdb = require '../cdb'
 common = require '../common'
 
@@ -86,58 +61,6 @@ useSSL = not dontUseSSL
 http = if useSSL then require 'https' else require 'http'
 
 
-#log to stdout to send to journal
-bunyanStreams = [{
-  level: 'debug'
-  stream: process.stdout
-}]
-
-bunyanStreams.push {
-  level: 'debug'
-  path: "migrate.log"
-}
-
-logger = bunyan.createLogger({
-  name: 'surespot'
-  streams: bunyanStreams
-});
-
-
-
-logger.debug "__dirname: #{__dirname}"
-
-
-
-logger.info "env: #{env}"
-logger.info "database: #{database}"
-logger.info "socket: #{socketPort}"
-logger.info "address: #{bindAddress}"
-logger.info "ssl: #{useSSL}"
-logger.info "rate limiting messages: #{RATE_LIMITING_MESSAGE}, int: #{RATE_LIMIT_BUCKET_MESSAGE}, secs: #{RATE_LIMIT_SECS_MESSAGE}, rate: #{RATE_LIMIT_RATE_MESSAGE}"
-logger.info "messages per user: #{MESSAGES_PER_USER}"
-logger.info "debug level: #{debugLevel}"
-logger.info "google api key: #{googleApiKey}"
-logger.info "google client id: #{googleClientId}"
-logger.info "google client secret: #{googleClientSecret}"
-logger.info "google redirect url: #{googleRedirectUrl}"
-logger.info "google oauth2 code: #{googleOauth2Code}"
-logger.info "apple apn gateway: #{apnGateway}"
-logger.info "rackspace api key: #{rackspaceApiKey}"
-logger.info "rackspace image cdn url: #{rackspaceCdnImageBaseUrl}"
-logger.info "rackspace image container: #{rackspaceImageContainer}"
-logger.info "rackspace voice cdn url: #{rackspaceCdnVoiceBaseUrl}"
-logger.info "rackspace voice container: #{rackspaceVoiceContainer}"
-logger.info "rackspace username: #{rackspaceUsername}"
-logger.info "iap secret: #{iapSecret}"
-logger.info "session secret: #{sessionSecret}"
-logger.info "cores: #{NUM_CORES}"
-logger.info "console logging: #{logConsole}"
-logger.info "use redis sentinel: #{useRedisSentinel}"
-logger.info "redis sentinel hostname: #{redisSentinelHostname}"
-logger.info "redis sentinel port: #{redisSentinelPort}"
-logger.info "redis password: #{redisPassword}"
-
-
 sio = undefined
 sessionStore = undefined
 rc = undefined
@@ -154,7 +77,7 @@ iapClient = undefined
 
 cdb.connect (err) ->
   if err?
-    logger.error 'could not connect to cassandra'
+    console.log 'could not connect to cassandra'
     process.exit(1)
 
 
