@@ -20,7 +20,8 @@ exports.connect = (callback) ->
   pool = new helenus.ConnectionPool(
     hosts: poolIps
     keyspace: 'surespot'
-    hostPoolSize : 10
+    consistencyLevel: helenus.ConsistencyLevel.QUORUM
+    hostPoolSize : 5
   );
 
   pool.on 'error', (err) ->
