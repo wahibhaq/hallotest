@@ -2708,7 +2708,7 @@ else
                             #add me to the global set of deleted users
                             multi.sadd "d", username
 
-                            multi.del "u:#{username}"
+#                            multi.del "u:#{username}"
 
                             #add user to each friend's set of deleted users
                             async.each(
@@ -2725,14 +2725,18 @@ else
                                 return next err if err?
 
                                 #if we don't have any friends aww, just blow everything away
-                                if friends.length is 0
-                                  deleteRemainingIdentityData multi, username
+                                nofriends = (callback) ->
+                                  if friends.length is 0
+                                    deleteRemainingIdentityData multi, username, callback
+                                  else
+                                    callback()
 
-                                createAndSendUserControlMessage username, "revoke", username, "#{parseInt(kv, 10) + 1}", (err) ->
-                                  return next err if err?
-                                  multi.exec (err, replies) ->
-                                    return next err if err?
-                                    res.send 204)))
+                                nofriends ->
+                                  createAndSendUserControlMessage username, "revoke", username, "#{parseInt(kv, 10) + 1}", (err) ->
+                                      return next err if err?
+                                      multi.exec (err, replies) ->
+                                        return next err if err?
+                                        res.send 204)))
 
 
   app.put "/users/password", (req, res, next) ->
@@ -2805,7 +2809,7 @@ else
             return next err if err?
             res.send 204
 
-  deleteRemainingIdentityData = (multi, username) ->
+  deleteRemainingIdentityData = (multi, username, callback) ->
     logger.debug "deleteRemaingingIdentityData #{username}"
     #cleanup stuff
     #delete message pointers
@@ -2819,13 +2823,9 @@ else
     multi.hdel "ucmcounters", username
     multi.srem "d", username
 
-    cdb.deletePublicKeys username, (err, results) ->
-      logger.error "error deleting public keys for #{username}: #{err}" if err?
-
-    cdb.deleteAllUserControlMessages username, (err, results) ->
-      logger.error "error deleting user control messages for #{username}: #{err}" if err?
-
-
+    cdb.deleteAll username, (err, results) ->
+      logger.error "error deleting all data for #{username}: #{err}" if err?
+      callback()
 
   deleteUser = (username, theirUsername, multi, next) ->
     #check if they've only been invited
@@ -2899,8 +2899,7 @@ else
                     rc.scard "d:#{theirUsername}", (err, card) ->
                       return callback err if err?
                       if card is 0
-                        deleteRemainingIdentityData multi, theirUsername
-                        callback()
+                        deleteRemainingIdentityData multi, theirUsername, callback
                       else
                         callback()
                   else

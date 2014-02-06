@@ -479,6 +479,17 @@ exports.deleteAllUserControlMessages = (username, callback) ->
   cql = "delete from usercontrolmessages where username=?;"
   pool.cql cql, [username], callback
 
+exports.deleteAll = (username, callback) ->
+  logger.debug "deleteAll #{username}"
+  cql = "begin batch
+         delete from chatmessages where username = ?
+         delete from messageControlmessages where username = ?
+         delete from usercontrolmessages where username = ?
+         delete from publickeys where username = ?
+         apply batch"
+  pool.cql cql, [username, username, username, username], callback
+
+
 
 #public keys
 exports.insertPublicKeys = (username, keys, callback) ->
@@ -539,7 +550,7 @@ exports.getPublicKeys = (username, version, callback) ->
 
 
 exports.deletePublicKeys = (username, callback) ->
-  logger.debug "deleteAllUserControlMessages #{username}"
+  logger.debug "deletePublicKeys #{username}"
   cql = "delete from publickeys where username=?;"
   pool.cql cql, [username], callback
 
