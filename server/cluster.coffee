@@ -2806,6 +2806,7 @@ else
             res.send 204
 
   deleteRemainingIdentityData = (multi, username) ->
+    logger.debug "deleteRemaingingIdentityData #{username}"
     #cleanup stuff
     #delete message pointers
     multi.del "m:#{username}"

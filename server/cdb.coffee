@@ -204,6 +204,7 @@ exports.deleteMessages = (username, spot, messageIds, callback) ->
 
 
 exports.deleteAllMessages = (spot, callback) ->
+  logger.debug "deleteAllControlMessages #{spot}"
   users = spot.split ":"
 
   cql = "begin batch
@@ -364,6 +365,7 @@ exports.deleteControlMessages = (spot, messageIds, callback) ->
   pool.cql cql, params, callback
 
 exports.deleteAllControlMessages = (spot, callback) ->
+  logger.debug "deleteAllControlMessages #{spot}"
   users = spot.split ":"
   cql = "begin batch
          delete from messagecontrolmessages where username=? and spotname=?
@@ -473,6 +475,7 @@ exports.deleteUserControlMessages = (username, messageIds, callback) ->
   pool.cql cql, params, callback
 
 exports.deleteAllUserControlMessages = (username, callback) ->
+  logger.debug "deleteAllUserControlMessages #{username}"
   cql = "delete from usercontrolmessages where username=?;"
   pool.cql cql, [username], callback
 
@@ -536,6 +539,7 @@ exports.getPublicKeys = (username, version, callback) ->
 
 
 exports.deletePublicKeys = (username, callback) ->
+  logger.debug "deleteAllUserControlMessages #{username}"
   cql = "delete from publickeys where username=?;"
   pool.cql cql, [username], callback
 
