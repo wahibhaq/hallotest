@@ -2730,7 +2730,7 @@ else
                                       deleteRemainingIdentityData multi, username, callback
                                     else
                                       callback()
-                                      
+
                                   nofriends ->
                                     multi.exec (err, replies) ->
                                       return next err if err?
@@ -2921,6 +2921,7 @@ else
 
                       cdb.deleteAllControlMessages room, (err, results) ->
                         logger.error "Could not delete spot #{room} control messages" if err?
+                        logger.debug "deleteAllControlMessages completed"
                       #delete counters
                       multi.hdel "mcmcounters",room
 
@@ -2932,6 +2933,7 @@ else
 
                       cdb.deleteAllMessages room, (err, results) ->
                         logger.error "Could not delete spot #{room} messages" if err?
+                        logger.debug "deleteAllControlMessages completed"
                       next()
 
 
@@ -2939,6 +2941,15 @@ else
     logger.info "#{req.user.username} logged out"
     req.logout()
     res.send 204
+
+
+  app.get "/yourmama", (req, res) ->
+    phrase = "is niiiice #{new Date().toString()}";
+    rc.set "yourmama", phrase, (err, result) ->
+      return res.send 500 if err?
+      cdb.insertYourmama phrase, (err, results) ->
+        return res.send 500 if err?
+        return res.send phrase
 
 
   generateSecureRandomBytes = (encoding, callback) ->

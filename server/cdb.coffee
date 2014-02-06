@@ -555,6 +555,16 @@ exports.deletePublicKeys = (username, callback) ->
   pool.cql cql, [username], callback
 
 
+#your mama
+exports.insertYourmama = (ymis, callback) ->
+  cql = "INSERT INTO yourmama (is) VALUES (?);"
+  pool.cql cql, [ymis], (err, results) ->
+    if err?
+      logger.error "error with yourmama: #{err}"
+    callback(err,results)
+
+
+
 #migration crap
 exports.migrateInsertMessage = (message, callback) ->
   logger.debug "insertMessage id: #{message.id}"
