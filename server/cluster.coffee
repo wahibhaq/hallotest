@@ -1843,23 +1843,6 @@ else
         else
           logger.debug "no new messages for user #{req.user.username} for friend #{req.params.username}"
           res.send 204
-#
-#  getMessagesAndControlMessages = (username, friendname, messageId, controlMessageId, callback) ->
-#    spot = common.getSpotName(username, friendname)
-#    cdb.getMessagesAfterId username, spot, parseInt(messageId), (err, messageData) ->
-#      return callback err if err?
-#      #return messages since id
-#      cdb.getControlMessagesAfterId username, spot, parseInt(controlMessageId), (err, controlData) ->
-#        return callback err if err?
-#        data = {}
-#        data.username = friendname
-#        if messageData?.length > 0
-#          data.messages = messageData
-#        if controlData?.length > 0
-#          data.controlMessages = controlData
-#
-#        callback null, if data.messages? or data.controlMessages? then data else null
-
 
 
   getMessagesAndControlMessagesOpt = (username, friendname, messageId, latestMessageId, controlMessageId, latestControlMessageId, callback) ->

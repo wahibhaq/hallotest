@@ -32,6 +32,7 @@ exports.connect = (callback) ->
       callback err
 
 exports.insertMessage = (message, callback) ->
+  logger.debug "cdb.insertMessage"
   spot = common.getSpotName(message.from, message.to)
 
   cql =
@@ -42,7 +43,6 @@ exports.insertMessage = (message, callback) ->
   VALUES (?, ?, ?, ?, ?,?,?,?,?,?,?,? )
   APPLY BATCH"
 
-  logger.debug "sending cql #{cql}"
 
   pool.cql cql, [
     message.to,
@@ -542,6 +542,7 @@ exports.deletePublicKeys = (username, callback) ->
 
 #migration crap
 exports.migrateInsertMessage = (message, callback) ->
+  logger.debug "insertMessage id: #{message.id}"
   spot = common.getSpotName(message.from, message.to)
 
   cql =
@@ -552,7 +553,7 @@ exports.migrateInsertMessage = (message, callback) ->
       VALUES (?, ?, ?, ?, ?,?,?,?,?,?,?,?,? )
       APPLY BATCH"
 
-  logger.debug "sending cql #{cql}"
+
 
   pool.cql cql, [
     message.to,
