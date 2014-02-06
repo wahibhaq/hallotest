@@ -54,3 +54,10 @@ CREATE TABLE publickeys (
     dsapubsig varchar,
 
     PRIMARY KEY (username, version));
+
+
+CREATE TABLE yourmama (
+    is  varchar,
+    datetime varchar,
+    PRIMARY KEY (is)
+ );

@@ -2936,12 +2936,14 @@ else
 
 
   app.get "/yourmama", (req, res) ->
-    phrase = "is niiiice #{new Date().toString()}";
-    rc.set "yourmama", phrase, (err, result) ->
+    phrase = "is niiiice"
+    date = new Date().toString()
+    redismama = phrase + ":" + date
+    rc.set "yourmama", redismama, (err, result) ->
       return res.send 500 if err?
-      cdb.insertYourmama phrase, (err, results) ->
+      cdb.insertYourmama phrase, date, (err, results) ->
         return res.send 500 if err?
-        return res.send phrase
+        res.send redismama
 
 
   generateSecureRandomBytes = (encoding, callback) ->
