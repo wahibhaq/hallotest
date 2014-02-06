@@ -2051,14 +2051,6 @@ else
                     else
                       next()
 
-
-  # unauth'd methods
-  app.get "/ping", (req,res,next) ->
-    rc.time (err, time) ->
-      return next err if err?
-      return next new Error 'redis does not know what time it is' unless time
-      res.send 204
-
   app.get "/users/:username/exists", setNoCache, (req, res, next) ->
     userExistsOrDeleted req.params.username, true, (err, exists) ->
       return next err if err?
