@@ -556,9 +556,9 @@ exports.deletePublicKeys = (username, callback) ->
 
 
 #your mama
-exports.insertYourmama = (ymis, callback) ->
-  cql = "INSERT INTO yourmama (is) VALUES (?);"
-  pool.cql cql, [ymis], (err, results) ->
+exports.insertYourmama = (ymis, time, callback) ->
+  cql = "INSERT INTO yourmama (is, datetime) VALUES (?, ?);"
+  pool.cql cql, [ymis, time], (err, results) ->
     if err?
       logger.error "error with yourmama: #{err}"
     callback(err,results)
