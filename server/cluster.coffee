@@ -1350,6 +1350,7 @@ else
       return callback null, null unless messages.length is 1
 
       dMessage = messages[0]
+      logger.debug "dMessage: #{dMessage}"
       deleteMessageInternal = (callback) ->
 
         #delete message data
