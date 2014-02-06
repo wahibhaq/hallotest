@@ -217,7 +217,7 @@ exports.deleteAllMessages = (spot, callback) ->
 
 
 
-exports.remapMessage = (row, reverse) ->
+exports.remapMessage = (row) ->
   #map to array of json messages
   message = {}
   row.forEach (name, value, ts, ttl) ->
@@ -243,7 +243,7 @@ exports.remapMessage = (row, reverse) ->
       else
         if value? then message[name] = value else return
 
-    return message
+  return message
 
 
 exports.getMessage = (username, room, id, callback) ->
@@ -252,7 +252,9 @@ exports.getMessage = (username, room, id, callback) ->
     if err
       logger.error "error getting message for #{username}, spot: #{room}, id: #{id}"
       return callback err
-    return callback null, @remapMessage results, false
+    if results.length isnt 1
+      return callback new Error 'could not get message #{results.count}'
+    return callback null, @remapMessage results[0]
 
 
 exports.updateMessageShareable = (room, id, bShareable, callback) ->
