@@ -157,6 +157,7 @@ exports.getMessagesAfterId = (username, spot, id, callback) ->
 
 
 exports.deleteMessage = (deletingUser, fromUser, spot, id) ->
+  logger.debug "cdb.deleteMessage, deletingUser: #{deletingUser}, fromUser: #{fromUser} spot: #{spot}, id:#{id}"
   users = spot.split ":"
 
   #if the deleting user is the user that sent the message delete it in both places
