@@ -1761,7 +1761,7 @@ else
 
   app.get "/latestids/:userControlId", ensureAuthenticated, setNoCache, (req, res, next) ->
     userControlId = parseInt req.params.userControlId, 10
-    logger.debug "/latestids/#{userControlId}"
+    logger.debug "#{req.user.username} /latestids/#{userControlId}"
     return next new Error 'no userControlId' unless userControlId? and not Number.isNaN(userControlId)
 
     getLatestUserControlMessages req.user.username, userControlId, (err, userControlMessages) ->
@@ -1769,7 +1769,7 @@ else
 
       data =  {}
       if userControlMessages?.length > 0
-        logger.debug "got new user control messages: #{userControlMessages}"
+        #logger.debug "got new user control messages: #{userControlMessages}"
         data.userControlMessages = userControlMessages
 
       getConversationIds req.user.username, (err, conversationIds) ->
@@ -2809,13 +2809,21 @@ else
     #cleanup stuff
     #delete message pointers
     multi.del "m:#{username}"
+    multi.del "f:#{username}"
+    multi.del "fi:#{username}"
+    multi.del "is:#{username}"
+    multi.del "u:#{username}"
+    multi.del "ud:#{username}"
+    multi.del "c:#{username}"
+    multi.hdel "ucmcounters", username
     multi.srem "d", username
+
     cdb.deletePublicKeys username, (err, results) ->
       logger.error "error deleting public keys for #{username}: #{err}" if err?
-    multi.hdel "u:#{username}", "kv"
+
     cdb.deleteAllUserControlMessages username, (err, results) ->
       logger.error "error deleting user control messages for #{username}: #{err}" if err?
-    multi.hdel "ucmcounters", username
+
 
 
   deleteUser = (username, theirUsername, multi, next) ->
