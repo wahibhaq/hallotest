@@ -1094,7 +1094,7 @@ else
       sMessage = JSON.stringify message
 
       cdb.getAllControlMessageIds from, spot, (err, cmessageIds) ->
-        logger.debug "got #{cmessageIds.length} control messages for #{spot}"
+        logger.debug "counted #{cmessageIds.length} control message ids for #{spot}"
         if (cmessageIds.length >= CONTROL_MESSAGE_HISTORY)
           deleteIds = cmessageIds.slice 0, cmessageIds.length - CONTROL_MESSAGE_HISTORY + 1
           cdb.deleteControlMessages spot, deleteIds, (err, results) ->
@@ -1130,7 +1130,7 @@ else
         newMessage = JSON.stringify(message)
 
         cdb.getAllUserControlMessageIds to, (err, cmessageIds) ->
-          logger.debug "got #{cmessageIds.length} user control messages for #{to}"
+          logger.debug "counted #{cmessageIds.length} user control message ids for #{to}"
           if (cmessageIds.length >= CONTROL_MESSAGE_HISTORY)
             deleteIds = cmessageIds.slice 0, cmessageIds.length - CONTROL_MESSAGE_HISTORY + 1
             cdb.deleteUserControlMessages to, deleteIds, (err, results) ->
@@ -2708,8 +2708,6 @@ else
                             #add me to the global set of deleted users
                             multi.sadd "d", username
 
-#                            multi.del "u:#{username}"
-
                             #add user to each friend's set of deleted users
                             async.each(
                               friends,
@@ -2723,20 +2721,20 @@ else
                                     callback()
                               (err) ->
                                 return next err if err?
+                                createAndSendUserControlMessage username, "revoke", username, "#{parseInt(kv, 10) + 1}", (err) ->
+                                  return next err if err?
 
-                                #if we don't have any friends aww, just blow everything away
-                                nofriends = (callback) ->
-                                  if friends.length is 0
-                                    deleteRemainingIdentityData multi, username, callback
-                                  else
-                                    callback()
-
-                                nofriends ->
-                                  createAndSendUserControlMessage username, "revoke", username, "#{parseInt(kv, 10) + 1}", (err) ->
+                                  #if we don't have any friends aww, just blow everything away
+                                  nofriends = (callback) ->
+                                    if friends.length is 0
+                                      deleteRemainingIdentityData multi, username, callback
+                                    else
+                                      callback()
+                                      
+                                  nofriends ->
+                                    multi.exec (err, replies) ->
                                       return next err if err?
-                                      multi.exec (err, replies) ->
-                                        return next err if err?
-                                        res.send 204)))
+                                      res.send 204)))
 
 
   app.put "/users/password", (req, res, next) ->
