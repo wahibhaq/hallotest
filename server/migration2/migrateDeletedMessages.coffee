@@ -160,7 +160,7 @@ rc.keys "d:*", (err, ms) ->
             callback()
     (err) ->
       return console.log "error #{err}" if err?
-      console.log "migrated #{count}"
+      console.log "migrated #{count} sets, deleted #{messageCount} messages"
 
   )
 
