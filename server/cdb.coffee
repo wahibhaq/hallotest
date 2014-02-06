@@ -216,13 +216,43 @@ exports.deleteAllMessages = (spot, callback) ->
   pool.cql cql, [users[0], spot, users[1], spot], callback
 
 
+
+exports.remapMessage = (row, reverse) ->
+  #map to array of json messages
+  message = {}
+  row.forEach (name, value, ts, ttl) ->
+    switch name
+      when 'username','spotname'
+        return
+      when 'touser'
+        message['to'] = value
+      when 'fromuser'
+        message['from'] = value
+      when 'datetime'
+        if value?
+          message[name] = value.getTime()
+      when 'mimetype'
+        message['mimeType'] = value
+      when 'toversion'
+        message['toVersion'] = value
+      when 'fromversion'
+        message['fromVersion'] = value
+      when 'datasize'
+        if value?
+          message['dataSize'] = value
+      else
+        if value? then message[name] = value else return
+
+    return message
+
+
 exports.getMessage = (username, room, id, callback) ->
   cql = "select * from chatmessages where username=? and spotname=? and id = ?;"
   pool.cql cql, [username, room, id], (err, results) =>
     if err
       logger.error "error getting message for #{username}, spot: #{room}, id: #{id}"
       return callback err
-    return callback null, @remapMessages results, false
+    return callback null, @remapMessage results, false
 
 
 exports.updateMessageShareable = (room, id, bShareable, callback) ->

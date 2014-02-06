@@ -1340,16 +1340,16 @@ else
     logger.debug "user #{deletingUser} deleting message from: #{spot} id: #{messageId}"
     otherUser = common.getOtherSpotUser spot, deletingUser
     #get the message we're deleting
-    cdb.getMessage deletingUser, spot, messageId, (err, messages) ->
+    cdb.getMessage deletingUser, spot, messageId, (err, message) ->
       return callback err if err?
 
       #if it's not in cassandra just delete it from redis
-      if messages.length is 0
+      if !message?
         rc.zrem "m:#{deletingUser}", "m:#{spot}:#{messageId}"
+        return callback null, null
 
-      return callback null, null unless messages.length is 1
+      dMessage = message
 
-      dMessage = messages[0]
       logger.debug "dMessage: #{dMessage}"
       deleteMessageInternal = (callback) ->
 
