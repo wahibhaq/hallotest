@@ -33,13 +33,15 @@ apn = require 'apn'
 uaparser = require 'ua-parser'
 bunyan = require 'bunyan'
 IAPVerifier = require 'iap_verifier'
+cdb = require './cdb'
+common = require './common'
 
 #constants
 USERNAME_LENGTH = 20
 CONTROL_MESSAGE_HISTORY = 100
 MAX_MESSAGE_LENGTH = 500000
 MAX_HTTP_REQUEST_LENGTH = 500000
-NUM_CORES =  parseInt(process.env.SURESPOT_CORES) ? 4
+NUM_CORES =  parseInt(process.env.SURESPOT_CORES, 10) ? 4
 GCM_TTL = 604800
 
 oneYear = 31536000000
@@ -72,7 +74,7 @@ iapSecret = process.env.SURESPOT_IAP_SECRET
 sessionSecret = process.env.SURESPOT_SESSION_SECRET
 logConsole = process.env.SURESPOT_LOG_CONSOLE is "true"
 redisPort = process.env.REDIS_PORT
-redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 6379
+redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT, 10) ? 6379
 redisSentinelHostname = process.env.SURESPOT_REDIS_SENTINEL_HOSTNAME ? "127.0.0.1"
 redisPassword = process.env.SURESPOT_REDIS_PASSWORD ? null
 useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
@@ -89,7 +91,7 @@ if NUM_CORES > numCPUs then NUM_CORES = numCPUs
 
 #log to stdout to send to journal
 bunyanStreams = [{
-    level: 'debug'
+    level: debugLevel
     stream: process.stdout
   }]
 
@@ -149,7 +151,7 @@ if (cluster.isMaster and NUM_CORES > 1)
   logger.info "redis sentinel hostname: #{redisSentinelHostname}"
   logger.info "redis sentinel port: #{redisSentinelPort}"
   logger.info "redis password: #{redisPassword}"
-
+  logger.info "cassandra urls: #{process.env.SURESPOT_CASSANDRA_IPS ? '127.0.0.1'}"
 
 else
 
@@ -182,7 +184,7 @@ else
     logger.info "redis sentinel port: #{redisSentinelPort}"
     logger.info "redis password: #{redisPassword}"
     logger.info "use redis sentinel: #{useRedisSentinel}"
-
+    logger.info "cassandra urls: #{process.env.SURESPOT_CASSANDRA_IPS ? '127.0.0.1'}"
 
   sio = undefined
   sessionStore = undefined
@@ -198,6 +200,12 @@ else
   oauth2Client = undefined
   iapClient = undefined
 
+  cdb.connect (err) ->
+    if err?
+      logger.error 'could not connect to cassandra'
+      process.exit(1)
+
+
   rackspace = pkgcloud.storage.createClient {provider: 'rackspace', username: rackspaceUsername, apiKey: rackspaceApiKey}
 
   apnOptions = { "gateway": apnGateway , "cert": "apn#{env}/cert.pem", "key": "apn#{env}/key.pem" }
@@ -209,7 +217,7 @@ else
   if useRedisSentinel
     redis = require 'redis-sentinel-client'
   else
-    #use forked redis
+    #use forked red
     redis = require 'redis'
 
   createRedisClient = (database, port, host, password) ->
@@ -481,6 +489,24 @@ else
           else
             res.send 403
 
+  validateAreFriendsOrDeletedOrMe = (req, res, next) ->
+    username = req.user.username
+    friendname = req.params.username
+    return next() if username is friendname
+    isFriend username, friendname, (err, result) ->
+      return next err if err?
+      if result
+        next()
+      else
+        #if we're not friends check if he deleted himself
+        rc.sismember "ud:#{username}", friendname, (err, isDeleted) ->
+          return next err if err?
+          if isDeleted
+            next()
+          else
+            res.send 403
+
+
   validateAreFriendsOrDeletedOrInvited = (req, res, next) ->
     username = req.user.username
     friendname = req.params.username
@@ -518,12 +544,6 @@ else
       return callback null, false if not result
       rc.sismember "ir:#{friendname}", username, callback
 
-  getRoomName = (from, to) ->
-    if from < to then from + ":" + to else to + ":" + from
-
-  getOtherUser = (room, user) ->
-    users = room.split ":"
-    if user == users[0] then return users[1] else return users[0]
 
   getPublicKeys = (req, res, next) ->
     username = req.params.username
@@ -537,22 +557,6 @@ else
       getLatestKeys username, (err, keys) ->
         return next err if err
         res.send keys
-
-
-  getMessage = (room, id, fn) ->
-    rc.zrangebyscore "m:" + room, id, id, (err, data) ->
-      return fn err if err?
-      if data.length is 1
-        message = undefined
-        try
-          message = JSON.parse(data[0])
-        catch error
-          return fn error
-
-        fn null,message
-      else
-        fn null, null
-
 
   #oauth crap
   getAuthToken = (oauth2client, callback) ->
@@ -761,142 +765,48 @@ else
   app.post "/updatePurchaseTokens", ensureAuthenticated, updatePurchaseTokensMiddleware, (req, res, next) ->
     res.send 204
 
-  removeRoomMessage = (room, id, fn) ->
-    #remove message data from set of room messages
-    rc.zremrangebyscore "m:" + room, id, id, fn
-
-  removeMessage = (to, room, id, multi, fn) ->
-    user = getOtherUser room, to
-
+  removeMessage = (deletingUser, messageFromUser, room, id, multi, callback) ->
     multi = rc.multi() unless multi?
-    #remove message data from set of room messages
-    multi.zremrangebyscore "m:" + room, id, id
 
-    #remove from other user's deleted messages set
-    multi.srem "d:#{to}:#{room}", id
+    #remove message data from cassandra
+    cdb.deleteMessage deletingUser, messageFromUser, room, id
 
-    #remove from my total message pointer set
-    multi.zrem "m:#{user}", "m:#{room}:#{id}"
+    #remove from my message pointer set if i sent it
+    if deletingUser is messageFromUser
+      multi.zrem "m:#{deletingUser}", "m:#{room}:#{id}"
 
-    multi.exec fn
-
-  filterDeletedMessages = (username, room, messages, callback) ->
-    return callback null, messages unless messages?
-
-    rc.smembers "d:#{username}:#{room}", (err, deleted) ->
-      scoredMessages = []
-      sendMessages = []
-      index = 0
-      for index in [0..messages.length-1] by 2
-        scoredMessages.push { id: messages[index+1], message: messages[index] }
-
-      async.each(
-        scoredMessages
-        (item, icallback) ->
-          if not (item.id in deleted)
-            sendMessages.push item.message
-          icallback()
-        (err) ->
-          return callback err if err?
-          callback null, sendMessages)
-
-  getAllMessages = (room, fn) ->
-    rc.zrange "m:#{room}", 0, -1, fn
-
-
-  getMessages = (username, room, count, fn) ->
-    #return last x messages
-    #args = []
-    rc.zrange "m:#{room}", -count, -1, 'withscores', (err, data) ->
-      return fn err if err?
-      filterDeletedMessages username, room, data, fn
-
-  getControlMessages = (room, count, fn) ->
-    rc.zrange "cm:" + room, -count, -1, fn
-
-  getUserControlMessages = (user, count, fn) ->
-    rc.zrange "cu:" + user, -count, -1, fn
-
-  getMessagesAfterId = (username, room, id, fn) ->
-    if id is -1
-      fn null, null
-    else
-      if id is 0
-        getMessages username, room, 30, fn
-      else
-        #args = []
-        rc.zrangebyscore "m:#{room}", "(" + id, "+inf", 'withscores', (err, data) ->
-          filterDeletedMessages username, room, data, fn
-
-  getMessagesBeforeId = (username, room, id, fn) ->
-    rc.zrangebyscore "m:#{room}", id - 60, "(" + id, 'withscores', (err, data) ->
-      filterDeletedMessages username, room, data, fn
+    multi.exec callback
 
   checkForDuplicateMessage = (resendId, username, room, message, callback) ->
     if (resendId?)
       if (resendId > 0)
         logger.debug "searching room: #{room} from id: #{resendId} for duplicate messages"
         #check messages client doesn't have for dupes
-        getMessagesAfterId username, room, resendId, (err, data) ->
-          logger.error "error getting messages" if err?
-          return callback err if err
-          found = _.find data, (checkMessageJSON) ->
-            checkMessage = undefined
-            try
-              logger.debug "parsing #{checkMessageJSON}"
-              checkMessage = JSON.parse(checkMessageJSON)
-            catch error
-              logger.debug "error parsing #{checkMessageJSON}"
-              return callback error
-
-            logger.debug "comparing ivs"
+        cdb.getMessagesAfterId username, room, parseInt(resendId, 10), false, (err, data) ->
+          logger.error "error getting messages #{err}" if err?
+          return callback err if err?
+          found = _.find data, (checkMessage) ->
+            logger.debug "comparing ivs #{checkMessage.iv},#{message.iv}"
             checkMessage.iv == message.iv
-
-          callback null, found
+          callback null, JSON.stringify found
       else
-        logger.debug "searching 30 messages from room: #{room} for duplicates"
+        logger.debug "searching up to 30 messages from room: #{room} for duplicates"
         #check last 30 for dupes
-        getMessages username, room, 30, (err, data) ->
-          logger.error "error getting messages" if err?
-          return callback err if err
-          found = _.find data, (checkMessageJSON) ->
-            try
-              logger.debug "parsing #{checkMessageJSON}"
-              checkMessage = JSON.parse(checkMessageJSON)
-            catch error
-              logger.error "error parsing #{checkMessageJSON}"
-              return callback error
-
-            logger.debug "comparing ivs"
+        cdb.getMessages username, room, 30, false, (err, data) ->
+          logger.error "error getting messages #{err}" if err?
+          return callback err if err?
+          found = _.find data, (checkMessage) ->
+            logger.debug "comparing ivs #{checkMessage.iv},#{message.iv}"
             checkMessage.iv == message.iv
-
-          callback null, found
+          callback null, JSON.stringify found
     else
       callback null, false
-
-  getControlMessagesAfterId = (room, id, fn) ->
-    if id is -1
-      fn null, null
-    else
-      if id is 0
-        getControlMessages room, 60, fn
-      else
-        rc.zrangebyscore "cm:" + room, "(" + id, "+inf", fn
-
-  getUserControlMessagesAfterId = (user, id, fn) ->
-    if id is -1
-      fn null, null
-    else
-      if id is 0
-        getUserControlMessages user, 20, fn
-      else
-        rc.zrangebyscore "cu:" + user, "(" + id, "+inf", fn
 
   getNextMessageId = (room, id, callback) ->
     #we will alread have an id if we uploaded a file
     return callback id if id?
     #INCR message id
-    rc.incr "m:#{room}:id", (err, newId) ->
+    rc.hincrby "mcounters",room, 1, (err, newId) ->
       if err?
         logger.error "ERROR: getNextMessageId, room: #{room}, error: #{err}"
         callback null
@@ -905,7 +815,7 @@ else
 
   getNextMessageControlId = (room, callback) ->
     #INCR message id
-    rc.incr "cm:#{room}:id", (err, newId) ->
+    rc.hincrby "mcmcounters",room,1, (err, newId) ->
       if err?
         logger.error "ERROR: getNextMessageControlId, room: #{room}, error: #{err}"
         callback null
@@ -914,7 +824,7 @@ else
 
   getNextUserControlId = (user, callback) ->
           #INCR message id
-    rc.incr "cu:#{user}:id", (err, newId) ->
+    rc.hincrby "ucmcounters", user, 1, (err, newId) ->
       if err?
         logger.error "ERROR: getNextUserControlId, user: #{user}, error: #{err}"
         callback null
@@ -943,9 +853,7 @@ else
     return friend
 
 
-  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, dataSize, time, callback) ->
-    logger.debug "new message"
-
+  createAndSendMessage = (from, fromVersion, to, toVersion, iv, data, mimeType, id, dataSize, time, resendId, callback) ->
     message = {}
     message.to = to
     message.from = from
@@ -956,120 +864,124 @@ else
     message.data = data
     message.mimeType = mimeType
     message.dataSize = dataSize if dataSize
-    room = getRoomName(from,to)
-
+    room = common.getSpotName(from,to)
 
     #INCR message id
     getNextMessageId room, id, (id) ->
       return callback new MessageError(iv, 500) unless id?
-      message.id = id
 
-      logger.info "#{from}->#{to}, mimeType: #{mimeType} message: #{message}"
-      newMessage = JSON.stringify(message)
-
-      #store messages in sorted sets
-      multi = rc.multi()
-
-      userMessagesKey = "m:#{from}"
-      multi.zadd "m:#{room}", id, newMessage
-      #keep track of all the users message so we can remove the earliest when we cross their threshold
-      #we use a sorted set here so we can easily remove when message is deleted O(N) vs O(M*log(N))
-      multi.zadd userMessagesKey, time, "m:#{room}:#{id}"
-
-      #make sure conversation is present
-      multi.sadd "c:" + from, room
-      multi.sadd "c:" + to, room
-
-      #marketing wanted some stats
-      #increment total user message / image counter
-      switch mimeType
-        when "text/plain"
-          multi.hincrby "u:#{from}", "mc", 1
-          multi.incr "tmc"
-
-        when "image/"
-          multi.hincrby "u:#{from}", "ic", 1
-          multi.incr "tic"
-
-        when "audio/mp4"
-          multi.hincrby "u:#{from}", "vc", 1
-          multi.incr "tvc"
-
-
-
-
-
-      deleteEarliestMessage = (callback) ->
-        #check how many messages the user has total
-        rc.zcard userMessagesKey, (err, card) ->
-          return callback err if err?
-          #TODO per user threshold based on pay status
-          #delete the oldest message(s)
-          deleteCount = (card - MESSAGES_PER_USER) + 1
-          logger.debug "deleteCount #{deleteCount}"
-          if deleteCount > 0
-
-            rc.zrange userMessagesKey,  0, deleteCount-1, (err, messagePointers) ->
-              return callback err if err?
-              myDeleteControlMessages = []
-              theirDeleteControlMessages = []
-              async.each(
-                messagePointers,
-                (item, callback) ->
-                  messageData = getMessagePointerData from, item
-
-
-                  #if the message we deleted is not part of the same conversation,send a control message
-                  deletedSpot = getRoomName messageData.from, messageData.to
-                  deletedFromSameSpot = room is deletedSpot
-
-                  deleteMessage from, messageData.to, messageData.id, not deletedFromSameSpot, multi, (err, deleteControlMessage) ->
-                    if not err? and deleteControlMessage?
-                      myDeleteControlMessages.push deleteControlMessage
-
-                      #don't send control message to other user in the message if it pertains to a different conversation
-                      if deletedFromSameSpot
-                        theirDeleteControlMessages.push deleteControlMessage
-
-
-                    callback()
-                (err) ->
-                  logger.warn "error getting old messages to delete: #{err}" if err?
-                  callback null, myDeleteControlMessages, theirDeleteControlMessages)
-
-          else
-            callback null, null
-
-      deleteEarliestMessage (err, myDeleteControlMessages, theirDeleteControlMessages) ->
-        return callback err if err?
-
-        multi.exec  (err, results) ->
-          if err?
-            logger.error ("ERROR: Socket.io onmessage, " + err)
-            return callback new MessageError(iv, 500)
-
-          myMessage = null
-          theirMessage = null
-
-          #if we deleted messages, add the delete control message(s) to this message to save sending the delete control message separately
-          if myDeleteControlMessages?.length > 0
-            message.deleteControlMessages = myDeleteControlMessages
-            myMessage = JSON.stringify message
-          else
-            myMessage = newMessage
-
-          if theirDeleteControlMessages?.length > 0
-            message.deleteControlMessages = theirDeleteControlMessages
-            theirMessage = JSON.stringify message
-          else
-            theirMessage = newMessage
-
-          sio.sockets.to(to).emit "message", theirMessage
-          sio.sockets.to(from).emit "message", myMessage
-
-          process.nextTick ->
-            sendPushMessage message, theirMessage
+      #check for dupes after generating id to preserve ordering
+      #check for dupes if message has been resent
+      checkForDuplicateMessage resendId, from, room, message, (err, found) ->
+        return callback new MessageError(iv, 500) if err?
+        if found
+          logger.debug "found duplicate message, not adding to db"
+          sio.sockets.to(to).emit "message", found
+          sio.sockets.to(from).emit "message", found
           callback()
+        else
+          logger.info "#{from}->#{to}, mimeType: #{mimeType} message: #{message}"
+          message.id = id
+
+          #store message in cassandra
+          cdb.insertMessage message, (err, results) ->
+            if err?
+              logger.error "error inserting message into cassandra: #{err}"
+              return callback new MessageError(iv, 500)
+
+            #store message pointer in sorted sets so we know the oldest to delete
+            multi = rc.multi()
+
+            #keep track of all the users message so we can remove the earliest when we cross their threshold
+            #we use a sorted set here so we can easily remove when message is deleted O(N) vs O(M*log(N))
+            userMessagesKey = "m:#{from}"
+            multi.zadd userMessagesKey, time, "m:#{room}:#{id}"
+
+            #make sure conversation is present
+            multi.sadd "c:" + from, room
+            multi.sadd "c:" + to, room
+
+            #marketing wanted some stats
+            #increment total user message / image counter
+            switch mimeType
+              when "text/plain"
+                multi.hincrby "u:#{from}", "mc", 1
+                multi.incr "tmc"
+
+              when "image/"
+                multi.hincrby "u:#{from}", "ic", 1
+                multi.incr "tic"
+
+              when "audio/mp4"
+                multi.hincrby "u:#{from}", "vc", 1
+                multi.incr "tvc"
+
+            deleteEarliestMessage = (callback) ->
+              #check how many messages the user has total
+              rc.zcard userMessagesKey, (err, card) ->
+                if err?
+                  logger.warn "error deleting earliest message: #{err}"
+                  return callback()
+                #TODO per user threshold based on pay status
+                #delete the oldest message(s)
+                deleteCount = (card - MESSAGES_PER_USER) + 1
+                logger.debug "deleteCount #{deleteCount}"
+                if deleteCount > 0
+
+                  rc.zrange userMessagesKey,  0, deleteCount-1, (err, messagePointers) ->
+                    if err?
+                      logger.warn "error deleting earliest message: #{err}"
+                      return callback()
+                    myDeleteControlMessages = []
+                    theirDeleteControlMessages = []
+                    async.each(
+                      messagePointers,
+                      (item, callback) ->
+                        messageData = getMessagePointerData from, item
+
+                        #if the message we deleted is not part of the same conversation,send a control message
+                        deletedFromSameSpot = room is messageData.spot
+                        deleteMessage from, messageData.spot, messageData.id, not deletedFromSameSpot, multi, (err, deleteControlMessage) ->
+                          if not err? and deleteControlMessage?
+                            myDeleteControlMessages.push deleteControlMessage
+
+                            #don't send control message to other user in the message if it pertains to a different conversation
+                            if deletedFromSameSpot
+                              theirDeleteControlMessages.push deleteControlMessage
+
+
+                          callback()
+                      (err) ->
+                        logger.warn "error getting old messages to delete: #{err}" if err?
+                        callback myDeleteControlMessages, theirDeleteControlMessages)
+
+                else
+                  callback()
+
+            deleteEarliestMessage (myDeleteControlMessages, theirDeleteControlMessages) ->
+              multi.exec  (err, results) ->
+                if err?
+                  logger.error ("ERROR: Socket.io onmessage, " + err)
+                  return callback new MessageError(iv, 500)
+
+              myMessage = null
+              theirMessage = null
+
+              #if we deleted messages, add the delete control message(s) to this message to save sending the delete control message separately
+              if myDeleteControlMessages?.length > 0
+                message.deleteControlMessages = myDeleteControlMessages
+              myMessage = JSON.stringify message
+
+              if theirDeleteControlMessages?.length > 0
+                message.deleteControlMessages = theirDeleteControlMessages
+              theirMessage = JSON.stringify message
+
+              sio.sockets.to(to).emit "message", theirMessage
+              sio.sockets.to(from).emit "message", myMessage
+
+              process.nextTick ->
+                sendPushMessage message, theirMessage
+              callback()
 
 
   sendPushMessage = (message, messagejson) ->
@@ -1139,47 +1051,37 @@ else
     #delete message
     messageData = messagePointer.split(":")
     data = {}
-    data.id =  messageData[3]
-    room =  messageData[1] + ":" + messageData[2]
-    data.to = getOtherUser room, from
+    data.id =  parseInt messageData[3], 10
+    data.spot =  messageData[1] + ":" + messageData[2]
     return data
 
-
-
-  createMessageControlMessage = (from, to, room, action, data, moredata, callback)  ->
+  createMessageControlMessage = (from, to, spot, action, data, moredata, callback)  ->
     message = {}
     message.type = "message"
     message.action = action
     message.data = data
 
     if moredata?
-      message.moredata = moredata
+      #make sure it's a string
+      message.moredata = "#{moredata}"
 
     #add control message
-    getNextMessageControlId room, (id) ->
-      callback new Error 'could not create next message control id' unless id?
+    getNextMessageControlId spot, (id) ->
+      return callback new Error 'could not create next message control id' unless id?
       message.id = id
       message.from = from
       sMessage = JSON.stringify message
-      controlMessageKey = "cm:#{room}"
-      multi = rc.multi()
 
-      deleteEarliestControlMessage = (callback) ->
-        #check how many control messages the user has total
-        rc.zcard controlMessageKey, (err, card) ->
-          return callback err if err?
-          #delete the oldest control message(s)
-          deleteCount = (card - CONTROL_MESSAGE_HISTORY) + 1
-          logger.debug "control message deleteCount #{deleteCount}"
-          multi.zremrangebyrank controlMessageKey, 0, deleteCount-1 if deleteCount > 0
-          callback()
+      cdb.getAllControlMessageIds from, spot, (err, cmessageIds) ->
+        logger.debug "counted #{cmessageIds.length} control message ids for #{spot}"
+        if (cmessageIds.length >= CONTROL_MESSAGE_HISTORY)
+          deleteIds = cmessageIds.slice 0, cmessageIds.length - CONTROL_MESSAGE_HISTORY + 1
+          cdb.deleteControlMessages spot, deleteIds, (err, results) ->
+            logger.error "error deleting control messages from spot #{spot}: #{err}" if err?
 
-      deleteEarliestControlMessage (err) ->
-        logger.warn "delete earliest control message error: #{err}" if err?
-        multi.zadd "cm:#{room}", id, sMessage
-        multi.exec (err, results) ->
-          return callback err if err?
-          callback null, sMessage
+      cdb.insertMessageControlMessage spot, message, (err, results) ->
+        return callback err if err?
+        callback null, sMessage
 
 
   createAndSendMessageControlMessage = (from, to, room, action, data, moredata, callback) ->
@@ -1191,7 +1093,7 @@ else
 
   createAndSendUserControlMessage = (to, action, data, moredata, callback) ->
     userExists to, (err, exists) ->
-      return callback null unless exists
+      return callback() unless exists
       message = {}
       message.type = "user"
       message.action = action
@@ -1205,47 +1107,34 @@ else
         return callback new Error 'could not get user control id' unless id?
         message.id = id
         newMessage = JSON.stringify(message)
-        #store messages in sorted sets
 
-        multi = rc.multi()
-        controlMessageKey = "cu:#{to}"
+        cdb.getAllUserControlMessageIds to, (err, cmessageIds) ->
+          logger.debug "counted #{cmessageIds.length} user control message ids for #{to}"
+          if (cmessageIds.length >= CONTROL_MESSAGE_HISTORY)
+            deleteIds = cmessageIds.slice 0, cmessageIds.length - CONTROL_MESSAGE_HISTORY + 1
+            cdb.deleteUserControlMessages to, deleteIds, (err, results) ->
+              logger.error "error deleting user control messages from user #{to}: #{err}" if err?
 
-        deleteEarliestControlMessage = (callback) ->
-          #check how many control messages the user has total
-          rc.zcard controlMessageKey, (err, card) ->
-            return callback err if err?
-            #delete the oldest control message(s)
-            deleteCount = (card - CONTROL_MESSAGE_HISTORY) + 1
-            logger.debug "user control message deleteCount: #{deleteCount}"
-            multi.zremrangebyrank controlMessageKey, 0, deleteCount-1 if deleteCount > 0
-            callback()
-
-
-        deleteEarliestControlMessage (err) ->
-
-          multi.zadd controlMessageKey, id, newMessage
-          multi.exec (err, results) ->
+          cdb.insertUserControlMessage to, message, (err, results) ->
             return callback err if err?
             sio.sockets.to(to).emit "control", newMessage
-            callback null
+            callback()
 
   # broadcast a key revocation message to who's conversations
   sendRevokeMessages = (who, newVersion, callback) ->
-    logger.debug "new message"
-
     logger.debug "sending user control message to #{who}: #{who} has completed a key roll"
 
-    createAndSendUserControlMessage who, "revoke", who, newVersion, (err) ->
-      logger.error ("ERROR: adding user control message, " + err) if err?
-      return callback new error 'could not send user controlmessage' if err?
+    createAndSendUserControlMessage who, "revoke", who, "#{newVersion}", (err) ->
+      logger.error "ERROR: adding user control message, #{err}" if err?
+      return callback new Error "could not send user controlmessage: #{err}" if err?
 
 
       #Get all the dude's conversations
       rc.smembers "c:#{who}", (err, convos) ->
         return callback err if err?
         async.each convos, (room, callback) ->
-          to = getOtherUser(room, who)
-          createAndSendUserControlMessage to, "revoke", who, newVersion, (err) ->
+          to = common.getOtherSpotUser(room, who)
+          createAndSendUserControlMessage to, "revoke", who, "#{newVersion}", (err) ->
             logger.error ("ERROR: adding user control message, " + err) if err?
             return callback new error 'could not send user controlmessage' if err?
             callback()
@@ -1331,22 +1220,10 @@ else
 
             cipherdata = message.data
             resendId = message.resendId
-            room = getRoomName(from, to)
-
             mimeType = message.mimeType
             #todo validate mimetype
 
-
-            #check for dupes if message has been resent
-            checkForDuplicateMessage resendId, user, room, message, (err, found) ->
-              return callback new MessageError(iv, 500) if err?
-              if found
-                logger.debug "found duplicate message, not adding to db"
-                sio.sockets.to(to).emit "message", found
-                sio.sockets.to(from).emit "message", found
-                callback()
-              else
-                createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, null, Date.now(), callback
+            createAndSendMessage from, fromVersion, to, toVersion, iv, cipherdata, mimeType, null, null, Date.now(), resendId, callback
 
 
   sio.on "connection", (socket) ->
@@ -1367,10 +1244,10 @@ else
 
     username = req.user.username
     otherUser = req.params.username
-    room = getRoomName username, otherUser
-    id = req.params.id
+    room = common.getSpotName username, otherUser
+    id = parseInt req.params.id, 10
 
-    return res.send 400 unless id?
+    return res.send 400 unless id? and not Number.isNaN(id)
 
     logger.debug "deleting messages, user: #{username}, otherUser: #{otherUser}, utaiId: #{id}"
     deleteAllMessages username, otherUser, id, (err) ->
@@ -1379,112 +1256,90 @@ else
 
 
   deleteAllMessages = (username, otherUser, utaiId, callback) ->
-    room = getRoomName username, otherUser
-    getAllMessages room, (err, messages) ->
+    spot = common.getSpotName username, otherUser
+    cdb.getAllMessages username, spot, (err, messages) ->
       return callback err if err?
 
       lastMessageId = null
+
       if messages?.length > 0
-        lastMessageId = JSON.parse(messages[messages.length-1]).id
-        logger.debug "lastMessageId: #{lastMessageId}"
-        #client could have passed anything in, dooming us for eternity, don't let this happen
-        if utaiId > lastMessageId
-          logger.debug "setting utaiId to lastMessageId: #{lastMessageId}"
-          utaiId = lastMessageId
-      else
-        return callback()
+        #messageCount = messages.length
+        #ordered by id so newest will be last
+        lastMessageId = messages[messages.length-1].id
+        logger.debug "lastMessageID #{lastMessageId}"
 
+        #todo do we need to do this?
+        #if there are messages > than those we want to delete we need to insert them after
+        #the delete because fucking cassandra doesn't let you delete from with < or > check (why on select but not delete?)
+        #messagesToInsert = []
+#        if lastMessageId > utaiId
+#          for i in [messageCount..0]
+#            message = messages[i]
+#            if message.id > utaiId
+#              messagesToInsert.push message
 
-      ourMessageIds = []
-      theirMessageIds = []
-      multi = rc.multi()
-      async.filter(
-        messages
-        (item, callback) ->
-          oMessage = undefined
-          try
-            oMessage = JSON.parse(item)
-          catch error
-            return callback false
+        idsToDelete = []
+        multi = rc.multi()
+        async.each(
+          messages
+          (oMessage, callback) ->
+            #if we sent it remove it from our set of pointers and remove data from rackspace if we need to
+            if oMessage.from is username
+              multi.zrem "m:#{username}", "m:#{spot}:#{oMessage.id}"
 
-          #don't delete newer messages than specified
-          return callback false if oMessage.id > utaiId
+              #delete file from rackspace if necessary
+              deleteFile oMessage.data, oMessage.mimeType
+              idsToDelete.push oMessage.id
 
-          if oMessage.from is username
-            ourMessageIds.push oMessage.id
-            multi.zrem "m:#{username}", "m:#{room}:#{oMessage.id}"
+            callback()
 
-            #delete file from rackspace if necessary
-            deleteFile oMessage.data, oMessage.mimeType
-            callback true
-          else
-            theirMessageIds.push oMessage.id
-            callback false
-        (results) ->
-
-          if ourMessageIds.length > 0
-            #zrem does not handle array as last parameter https://github.com/mranney/node_redis/issues/404
-            results.unshift "m:#{room}"
-            #need z remove by score here :( http://redis.io/commands/zrem#comment-845220154
-            #remove the messages
-            multi.zrem results
-            #remove deleted message ids from other user's deleted set as the message is gone now
-            multi.srem "d:#{otherUser}:#{room}", ourMessageIds
-            #remove message pointers
-
-
-          #todo remove the associated control messages
-
-          if theirMessageIds.length > 0
-            #add their message id's to our deleted message set
-            multi.sadd "d:#{username}:#{room}", theirMessageIds
-
-
-          multi.exec (err, mResults) ->
-            return callback err if err?
-            createAndSendMessageControlMessage username, otherUser, room, "deleteAll", room, lastMessageId, (err) ->
+          (err) ->
+            cdb.deleteMessages username, spot, idsToDelete, (err, results) ->
               return callback err if err?
-              callback())
+
+              multi.exec (err, mResults) ->
+                return callback err if err?
+                createAndSendMessageControlMessage username, otherUser, spot, "deleteAll", spot, lastMessageId, (err) ->
+                  return callback err if err?
+                  callback())
+      else
+        callback()
 
 
-  deleteMessage = (from, to, messageId, sendControlMessage, multi, callback) ->
-    room = getRoomName to, from
-    #get the message we're modifying
-    getMessage room, messageId, (err, dMessage) ->
+  deleteMessage = (deletingUser, spot, messageId, sendControlMessage, multi, callback) ->
+    logger.debug "user #{deletingUser} deleting message from: #{spot} id: #{messageId}"
+    otherUser = common.getOtherSpotUser spot, deletingUser
+    #get the message we're deleting
+    cdb.getMessage deletingUser, spot, messageId, (err, message) ->
       return callback err if err?
-      return callback null, null unless dMessage?
 
+      #if it's not in cassandra just delete it from redis
+      if !message?
+        rc.zrem "m:#{deletingUser}", "m:#{spot}:#{messageId}"
+        return callback null, null
+
+      dMessage = message
       deleteMessageInternal = (callback) ->
-        #if we sent it, delete the data
-        if (from is dMessage.from)
 
-          #update message data
-          removeMessage dMessage.to, room, messageId, multi, (err, count) ->
-            return callback err if err?
+        #delete message data
+        removeMessage deletingUser, dMessage.from, spot, messageId, multi, (err, count) ->
+          return callback err if err?
 
+          #if we sent it, delete the data
+          if (deletingUser is dMessage.from)
             #delete the file from the cloud if necessary
             deleteFile dMessage.data, dMessage.mimeType
-            callback()
-        else
-          #check if user is a user (ie. not deleted) before adding deleted message ids to the set
-          rc.sismember "u", from, (err, isUser) ->
-            return callback err if err?
 
-            if isUser
-              rc.sadd "d:#{from}:#{room}", messageId, (err, count) ->
-                return callback err if err?
-                callback()
-            else
-                callback()
+          callback()
 
       deleteMessageInternal (err) ->
         return callback err if err?
         if (sendControlMessage)
-          createAndSendMessageControlMessage from, to, room, "delete", room, messageId, (err, message) ->
+          createAndSendMessageControlMessage deletingUser, otherUser, spot, "delete", spot, messageId, (err, message) ->
             return callback err if err?
             callback null, message
         else
-          createMessageControlMessage from, to, room, "delete", room, messageId, (err, message) ->
+          createMessageControlMessage deletingUser, otherUser, spot, "delete", spot, messageId, (err, message) ->
             return callback err if err?
             callback null, message
 
@@ -1510,13 +1365,15 @@ else
   #delete single message
   app.delete "/messages/:username/:id", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, (req, res, next) ->
 
-    messageId = req.params.id
-    return next new Error 'id required' unless messageId?
+    messageId = parseInt req.params.id, 10
+    return next new Error 'id required' unless messageId? and not Number.isNaN(messageId)
 
     username = req.user.username
     otherUser = req.params.username
+    
+    spot = common.getSpotName username, otherUser
 
-    deleteMessage username, otherUser, messageId, true, null, (err, deleteControlMessage) ->
+    deleteMessage username, spot, messageId, true, null, (err, deleteControlMessage) ->
       return next err if err?
       res.send (if deleteControlMessage? then 204 else 404)
 
@@ -1559,31 +1416,23 @@ else
           res.send token
 
   app.put "/messages/:username/:id/shareable", ensureAuthenticated, validateUsernameExists, validateAreFriends, (req, res, next) ->
-    messageId = req.params.id
+    messageId = parseInt req.params.id, 10
+    return next new Error 'id required' unless messageId? and not Number.isNaN(messageId)
+
     shareable = req.body.shareable
-    return next new Error 'id required' unless messageId?
     return next new Error 'shareable required' unless shareable?
 
     username = req.user.username
     otherUser = req.params.username
-    room = getRoomName username, otherUser
-    #get the message we're modifying
-    getMessage room, messageId, (err, dMessage) ->
+    spot = common.getSpotName username, otherUser
+    bShareable = shareable is 'true'
+
+    cdb.updateMessageShareable spot, messageId, bShareable, (err, results) ->
       return next err if err?
-      return res.send 404 unless dMessage?
-
-      #update message data
-      removeRoomMessage room, messageId, (err, count) ->
+      newStatus = if bShareable then "shareable" else "notshareable"
+      createAndSendMessageControlMessage username, otherUser, spot, newStatus, spot, messageId, (err) ->
         return next err if err?
-
-        bShareable = shareable is 'true'
-        dMessage.shareable = bShareable
-        rc.zadd "m:#{room}", messageId, JSON.stringify(dMessage), (err, addcount) ->
-          return next err if err?
-          newStatus = if bShareable then "shareable" else "notshareable"
-          createAndSendMessageControlMessage username, otherUser, room, newStatus, room, messageId, (err) ->
-            return next err if err?
-            res.send newStatus
+        res.send newStatus
 
 
 
@@ -1660,7 +1509,7 @@ else
     #upload image to rackspace then create a message with the image url and send it to chat recipients
     username = req.user.username
     path = null
-    size = null
+    size = 0
     container = null
     cdn = null
 
@@ -1722,7 +1571,7 @@ else
       checkPermissions ->
         #todo validate versions
 
-        room = getRoomName username, req.params.username
+        room = common.getSpotName username, req.params.username
         getNextMessageId room, null, (id) ->
           #todo send message error on socket
           if not id?
@@ -1751,7 +1600,7 @@ else
               url = cdn + "/#{path}"
 
               time = Date.now()
-              createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, url, mimeType, id, size, time, (err) ->
+              createAndSendMessage req.user.username, req.params.fromversion, req.params.username, req.params.toversion, part.filename, url, mimeType, id, size, time, null, (err) ->
                 logger.error "error sending message on socket: #{err}" if err?
                 return next err if err?
                 res.send { id: id, url: url, time: time, size: size}
@@ -1771,8 +1620,8 @@ else
     rc.smembers "c:" + username, (err, conversations) ->
       return callback err if err?
       if (conversations.length > 0)
-        conversationsWithId = _.map conversations, (conversation) -> "m:#{conversation}:id"
-        rc.mget conversationsWithId, (err, ids) ->
+        conversationsWithId = _.map conversations, (conversation) -> "#{conversation}"
+        rc.hmget "mcounters", conversationsWithId, (err, ids) ->
           return next err if err?
           conversationIds = []
           _.each conversations, (conversation, i) -> conversationIds.push { conversation: conversation, id: ids[i] }
@@ -1781,28 +1630,40 @@ else
         callback null, null
 
 
+  getLatestUserControlMessages = (username, userControlId, callback) ->
+    rc.hget "ucmcounters", username, (err, latestUserControlId) ->
+      return callback err if err?
+
+      latestUserControlId = latestUserControlId ? userControlId
+      latestUserControlId = parseInt(latestUserControlId, 10)
+
+      logger.debug "comparing userControlId: #{userControlId} with latestUserControlId: #{latestUserControlId}"
+
+      if userControlId < latestUserControlId
+        cdb.getUserControlMessagesAfterId username, userControlId, callback
+      else
+        callback()
+
   #get all the data we need in one call
   app.post "/latestdata/:userControlId", ensureAuthenticated, setNoCache, (req, res, next) ->
     #need array of {un: username, mid: , cmid: }
 
-    # "/messagedata/:username/:messageid/:controlmessageid", e
-
     username = req.user.username
-    userControlId = req.params.userControlId
-    spotIds = undefined
+    userControlId = parseInt req.params.userControlId, 10
+    return next new Error 'no userControlId' unless userControlId? and not Number.isNaN(userControlId)
 
+    spotIds = undefined
     try
       logger.debug "latestdata, spotIds: #{req.body.spotIds}"
       spotIds = JSON.parse req.body.spotIds
     catch error
 
-    return next new Error 'no userControlId' unless userControlId?
-
-    getUserControlMessagesAfterId username, parseInt(userControlId), (err, userControlMessages) ->
+    getLatestUserControlMessages username, userControlId, (err, userControlMessages) ->
       return next err if err?
 
       data =  {}
       if userControlMessages?.length > 0
+        logger.debug "got new user control messages: #{userControlMessages}"
         data.userControlMessages = userControlMessages
 
       getConversationIds req.user.username, (err, conversationIds) ->
@@ -1810,22 +1671,30 @@ else
 
         return res.send data unless conversationIds?
         controlIdKeys = []
+        latestMessageIds = {}
+        latestControlIds = {}
         async.each(
           conversationIds
           (item, callback) ->
-            controlIdKeys.push "cm:#{item.conversation}:id"
+            controlIdKeys.push "#{item.conversation}"
+            logger.debug "setting latest message id: #{item.id} for conversation: #{item.conversation}"
+            latestMessageIds[item.conversation] = item.id
             callback()
           (err) ->
             return next err if err?
             #Get control ids
-            rc.mget controlIdKeys, (err, rControlIds) ->
+            rc.hmget "mcmcounters", controlIdKeys, (err, rControlIds) ->
               return next err if err?
               controlIds = []
               _.each(
                 rControlIds
                 (controlId, i) ->
                   if controlId isnt null
-                    controlIds.push({conversation: conversationIds[i].conversation, id: controlId}))
+                    conversation = conversationIds[i].conversation
+                    latestControlIds[conversation] = controlId
+
+                    logger.debug "setting latest control id: #{controlId} for conversation: #{conversation}"
+                    controlIds.push({conversation: conversation, id: controlId}))
 
               if conversationIds.length > 0
                 data.conversationIds = conversationIds
@@ -1840,7 +1709,8 @@ else
                   async.each(
                     spotIds,
                     (item, callback1) ->
-                      getMessagesAndControlMessages(username, item.username, item.messageid,item.controlmessageid, (err, data) ->
+                      spot = common.getSpotName username, item.username
+                      getMessagesAndControlMessagesOpt(username, item.username, parseInt(item.messageid, 10),  latestMessageIds[spot], parseInt(item.controlmessageid, 10), latestControlIds[spot],(err, data) ->
                         return callback1() if err?
                         if data?
                           messages.push data
@@ -1853,24 +1723,24 @@ else
                   callback()
 
               addNewMessages ->
-                logger.debug "/latestdata sending #{JSON.stringify(data)}"
+                sData = JSON.stringify(data)
+                logger.debug "/latestdata sending #{sData}"
                 res.set {'Content-Type': 'application/json'}
-                res.send data)
-
-
+                res.send sData)
 
   app.get "/latestids/:userControlId", ensureAuthenticated, setNoCache, (req, res, next) ->
-    userControlId = req.params.userControlId
-    return next new Error 'no userControlId' unless userControlId?
+    userControlId = parseInt req.params.userControlId, 10
+    logger.debug "#{req.user.username} /latestids/#{userControlId}"
+    return next new Error 'no userControlId' unless userControlId? and not Number.isNaN(userControlId)
 
-
-    getUserControlMessagesAfterId req.user.username, parseInt(userControlId), (err, userControlMessages) ->
+    getLatestUserControlMessages req.user.username, userControlId, (err, userControlMessages) ->
       return next err if err?
 
       data =  {}
       if userControlMessages?.length > 0
+        #logger.debug "got new user control messages: #{userControlMessages}"
         data.userControlMessages = userControlMessages
-        logger.debug "/latestids userControlMessages: #{userControlMessages}"
+
       getConversationIds req.user.username, (err, conversationIds) ->
         return next err if err?
 
@@ -1879,12 +1749,12 @@ else
         async.each(
           conversationIds
           (item, callback) ->
-            controlIdKeys.push "cm:#{item.conversation}:id"
+            controlIdKeys.push "#{item.conversation}"
             callback()
           (err) ->
             return next err if err?
             #Get control ids
-            rc.mget controlIdKeys, (err, rControlIds) ->
+            rc.hmget "mcmcounters", controlIdKeys, (err, rControlIds) ->
               return next err if err?
               controlIds = []
               _.each(
@@ -1906,44 +1776,86 @@ else
   #get remote messages before id
   app.get "/messages/:username/before/:messageid", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
     #return messages since id
-    getMessagesBeforeId req.user.username, getRoomName(req.user.username, req.params.username), req.params.messageid, (err, data) ->
+    id = parseInt req.params.messageid, 10
+    return res.send 400 unless id? and not Number.isNaN(id)
+
+    cdb.getMessagesBeforeId req.user.username, common.getSpotName(req.user.username, req.params.username), id, (err, data) ->
       return next err if err?
-      logger.debug "sending #{data}"
+      #sData = JSON.stringify(data)
+
+      #logger.debug "sending #{sData}"
+      res.set {'Content-Type': 'application/json'}
       res.send data
 
   app.get "/messagedata/:username/:messageid/:controlmessageid", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, (req, res, next) ->
-    getMessagesAndControlMessages req.user.username, req.params.username, req.params.messageid, req.params.controlmessageid, (err, data) ->
+
+    messageId = parseInt req.params.messageid, 10
+    return next new Error 'message id required' unless messageId? and not Number.isNaN(messageId)
+
+    messageControlId = parseInt req.params.controlmessageid, 10
+    return next new Error 'control message id required' unless messageControlId? and not Number.isNaN(messageControlId)
+
+    #get latest ids
+    spot = common.getSpotName req.user.username, req.params.username
+    multi = rc.multi()
+    multi.hget "mcounters", spot
+    multi.hget "mcmcounters", spot
+    multi.exec (err, results) ->
       return next err if err?
-      if data?
-        sData = JSON.stringify(data)
-        logger.debug "sending: #{sData}"
-        res.set {'Content-Type': 'application/json'}
-        res.send sData
+      getMessagesAndControlMessagesOpt req.user.username, req.params.username, messageId, results[0], messageControlId, results[1], (err, data) ->
+        return next err if err?
+        if data?
+          sData = JSON.stringify(data)
+          logger.debug "sending: #{sData}"
+          res.set {'Content-Type': 'application/json'}
+          res.send sData
+        else
+          logger.debug "no new messages for user #{req.user.username} for friend #{req.params.username}"
+          res.send 204
+
+
+  getMessagesAndControlMessagesOpt = (username, friendname, messageId, latestMessageId, controlMessageId, latestControlMessageId, callback) ->
+    logger.debug "getMessagesAndControlMessagesOpt username: #{username}, friendname: #{friendname}, messageId: #{messageId}, latestMessageId: #{latestMessageId}, controlMessageId: #{controlMessageId}, latestControlMessageId: #{latestControlMessageId}"
+    spot = common.getSpotName(username, friendname)
+    data = {}
+    data.username = friendname
+
+    getLatestMessages = (callback) ->
+
+      if messageId < 0 then messageId = latestMessageId
+      if (messageId < latestMessageId)
+        cdb.getMessagesAfterId username, spot, messageId, true, (err, messageData) ->
+          return callback err if err?
+          if messageData?.length > 0
+            data.messages = messageData
+          callback()
       else
-        logger.debug "no new messages for user #{req.user.username} for friend #{req.params.username}"
-        res.send 204
+        callback()
 
-  getMessagesAndControlMessages = (username, friendname, messageId, controlMessageId, callback) ->
-    spot = getRoomName(username, friendname)
-    getMessagesAfterId username, spot, parseInt(messageId), (err, messageData) ->
+    getLatestMessages (err) ->
       return callback err if err?
-      #return messages since id
-      getControlMessagesAfterId spot, parseInt(controlMessageId), (err, controlData) ->
-        return callback err if err?
-        data = {}
-        data.username = friendname
-        if messageData?.length > 0
-          data.messages = messageData
-        if controlData?.length > 0
-          data.controlMessages = controlData
+      getLatestControlMessages = (callback) ->
+        latestControlMessageId = latestControlMessageId ? 0
+        if controlMessageId < 0 then controlMessageId = latestControlMessageId
+        if (controlMessageId < latestControlMessageId)
+          #return messages since id
+          cdb.getControlMessagesAfterId username, spot, controlMessageId, (err, controlData) ->
+            return callback err if err?
+            if controlData?.length > 0
+              data.controlMessages = controlData
+            callback()
+        else
+          callback()
 
+      getLatestControlMessages (err) ->
+        return callback err if err?
         callback null, if data.messages? or data.controlMessages? then data else null
 
 
-  app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setNoCache, getPublicKeys
-  app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted, setCache(oneYear), getPublicKeys
+  app.get "/publickeys/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeletedOrMe, setNoCache, getPublicKeys
+  app.get "/publickeys/:username/:version", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeletedOrMe, setCache(oneYear), getPublicKeys
   app.get "/keyversion/:username", ensureAuthenticated, validateUsernameExistsOrDeleted, validateAreFriendsOrDeleted,(req, res, next) ->
-    rc.get "kv:#{req.params.username}", (err, version) ->
+    rc.hget "u:#{req.params.username}", "kv", (err, version) ->
       return next err if err?
       res.send version
 
@@ -2042,8 +1954,10 @@ else
 
         user = {}
         user.username = username
+        user.kv = 1
 
         keys = {}
+        keys.version = 1
         if req.body?.dhPub?
           keys.dhPub = req.body.dhPub
         else
@@ -2084,42 +1998,27 @@ else
             keys.dsaPubSig = crypto.createSign('sha256').update(new Buffer(keys.dsaPub)).sign(serverPrivateKey, 'base64')
             logger.debug "#{username}, dhPubSig: #{keys.dhPubSig}, dsaPubSig: #{keys.dsaPubSig}"
 
-            multi2 = rc.multi()
             #user id
-            multi2.incr "uid"
-            #get key version
-            multi2.incr "kv:#{username}"
-            multi2.exec (err, results) ->
+            rc.incr "uid", (err, newid) ->
               return next err if err?
 
-              user.id = results[0]
-              kv = results[1]
+              user.id = newid
 
-              multi = rc.multi()
-              userKey = "u:#{username}"
-              keysKey = "k:#{username}"
-              keys.version = kv + ""
-              multi.hmset userKey, user
-              multi.hset keysKey, kv, JSON.stringify(keys)
-              multi.sadd "u", username
-              multi.exec (err,replies) ->
+              cdb.insertPublicKeys username, keys, (err, result) ->
                 return next err if err?
-                logger.info "#{username} created, uid: #{user.id}"
-                req.login user, ->
-                  req.user = user
+                multi = rc.multi()
+                multi.hmset "u:#{username}", user
+                multi.sadd "u", username
+                multi.exec (err,replies) ->
+                  return next err if err?
+                  logger.info "#{username} created, uid: #{user.id}"
+                  req.login user, ->
+                    req.user = user
 
-                  if referrers
-                    handleReferrers username, referrers, next
-                  else
-                    next()
-
-
-  # unauth'd methods
-  app.get "/ping", (req,res,next) ->
-    rc.time (err, time) ->
-      return next err if err?
-      return next new Error 'redis does not know what time it is' unless time
-      res.send 204
+                    if referrers
+                      handleReferrers username, referrers, next
+                    else
+                      next()
 
   app.get "/users/:username/exists", setNoCache, (req, res, next) ->
     userExistsOrDeleted req.params.username, true, (err, exists) ->
@@ -2237,11 +2136,11 @@ else
 
       #the user wants to update their key so we will generate a token that the user signs to make sure they're not using a replay attack of some kind
       #get the current version
-      rc.get "kv:#{username}", (err, currkv) ->
+      rc.hget "u:#{username}", "kv", (err, currkv) ->
         return next err if err?
 
         #inc key version
-        kv = parseInt(currkv) + 1
+        kv = parseInt(currkv, 10) + 1
         generateSecureRandomBytes 'base64',(err, token) ->
           return next err if err?
           rc.set "kt:#{username}", token, (err, result) ->
@@ -2262,19 +2161,22 @@ else
     username = req.body.username
 
     kv = req.body.keyVersion
-    rc.get "kv:#{username}", (err, storedkv) ->
+    rc.hget "u:#{username}", "kv",(err, storedkv) ->
       return next err if err?
 
-      storedkv++
-      return next new Error 'key versions do not match' unless storedkv is parseInt(kv)
+      newkv = parseInt storedkv, 10
+      newkv++
+      return next new Error 'key versions do not match' unless newkv is parseInt(kv, 10)
 
       #todo transaction
       #make sure the tokens match
       rc.get "kt:#{username}", (err, rtoken) ->
         return next new Error 'no keytoken exists' unless rtoken?
         newKeys = {}
+        newKeys.version = newkv;
         newKeys.dhPub = req.body.dhPub
         newKeys.dsaPub = req.body.dsaPub
+
         logger.debug "received token signature: " + req.body.tokenSig
         logger.debug "received auth signature: " + req.body.authSig
         logger.debug "token: " + rtoken
@@ -2305,43 +2207,45 @@ else
               newKeys.dsaPubSig = crypto.createSign('sha256').update(new Buffer(newKeys.dsaPub)).sign(serverPrivateKey, 'base64')
               logger.debug "saving keys #{username}, dhPubSig: #{newKeys.dhPubSig}, dsaPubSig: #{newKeys.dsaPubSig}"
 
-              keysKey = "k:#{username}"
-              newKeys.version = storedkv + ""
+
               #add the keys to the key set and add revoke message in transaction
-              multi = rc.multi()
-              multi.hset keysKey, kv, JSON.stringify(newKeys)
-              #update the version
-              multi.set "kv:#{username}", storedkv
-
-              #if we have a gcm Id or apn token set it as the only one as other devices shouldn't be receiving push messages when they have old keys
-
-              gcmId = req.body.gcmId
-
-              if gcmId?
-                logger.debug "setting gcmid and removing apnToken for #{username}"
-                multi.hset "u:#{username}", "gcmId", gcmId
-                multi.hdel "u:#{username}", "apnToken"
-              else
-                apnToken = req.body.apnToken
-                if apnToken?
-                  logger.debug "setting apnToken and removing gcmId for #{username}"
-                  multi.hset "u:#{username}", "apnToken", apnToken
-                  multi.hdel "u:#{username}", "gcmId"
-                else
-                  #if we were not sent the id by a recent version, blow it away
-                  #todo remove this check once we are restricting versions
-                  version = req.body.version
-                  if version?
-                    logger.debug "keys regenerated by client that knows to send version (#{version}), removing gcmid and apnToken from #{username}"
-                    multi.hdel "u:#{username}", "gcmId"
-                    multi.hdel "u:#{username}", "apnToken"
-
-
-              #send revoke message
-              multi.exec (err, replies) ->
+              cdb.insertPublicKeys username, newKeys, (err, results) ->
                 return next err if err?
-                sendRevokeMessages username, kv
-                res.send 201
+
+                multi = rc.multi()
+
+                #update the key version for user
+                userKey = "u:#{username}"
+                multi.hset userKey, "kv", newkv
+
+                #if we have a gcm Id or apn token set it as the only one as other devices shouldn't be receiving push messages when they have old keys
+                gcmId = req.body.gcmId
+
+                if gcmId?
+                  logger.debug "setting gcmid and removing apnToken for #{username}"
+                  multi.hset userKey, "gcmId", gcmId
+                  multi.hdel userKey, "apnToken"
+                else
+                  apnToken = req.body.apnToken
+                  if apnToken?
+                    logger.debug "setting apnToken and removing gcmId for #{username}"
+                    multi.hset userKey, "apnToken", apnToken
+                    multi.hdel userKey, "gcmId"
+                  else
+                    #if we were not sent the id by a recent version, blow it away
+                    #todo remove this check once we are restricting versions
+                    version = req.body.version
+                    if version?
+                      logger.debug "keys regenerated by client that knows to send version (#{version}), removing gcmid and apnToken from #{username}"
+                      multi.hdel userKey, "gcmId"
+                      multi.hdel userKey, "apnToken"
+
+
+                #send revoke message
+                multi.exec (err, replies) ->
+                  return next err if err?
+                  sendRevokeMessages username, kv
+                  res.send 201
 
 
   app.post "/validate", (req, res, next) ->
@@ -2524,7 +2428,7 @@ else
       apn_tokens = ids[1]?.split(":")
 
       if gcmIds?.length > 0
-        logger.debug "sending gcms for invite response notification"
+        logger.debug "sending gcms for invite response notification #{username} #{friendname}"
 
         gcmmessage = new gcm.Message()
         sender = new gcm.Sender("#{googleApiKey}")
@@ -2538,7 +2442,7 @@ else
 
         sender.send gcmmessage, gcmIds, 4, (err, result) ->
           return logger.error "Error sending gcm: #{err}" if err? or not result?
-          logger.debug "sendGcm result: #{JSON.stringify(result)}"
+          logger.debug "sendGcm for invite response notification ok #{username} #{friendname}"
           if result.failure > 0
             removeGcmIds friendname, gcmIds, result.results
 
@@ -2651,7 +2555,7 @@ else
               else
                 friends.push new Friend name, 1
 
-            rc.get "cu:#{username}:id", (err, id) ->
+            rc.hget "ucmcounters", username, (err, id) ->
               friendstate = {}
               friendstate.userControlId = id ? 0
               friendstate.friends = friends
@@ -2765,8 +2669,6 @@ else
                             #add me to the global set of deleted users
                             multi.sadd "d", username
 
-                            multi.del "u:#{username}"
-
                             #add user to each friend's set of deleted users
                             async.each(
                               friends,
@@ -2780,16 +2682,20 @@ else
                                     callback()
                               (err) ->
                                 return next err if err?
-
-                                #if we don't have any friends aww, just blow everything away
-                                if friends.length is 0
-                                  deleteRemainingIdentityData multi, username
-
-                                createAndSendUserControlMessage username, "revoke", username, parseInt(kv) + 1, (err) ->
+                                createAndSendUserControlMessage username, "revoke", username, "#{parseInt(kv, 10) + 1}", (err) ->
                                   return next err if err?
-                                  multi.exec (err, replies) ->
-                                    return next err if err?
-                                    res.send 204)))
+
+                                  #if we don't have any friends aww, just blow everything away
+                                  nofriends = (callback) ->
+                                    if friends.length is 0
+                                      deleteRemainingIdentityData multi, username, callback
+                                    else
+                                      callback()
+
+                                  nofriends ->
+                                    multi.exec (err, replies) ->
+                                      return next err if err?
+                                      res.send 204)))
 
 
   app.put "/users/password", (req, res, next) ->
@@ -2862,14 +2768,23 @@ else
             return next err if err?
             res.send 204
 
-  deleteRemainingIdentityData = (multi, username) ->
+  deleteRemainingIdentityData = (multi, username, callback) ->
+    logger.debug "deleteRemaingingIdentityData #{username}"
     #cleanup stuff
+    #delete message pointers
+    multi.del "m:#{username}"
+    multi.del "f:#{username}"
+    multi.del "fi:#{username}"
+    multi.del "is:#{username}"
+    multi.del "u:#{username}"
+    multi.del "ud:#{username}"
+    multi.del "c:#{username}"
+    multi.hdel "ucmcounters", username
     multi.srem "d", username
-    multi.del "k:#{username}"
-    multi.del "kv:#{username}"
-    multi.del "cu:#{username}"
-    multi.del "cu:#{username}:id"
 
+    cdb.deleteAll username, (err, results) ->
+      logger.error "error deleting all data for #{username}: #{err}" if err?
+      callback()
 
   deleteUser = (username, theirUsername, multi, next) ->
     #check if they've only been invited
@@ -2880,7 +2795,7 @@ else
           return next err if err?
           next()
       else
-        room = getRoomName username, theirUsername
+        room = common.getSpotName username, theirUsername
 
         #delete the conversation with this user from the set of my conversations
         multi.srem "c:#{username}", room
@@ -2902,7 +2817,8 @@ else
           if not theyHaveDeletedMe
             #delete our messages with the other user
             #get the latest id
-            rc.get "m:#{room}:id", (err, id) ->
+            rc.hget "mcounters", room, (err, id) ->
+              logger.debug "deleting messages for #{room}, #{id}"
               return next err if err?
               #handle no id
               deleteMessages = (messageId, callback) ->
@@ -2942,8 +2858,7 @@ else
                     rc.scard "d:#{theirUsername}", (err, card) ->
                       return callback err if err?
                       if card is 0
-                        deleteRemainingIdentityData multi, theirUsername
-                        callback()
+                        deleteRemainingIdentityData multi, theirUsername, callback
                       else
                         callback()
                   else
@@ -2952,7 +2867,7 @@ else
                 deleteLastUserScraps (err) ->
                   return next err if err?
 
-                  rc.get "m:#{room}:id", (err, id) ->
+                  rc.hget "mcounters", room, (err, id) ->
                     return next err if err?
                     deleteMessages = (callback) ->
                       if id?
@@ -2965,21 +2880,21 @@ else
                     deleteMessages (err) ->
                       return next err if err?
 
-                      #delete control message data
-                      multi.del "cm:#{room}"
-                      multi.del "cm:#{room}:id"
+                      cdb.deleteAllControlMessages room, (err, results) ->
+                        logger.error "Could not delete spot #{room} control messages" if err?
+                        logger.debug "deleteAllControlMessages completed"
+                      #delete counters
+                      multi.hdel "mcmcounters",room
+
+                      #remove message counters for the conversation
+                      multi.hdel "mcounters", room
 
                       #remove them from my deleted set
                       multi.srem "ud:#{username}", theirUsername
 
-                      #delete the set that held message ids of theirs that we deleted
-                      multi.del "d:#{username}:#{room}"
-
-                      #delete the set that held message ids of mine that they deleted
-                      multi.del "d:#{theirUsername}:#{room}"
-
-                      multi.del "m:#{room}:id"
-                      multi.del "m:#{room}"
+                      cdb.deleteAllMessages room, (err, results) ->
+                        logger.error "Could not delete spot #{room} messages" if err?
+                        logger.debug "deleteAllControlMessages completed"
                       next()
 
 
@@ -2987,6 +2902,17 @@ else
     logger.info "#{req.user.username} logged out"
     req.logout()
     res.send 204
+
+
+  app.get "/yourmama", (req, res) ->
+    phrase = "is niiiice"
+    date = new Date().toString()
+    redismama = phrase + ":" + date
+    rc.set "yourmama", redismama, (err, result) ->
+      return res.send 500 if err?
+      cdb.insertYourmama phrase, date, (err, results) ->
+        return res.send 500 if err?
+        res.send redismama
 
 
   generateSecureRandomBytes = (encoding, callback) ->
@@ -3003,22 +2929,13 @@ else
     bcrypt.compare password, dbpassword, callback
 
   getLatestKeys = (username, callback) ->
-    rc.get "kv:#{username}", (err, version) ->
+    rc.hget "u:#{username}", "kv", (err, version) ->
       return callback err if err?
-      return callback new Error 'no keys exist for user: #{username}' unless version?
+      return callback new Error "no keys exist for user: #{username}" unless version?
       getKeys username, version, callback
 
   getKeys = (username, version, callback) ->
-    rc.hget "k:#{username}", version, (err, keys) ->
-      return callback err if err?
-
-      jkeys = undefined
-      try
-        jkeys = JSON.parse(keys)
-      catch error
-        return callback error
-
-      callback null, jkeys
+    cdb.getPublicKeys username, parseInt(version, 10), callback
 
 
   verifySignature = (b1, b2, sigString, pubKey) ->
@@ -3040,10 +2957,10 @@ else
     logger.debug "validating: " + username
     rcs.hgetall userKey, (err, user) ->
       return done(err) if err?
-      return done null, 404 if not user
+      return done null, 404 unless user?.password
       comparePassword password, user.password, (err, res) ->
         return done err if err?
-        return done null, 403 if not res
+        return done null, 403 unless res
 
         #not really worried about replay attacks here as we're using ssl but as extra security the server could send a challenge that the client would sign as we do with key roll
         getLatestKeys username, (err, keys) ->
@@ -3068,7 +2985,7 @@ else
         when 403 then return done null, false, message: "invalid password or key"
         when 204 then return done null, user
         else
-          return new Error 'unknown validation status: #{status}'
+          return new Error "unknown validation status: #{status}"
 
   passport.serializeUser (user, done) ->
     logger.debug "serializeUser, username: " + user.username

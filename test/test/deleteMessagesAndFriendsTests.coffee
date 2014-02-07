@@ -14,7 +14,7 @@ socketPort = process.env.SURESPOT_SOCKET ? 8080
 redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 6379
 redisSentinelHostname = process.env.SURESPOT_REDIS_SENTINEL_HOSTNAME ? "127.0.0.1"
 dontUseSSL = process.env.SURESPOT_DONT_USE_SSL is "true"
-baseUri = process.env.SURESPOT_TEST_BASEURI
+baseUri = process.env.SURESPOT_TEST_BASEURI ? "http://127.0.0.1:8080"
 cleanupDb = process.env.SURESPOT_TEST_CLEANDB is "true"
 useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
 
@@ -38,9 +38,6 @@ cleanup = (done) ->
     "ir:test1",
     "m:test1",
     "d:test0:test0:test1",
-    "m:test0:test1:id"
-    "test0:test1:id",
-    "m:test0:test1",
     "c:test1",
     "c:test0",
     "kv:test0",
@@ -54,11 +51,14 @@ cleanup = (done) ->
     "cu:test0:id",
     "cu:test1:id",
     "ud:test0",
-    "ud:test1"]
+    "ud:test1",
+    "d:test0",
+    "d:test1"]
 
   multi = rc.multi()
   multi.del keys
   multi.srem "u", "test0", "test1"
+  multi.hdel "mcounters", "test0:test1"
   multi.exec (err, results) ->
     if err
       done err
@@ -140,35 +140,52 @@ client = undefined
 client1 = undefined
 jsonMessage = {type: "message", to: "test0", toVersion: "1", from: "test1", fromVersion: "1", iv: 1, data: "message data", mimeType: "text/plain"}
 
-sendThreeMessagesFromEachUser = () ->
+sendThreeMessagesFromEachUser = (done) ->
+  clientDone = false
+  client1Done = false
   jsonMessage.from = "test0"
   jsonMessage.to = "test1"
-  jsonMessage.iv = 0
+  jsonMessage.iv = "0"
+  client.send JSON.stringify(jsonMessage)
+  client.on 'message', (receivedMessage) ->
+    receivedMessage = JSON.parse receivedMessage
+    if receivedMessage.iv is "4"
+      client.removeAllListeners 'message'
+      clientDone = true
+      if (clientDone && client1Done)
+        done()
+
+
+  jsonMessage.from = "test1"
+  jsonMessage.to = "test0"
+  jsonMessage.iv = "1"
+  client1.send JSON.stringify(jsonMessage)
+  client1.on 'message', (receivedMessage) ->
+    receivedMessage = JSON.parse receivedMessage
+    if receivedMessage.iv is "5"
+      client1.removeAllListeners 'message'
+      client1Done = true
+      if (clientDone && client1Done)
+        done()
+
+  jsonMessage.from = "test0"
+  jsonMessage.to = "test1"
+  jsonMessage.iv = "2"
   client.send JSON.stringify(jsonMessage)
 
   jsonMessage.from = "test1"
   jsonMessage.to = "test0"
-  jsonMessage.iv = 1
+  jsonMessage.iv = "3"
   client1.send JSON.stringify(jsonMessage)
 
   jsonMessage.from = "test0"
   jsonMessage.to = "test1"
-  jsonMessage.iv = 2
+  jsonMessage.iv = "4"
   client.send JSON.stringify(jsonMessage)
 
   jsonMessage.from = "test1"
   jsonMessage.to = "test0"
-  jsonMessage.iv = 3
-  client1.send JSON.stringify(jsonMessage)
-
-  jsonMessage.from = "test0"
-  jsonMessage.to = "test1"
-  jsonMessage.iv = 4
-  client.send JSON.stringify(jsonMessage)
-
-  jsonMessage.from = "test1"
-  jsonMessage.to = "test0"
-  jsonMessage.iv = 5
+  jsonMessage.iv = "5"
   client1.send JSON.stringify(jsonMessage)
 
 describe "delete messages and friends test", () ->
@@ -217,8 +234,8 @@ describe "delete messages and friends test", () ->
                 done()
 
   it 'send 3 messages from each user', (done) ->
-    sendThreeMessagesFromEachUser()
-    done()
+    sendThreeMessagesFromEachUser(done)
+
 
   describe 'delete all of a user\'s messages', ->
     it 'should succeed', (done) ->
@@ -320,8 +337,8 @@ describe "delete messages and friends test", () ->
 
   describe 'delete friend', ->
     it 'send 3 messages from each user', (done) ->
-      sendThreeMessagesFromEachUser()
-      done()
+      sendThreeMessagesFromEachUser(done)
+
 
 
     it 'should delete a user successfully', (done) ->
@@ -477,5 +494,6 @@ describe "delete messages and friends test", () ->
     client1.disconnect()
     if cleanupDb
       cleanup done
+      #done()
     else
       done()

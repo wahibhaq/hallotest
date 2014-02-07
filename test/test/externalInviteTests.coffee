@@ -9,6 +9,7 @@ crypto = require 'crypto'
 dcrypt = require 'dcrypt'
 async = require 'async'
 redisSentinel = require 'redis-sentinel-client'
+helenus = require 'helenus'
 
 socketPort = process.env.SURESPOT_SOCKET ? 8080
 redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 6379
@@ -17,6 +18,9 @@ dontUseSSL = process.env.SURESPOT_DONT_USE_SSL is "true"
 baseUri = process.env.SURESPOT_TEST_BASEURI
 cleanupDb = process.env.SURESPOT_TEST_CLEANDB is "true"
 useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
+
+
+pool = new helenus.ConnectionPool({host:'127.0.0.1', port:9160, keyspace:'surespot'});
 
 rc = if useRedisSentinel then redisSentinel.createClient(redisSentinelPort, redisSentinelHostname) else redis.createClient(redisSentinelPort, redisSentinelHostname)
 port = socketPort
@@ -45,8 +49,6 @@ cleanup = (done) ->
     "ir:test1",
     "ir:test2",
     "ir:test3",
-    "m:test0:test1:id",
-    "m:test0:test1",
     "c:test1",
     "c:test0",
     "c:test2",
@@ -58,25 +60,37 @@ cleanup = (done) ->
     "kv:test2",
     "k:test2",
     "kv:test3",
-    "k:test3",
-    "cu:test0",
-    "cu:test2",
-    "cu:test1",
-    "cu:test3",
-    "cu:test3:id",
-    "cu:test1:id",
-    "cu:test0:id",
-    "cu:test2:id"]
+    "k:test3"]
 
   multi = rc.multi()
 
   multi.del keys
+  multi.hdel "mcounters", "test0:test1"
+  multi.hdel "ucmcounters", "test0"
+  multi.hdel "ucmcounters", "test1"
+  multi.hdel "ucmcounters", "test2"
+  multi.hdel "ucmcounters", "test3"
   multi.srem "u", "test0", "test1", "test2", "test3"
   multi.exec (err, results) ->
-    if err
-      done err
-    else
-      done()
+    return done err if err?
+    pool.connect (err, keyspace) ->
+      return done err if err?
+
+      cql = "begin batch
+               delete from chatmessages where username = ?
+               delete from chatmessages where username = ?
+
+               delete from usercontrolmessages where username = ?
+               delete from usercontrolmessages where username = ?
+               delete from usercontrolmessages where username = ?
+               delete from usercontrolmessages where username = ?
+            apply batch"
+
+      pool.cql cql, ["test0", "test1", "test0", "test1","test2","test3"], (err, results) ->
+        if err
+          done err
+        else
+          done()
 
 
 login = (username, password, jar, authSig, referrers, done, callback) ->

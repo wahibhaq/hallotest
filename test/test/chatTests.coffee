@@ -9,6 +9,7 @@ crypto = require 'crypto'
 dcrypt = require 'dcrypt'
 async = require 'async'
 redisSentinel = require 'redis-sentinel-client'
+helenus = require 'helenus'
 
 socketPort = process.env.SURESPOT_SOCKET ? 8080
 redisSentinelPort = parseInt(process.env.SURESPOT_REDIS_SENTINEL_PORT) ? 6379
@@ -17,6 +18,10 @@ dontUseSSL = process.env.SURESPOT_DONT_USE_SSL is "true"
 baseUri = process.env.SURESPOT_TEST_BASEURI
 cleanupDb = process.env.SURESPOT_TEST_CLEANDB is "true"
 useRedisSentinel = process.env.SURESPOT_USE_REDIS_SENTINEL is "true"
+
+
+pool = new helenus.ConnectionPool({host:'127.0.0.1', port:9160, keyspace:'surespot'});
+
 
 rc = if useRedisSentinel then redisSentinel.createClient(redisSentinelPort, redisSentinelHostname) else redis.createClient(redisSentinelPort, redisSentinelHostname)
 port = socketPort
@@ -36,30 +41,44 @@ cleanup = (done) ->
     "ir:test0",
     "is:test1",
     "ir:test1",
-    "m:test0:test1:id",
     "m:test0",
-    "m:test0:test1",
     "c:test1",
     "c:test0",
     "kv:test0",
     "k:test0",
     "kv:test1",
-    "k:test1",
-    "cm:test0:test1",
-    "cm:test0:test1:id"
-    "cu:test0",
-    "cu:test1",
-    "cu:test0:id",
-    "cu:test1:id"]
+    "k:test1"]
 
   multi = rc.multi()
+  multi.hdel "mcounters", "test0:test1"
+  multi.hdel "mcounters", "test0:test2"
+  multi.hdel "mcmcounters", "test0:test1"
+  multi.hdel "mcmcounters", "test0:test2"
+  multi.hdel "ucmcounters", "test0"
+  multi.hdel "ucmcounters", "test1"
   multi.del keys
   multi.srem "u", "test0", "test1"
   multi.exec (err, results) ->
     if err
       done err
     else
-      done()
+      pool.connect (err, keyspace) ->
+        return done err if err?
+
+        cql = "begin batch
+               delete from chatmessages where username = ?
+               delete from chatmessages where username = ?
+               delete from messagecontrolmessages where username = ?
+               delete from messagecontrolmessages where username = ?
+               delete from usercontrolmessages where username = ?
+               delete from usercontrolmessages where username = ?
+               apply batch"
+
+        pool.cql cql, ["test0", "test1", "test0", "test1", "test0", "test1"], (err, results) ->
+          if err
+            done err
+          else
+            done()
 
 
 login = (username, password, jar, authSig, done, callback) ->
@@ -145,7 +164,7 @@ describe "surespot chat test", () ->
 
   client = undefined
   client1 = undefined
-  jsonMessage = {type: "message", to: "test0", toVersion: "1", from: "test1", fromVersion: "1", iv: 1, data: "message data", mimeType: "text/plain"}
+  jsonMessage = {type: "message", to: "test0", toVersion: "1", from: "test1", fromVersion: "1", iv: "1", data: "message data", mimeType: "text/plain"}
 
   it 'client 1 connect', (done) ->
     jar0 = request.jar()
@@ -399,60 +418,65 @@ describe "surespot chat test", () ->
 
     jsonMessage.from = "test0"
     jsonMessage.to = "test1"
-    jsonMessage.iv = 2
+    jsonMessage.iv = "2"
     #id 2
     client.send JSON.stringify(jsonMessage)
     #id 3
-    jsonMessage.iv = 3
+    jsonMessage.iv = "3"
     client.send JSON.stringify(jsonMessage)
     #id 4
-    jsonMessage.iv = 4
+    jsonMessage.iv = "4"
     client.send JSON.stringify(jsonMessage)
-    request.get
-      jar: jar0
-      url: baseUri + "/messagedata/test1/3/0"
-      (err, res, body) ->
-        if err
-          done err
-        else
-          res.statusCode.should.equal 200
-          messageData = JSON.parse(body)
 
-          messages = messageData.messages
-          messages.length.should.equal 1
-          receivedMessage = JSON.parse(messages[0])
-          receivedMessage.to.should.equal jsonMessage.to
-          receivedMessage.id.should.equal 4
-          receivedMessage.from.should.equal jsonMessage.from
-          receivedMessage.data.should.equal jsonMessage.data
-          receivedMessage.mimeType.should.equal jsonMessage.mimeType
-          receivedMessage.iv.should.equal 4
+    client.on 'message', (receivedMessage) ->
+      receivedMessage = JSON.parse receivedMessage
+      if receivedMessage.iv is "4"
+        client.removeAllListeners('message')
+        request.get
+          jar: jar0
+          url: baseUri + "/messagedata/test1/3/0"
+          (err, res, body) ->
+            if err
+              done err
+            else
+              res.statusCode.should.equal 200
+              messageData = JSON.parse(body)
 
-
-          controlData = messageData.controlMessages
-          controlData.length.should.equal 2
-          receivedControlMessage = JSON.parse(controlData[0])
-          receivedControlMessage.type.should.equal "message"
-          receivedControlMessage.action.should.equal "delete"
-          receivedControlMessage.data.should.equal "test0:test1"
-          receivedControlMessage.moredata.should.equal "1"
-          receivedControlMessage.from.should.equal "test1"
-          receivedControlMessage.id.should.equal 1
+              messages = messageData.messages
+              messages.length.should.equal 1
+              receivedMessage = JSON.parse(messages[0])
+              receivedMessage.to.should.equal jsonMessage.to
+              receivedMessage.id.should.equal 4
+              receivedMessage.from.should.equal jsonMessage.from
+              receivedMessage.data.should.equal jsonMessage.data
+              receivedMessage.mimeType.should.equal jsonMessage.mimeType
+              receivedMessage.iv.should.equal "4"
 
 
-          receivedControlMessage = JSON.parse(controlData[1])
-          receivedControlMessage.type.should.equal "message"
-          receivedControlMessage.action.should.equal "delete"
-          receivedControlMessage.data.should.equal "test0:test1"
-          receivedControlMessage.moredata.should.equal "1"
-          receivedControlMessage.from.should.equal "test0"
-          receivedControlMessage.id.should.equal 2
-          done()
+              controlData = messageData.controlMessages
+              controlData.length.should.equal 2
+              receivedControlMessage = JSON.parse(controlData[0])
+              receivedControlMessage.type.should.equal "message"
+              receivedControlMessage.action.should.equal "delete"
+              receivedControlMessage.data.should.equal "test0:test1"
+              receivedControlMessage.moredata.should.equal "1"
+              receivedControlMessage.from.should.equal "test1"
+              receivedControlMessage.id.should.equal 1
+
+
+              receivedControlMessage = JSON.parse(controlData[1])
+              receivedControlMessage.type.should.equal "message"
+              receivedControlMessage.action.should.equal "delete"
+              receivedControlMessage.data.should.equal "test0:test1"
+              receivedControlMessage.moredata.should.equal "1"
+              receivedControlMessage.from.should.equal "test0"
+              receivedControlMessage.id.should.equal 2
+              done()
 
 
   it 'resending message should not create new message', (done) ->
     client1.once 'message', (receivedMessage) ->
-      receivedMessage = JSON.parse receivedMessage
+      receivedMessage = JSON.parse(receivedMessage)
       receivedMessage.id.should.equal 4
 
 

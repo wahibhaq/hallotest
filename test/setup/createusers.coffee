@@ -21,9 +21,9 @@ crypto = require 'crypto'
 
 testkeydir = '../testkeys'
 
-baseUri = "https://96.126.119.175:443"
-minclient = 200
-maxclient = 999
+baseUri = "http://localhost:8080"
+minclient = 3000
+maxclient = 9999
 #maxsockets = 100
 
 #http.globalAgent.maxSockets = maxsockets
