@@ -782,39 +782,22 @@ else
       if (resendId > 0)
         logger.debug "searching room: #{room} from id: #{resendId} for duplicate messages"
         #check messages client doesn't have for dupes
-        cdb.getMessagesAfterId username, room, parseInt(resendId, 10), (err, data) ->
+        cdb.getMessagesAfterId username, room, parseInt(resendId, 10), false, (err, data) ->
           logger.error "error getting messages #{err}" if err?
           return callback err if err?
-          found = _.find data, (checkMessageJSON) ->
-            checkMessage = undefined
-            try
-              logger.debug "parsing #{checkMessageJSON}"
-              checkMessage = JSON.parse(checkMessageJSON)
-            catch error
-              logger.debug "error parsing #{checkMessageJSON}"
-              return callback error
-
-            logger.debug "comparing ivs"
+          found = _.find data, (checkMessage) ->
+            logger.debug "comparing ivs #{checkMessage.iv},#{message.iv}"
             checkMessage.iv == message.iv
-
-          callback null, found
+          callback null, JSON.stringify found
       else
         logger.debug "searching 30 messages from room: #{room} for duplicates"
         #check last 30 for dupes
-        cdb.getMessages username, room, 30, (err, data) ->
+        cdb.getMessages username, room, 30, false, (err, data) ->
           logger.error "error getting messages #{err}" if err?
           return callback err if err?
-          found = _.find data, (checkMessageJSON) ->
-            try
-              logger.debug "parsing #{checkMessageJSON}"
-              checkMessage = JSON.parse(checkMessageJSON)
-            catch error
-              logger.error "error parsing #{checkMessageJSON}"
-              return callback error
-            logger.debug "comparing ivs"
-            checkMessage.iv == message.iv
-
-          callback null, found
+          found = _.find data, (checkMessage) ->
+            logger.debug "comparing ivs #{checkMessage.iv},#{message.iv}"
+          callback null, JSON.stringify found
     else
       callback null, false
 
@@ -1286,7 +1269,7 @@ else
       if messages?.length > 0
         #messageCount = messages.length
         #ordered by id so newest will be last
-        lastMessageId = JSON.parse(messages[messages.length-1]).id
+        lastMessageId = messages[messages.length-1].id
         logger.debug "lastMessageID #{lastMessageId}"
 
         #todo do we need to do this?
@@ -1303,22 +1286,13 @@ else
         multi = rc.multi()
         async.each(
           messages
-          (item, callback) ->
-            oMessage = undefined
-            try
-              oMessage = JSON.parse(item)
-            catch error
-              return callback false
-
-
-
+          (oMessage, callback) ->
             #if we sent it remove it from our set of pointers and remove data from rackspace if we need to
             if oMessage.from is username
               multi.zrem "m:#{username}", "m:#{spot}:#{oMessage.id}"
 
               #delete file from rackspace if necessary
               deleteFile oMessage.data, oMessage.mimeType
-
               idsToDelete.push oMessage.id
 
             callback()
@@ -1856,7 +1830,7 @@ else
 
       if messageId < 0 then messageId = latestMessageId
       if (messageId < latestMessageId)
-        cdb.getMessagesAfterId username, spot, messageId, (err, messageData) ->
+        cdb.getMessagesAfterId username, spot, messageId, true, (err, messageData) ->
           return callback err if err?
           if messageData?.length > 0
             data.messages = messageData

@@ -73,7 +73,7 @@ exports.insertMessage = (message, callback) ->
   ], callback
 
 
-exports.remapMessages = (results, reverse) ->
+exports.remapMessages = (results, reverse, asArrayOfJsonStrings) ->
   messages = []
   #map to array of json messages
   results.forEach (row) ->
@@ -104,9 +104,9 @@ exports.remapMessages = (results, reverse) ->
     #insert at begining to reverse order
     #todo change client to handle json object
     if reverse
-      messages.unshift JSON.stringify(message)
+      messages.unshift if asArrayOfJsonStrings then JSON.stringify(message) else message
     else
-      messages.push JSON.stringify(message)
+      messages.push if asArrayOfJsonStrings then JSON.stringify(message) else message
 
   return messages
 
@@ -118,15 +118,15 @@ exports.getAllMessages = (username, spot, callback) ->
     if err
       logger.error "error getting all messages for #{username}, spot: #{spot}"
       return callback err
-    return callback null, @remapMessages results, false
+    return callback null, @remapMessages results, false, false
 
-exports.getMessages = (username, spot, count, callback) ->
+exports.getMessages = (username, spot, count, asArrayOfJsonStrings, callback) ->
   cql = "select * from chatmessages where username=? and spotname=? order by spotname desc limit #{count};"
   pool.cql cql, [username, spot], (err, results) =>
     if err
       logger.error "error getting messages for #{username}, spot: #{spot}, count: #{count}"
       return callback err
-    return callback null, @remapMessages results, true
+    return callback null, @remapMessages results, true, asArrayOfJsonStrings
 
 
 exports.getMessagesBeforeId = (username, spot, id, callback) ->
@@ -136,24 +136,27 @@ exports.getMessagesBeforeId = (username, spot, id, callback) ->
     if err
       logger.error "error getting messages before id for #{username}, spot: #{spot}, id: #{id}"
       return callback err
-    return callback null, @remapMessages results, true
+    return callback null, @remapMessages results, true, true
 
 
-exports.getMessagesAfterId = (username, spot, id, callback) ->
+exports.getMessagesAfterId = (username, spot, id, asArrayOfJsonStrings, callback) ->
   logger.debug "getMessagesAfterId, username: #{username}, spot: #{spot}, id: #{id}"
   if id is -1
     callback null, null
   else
     if id is 0
-      this.getMessages username, spot, 30, callback
+      this.getMessages username, spot, 30, asArrayOfJsonStrings, callback
     else
       cql = "select * from chatmessages where username=? and spotname=? and id > ? order by spotname desc;"
       pool.cql cql, [username, spot, id], (err, results) =>
         if err
           logger.error "error getting messages after id for #{username}, spot: #{spot}, id: #{id}"
           return callback err
-        messages = @remapMessages results, true
+        messages = @remapMessages results, true, asArrayOfJsonStrings
         return callback null, messages
+
+
+
 
 
 exports.deleteMessage = (deletingUser, fromUser, spot, id) ->
