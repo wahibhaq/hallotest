@@ -1315,8 +1315,8 @@ else
 
       #if it's not in cassandra just delete it from redis
       if !message?
-        rc.zrem "m:#{deletingUser}", "m:#{spot}:#{messageId}"
-        return callback null, null
+        rc.zrem "m:#{deletingUser}", "m:#{spot}:#{messageId}", (err, result) ->
+          return callback null, null
 
       dMessage = message
       deleteMessageInternal = (callback) ->
