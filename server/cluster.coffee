@@ -797,6 +797,7 @@ else
           return callback err if err?
           found = _.find data, (checkMessage) ->
             logger.debug "comparing ivs #{checkMessage.iv},#{message.iv}"
+            checkMessage.iv == message.iv
           callback null, JSON.stringify found
     else
       callback null, false
