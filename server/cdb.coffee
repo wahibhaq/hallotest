@@ -255,8 +255,10 @@ exports.getMessage = (username, room, id, callback) ->
     if err
       logger.error "error getting message for #{username}, spot: #{room}, id: #{id}"
       return callback err
-    if results.length isnt 1
-      return callback new Error 'could not get message #{results.count}'
+    if results.length < 1
+      return callback null, null
+    if results.length > 1
+      return callback new Error 'getMessages unexpected results.length > 1'
     return callback null, @remapMessage results[0]
 
 

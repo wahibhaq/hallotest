@@ -1311,9 +1311,10 @@ else
     otherUser = common.getOtherSpotUser spot, deletingUser
     #get the message we're deleting
     cdb.getMessage deletingUser, spot, messageId, (err, message) ->
-      logger.error "error gettingMessage: #{err}" if err?
-      return callback err if err?
-      logger.debug "got message: #{message}"
+      if err?
+        logger.error "error gettingMessage: #{err}"
+        return callback err
+
       #if it's not in cassandra just delete it from redis
       if !message?
         rc.zrem "m:#{deletingUser}", "m:#{spot}:#{messageId}", (err, result) ->
