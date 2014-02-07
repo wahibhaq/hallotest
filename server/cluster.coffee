@@ -1312,7 +1312,7 @@ else
     #get the message we're deleting
     cdb.getMessage deletingUser, spot, messageId, (err, message) ->
       return callback err if err?
-
+      logger.debug "got message: #{message}"
       #if it's not in cassandra just delete it from redis
       if !message?
         rc.zrem "m:#{deletingUser}", "m:#{spot}:#{messageId}", (err, result) ->
