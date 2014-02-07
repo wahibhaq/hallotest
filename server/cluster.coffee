@@ -881,7 +881,6 @@ else
         else
           logger.info "#{from}->#{to}, mimeType: #{mimeType} message: #{message}"
           message.id = id
-          newMessage = JSON.stringify(message)
 
           #store message in cassandra
           cdb.insertMessage message, (err, results) ->
@@ -970,15 +969,11 @@ else
               #if we deleted messages, add the delete control message(s) to this message to save sending the delete control message separately
               if myDeleteControlMessages?.length > 0
                 message.deleteControlMessages = myDeleteControlMessages
-                myMessage = JSON.stringify message
-              else
-                myMessage = newMessage
+              myMessage = JSON.stringify message
 
               if theirDeleteControlMessages?.length > 0
                 message.deleteControlMessages = theirDeleteControlMessages
-                theirMessage = JSON.stringify message
-              else
-                theirMessage = newMessage
+              theirMessage = JSON.stringify message
 
               sio.sockets.to(to).emit "message", theirMessage
               sio.sockets.to(from).emit "message", myMessage
@@ -2434,7 +2429,7 @@ else
       apn_tokens = ids[1]?.split(":")
 
       if gcmIds?.length > 0
-        logger.debug "sending gcms for invite response notification"
+        logger.debug "sending gcms for invite response notification #{username} #{friendname}"
 
         gcmmessage = new gcm.Message()
         sender = new gcm.Sender("#{googleApiKey}")
@@ -2448,7 +2443,7 @@ else
 
         sender.send gcmmessage, gcmIds, 4, (err, result) ->
           return logger.error "Error sending gcm: #{err}" if err? or not result?
-          logger.debug "sendGcm result: #{JSON.stringify(result)}"
+          logger.debug "sendGcm for invite response notification ok #{username} #{friendname}"
           if result.failure > 0
             removeGcmIds friendname, gcmIds, result.results
 
