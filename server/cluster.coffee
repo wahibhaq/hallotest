@@ -790,7 +790,7 @@ else
             checkMessage.iv == message.iv
           callback null, JSON.stringify found
       else
-        logger.debug "searching 30 messages from room: #{room} for duplicates"
+        logger.debug "searching up to 30 messages from room: #{room} for duplicates"
         #check last 30 for dupes
         cdb.getMessages username, room, 30, false, (err, data) ->
           logger.error "error getting messages #{err}" if err?
@@ -1318,8 +1318,6 @@ else
         return callback null, null
 
       dMessage = message
-
-      logger.debug "dMessage: #{dMessage}"
       deleteMessageInternal = (callback) ->
 
         #delete message data
