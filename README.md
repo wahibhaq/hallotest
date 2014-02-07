@@ -14,7 +14,7 @@ corporations and authorities have taken with our communications. We created sure
 If you support this work and appreciate surespot please show it and consider donating your time or money.
 In turn, we will pass along support to the Electronic Frontier Foundation (EFF) who work tirelessly to defend your digital rights.
 
-[![donation](https://chatsecure.org/static/images/paypal_donate.png)](https://www.surespot.me/contribute.html)
+[![donation](https://www.surespot.me/images/contribute-button.png/)](https://www.surespot.me/contribute.html)
 
 
 License
@@ -63,14 +63,18 @@ terms of a separate license:
 * [passport-local](https://github.com/jaredhanson/passport-local) - Copyright (c) 2011-2013 Jared Hanson
 * [passport](https://github.com/jaredhanson/passport) - Copyright (c) 2011-2013 Jared Hanson
 * [cookie](https://github.com/shtylman/node-cookie) - Copyright (C) Roman Shtylman shtylman@gmail.com
-* [winston](https://github.com/flatiron/winston) - Copyright (c) 2010 Charlie Robbins
-* [express-winston](https://github.com/heapsource/express-winston) - Copyright (c) 2012-2013 Heapsource.com 
+* [node-apm](https://github.com/argon/node-apn) - Copyright (c) 2013 Andrew Naylor
+* [ua-parser](https://github.com/tobie/ua-parser) - The JavaScript port is Copyright 2010 Tobie Langel
 * [mocha](https://github.com/visionmedia/mocha) - Copyright (c) 2011-2013 TJ Holowaychuk  tj@vision-media.ca
 * [should](https://github.com/visionmedia/should.js) - Copyright (c) 2010-2011 TJ Holowaychuk tj@vision-media.ca  Copyright (c) 2011 Aseem Kishore aseem.kishore@gmail.com
 * [express](https://github.com/visionmedia/express) -  Copyright (c) 2009-2011 TJ Holowaychuk tj@vision-media.ca
 * [connect-redis](https://github.com/visionmedia/connect-redis) - Copyright (c) 2009-2011 TJ Holowaychuk tj@vision-media.ca
 * [socket.io](https://github.com/LearnBoost/socket.io) - Copyright (c) 2011 Guillermo Rauch guillermo@learnboost.com
 * [cluster](https://github.com/LearnBoost/cluster) - Copyright (c) 2011 LearnBoost <dev@learnboost.com>
+* [node-bunyan](https://github.com/trentm/node-bunyan) - Copyright (c) 2011-2012 Joyent Inc.
+* [express-bunyan-logger](https://github.com/villadora/express-bunyan-logger) - Copyright (c) 2013, Villa.Gao <jky239@gmail.com>
+* [jade](https://github.com/visionmedia/jade) - Copyright (c) 2009-2010 TJ Holowaychuk <tj@vision-media.ca>
+* [iap_verifier](https://github.com/pcrawfor/iap_verifier) - Copyright (c) Paul Crawford 
 * [redis-sentinel-client](https://github.com/DocuSignDev/node-redis-sentinel-client) - Copyright (c) Node.js team at DocuSign
 * [redis](https://redis.io/) -
 redis: http://redis.io/
