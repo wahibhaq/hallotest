@@ -318,9 +318,9 @@ else
     app.set 'views', "#{__dirname}/views"
     app.set 'view engine', 'jade'
 
-    app.use(require('express-bunyan-logger')({name: 'surespot', streams : bunyanStreams }));
+    #app.use(require('express-bunyan-logger')({name: 'surespot', streams : bunyanStreams }));
     app.use app.router
-    app.use(require('express-bunyan-logger').errorLogger({name: 'surespot', streams : bunyanStreams }));
+    #app.use(require('express-bunyan-logger').errorLogger({name: 'surespot', streams : bunyanStreams }));
     app.use (err, req, res, next) ->
       res.send err.status or 500
 
@@ -880,7 +880,6 @@ else
           sio.sockets.to(from).emit "message", found
           callback()
         else
-          logger.info "#{from}->#{to}, mimeType: #{mimeType} message: #{message}"
           message.id = id
 
           #store message in cassandra
@@ -976,6 +975,7 @@ else
                 message.deleteControlMessages = theirDeleteControlMessages
               theirMessage = JSON.stringify message
 
+              logger.info "#{from}->#{to}, mimeType: #{mimeType} message: #{myMessage}"
               sio.sockets.to(to).emit "message", theirMessage
               sio.sockets.to(from).emit "message", myMessage
 
