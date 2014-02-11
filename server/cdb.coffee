@@ -3,8 +3,10 @@ common = require './common'
 bunyan = require 'bunyan'
 pool = null
 
+debugLevel = process.env.SURESPOT_DEBUG_LEVEL ? 'debug'
+
 bunyanStreams = [{
-  level: 'debug'
+  level: debugLevel
   stream: process.stdout
 }]
 
