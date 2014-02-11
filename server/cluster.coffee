@@ -1072,12 +1072,13 @@ else
       message.from = from
       sMessage = JSON.stringify message
 
-      cdb.getAllControlMessageIds from, spot, (err, cmessageIds) ->
-        logger.debug "counted #{cmessageIds.length} control message ids for #{spot}"
-        if (cmessageIds.length >= CONTROL_MESSAGE_HISTORY)
-          deleteIds = cmessageIds.slice 0, cmessageIds.length - CONTROL_MESSAGE_HISTORY + 1
-          cdb.deleteControlMessages spot, deleteIds, (err, results) ->
-            logger.error "error deleting control messages from spot #{spot}: #{err}" if err?
+
+      #delete oldest control message for this spot
+      if (id > CONTROL_MESSAGE_HISTORY)
+        deleteId = id - CONTROL_MESSAGE_HISTORY
+        logger.debug "deleting control messageId #{deleteId}  from #{spot}"
+        cdb.deleteControlMessages spot, [deleteId], (err, results) ->
+          logger.error "error deleting control messages from spot #{spot}: #{err}" if err?
 
       cdb.insertMessageControlMessage spot, message, (err, results) ->
         return callback err if err?
@@ -1108,17 +1109,17 @@ else
         message.id = id
         newMessage = JSON.stringify(message)
 
-        cdb.getAllUserControlMessageIds to, (err, cmessageIds) ->
-          logger.debug "counted #{cmessageIds.length} user control message ids for #{to}"
-          if (cmessageIds.length >= CONTROL_MESSAGE_HISTORY)
-            deleteIds = cmessageIds.slice 0, cmessageIds.length - CONTROL_MESSAGE_HISTORY + 1
-            cdb.deleteUserControlMessages to, deleteIds, (err, results) ->
-              logger.error "error deleting user control messages from user #{to}: #{err}" if err?
+        #delete oldest user control message for this user
+        if (id > CONTROL_MESSAGE_HISTORY)
+          deleteId = id - CONTROL_MESSAGE_HISTORY
+          logger.debug "deleting user control messageId #{deleteId}  from user #{to}"
+          cdb.deleteUserControlMessages to, [deleteId], (err, results) ->
+            logger.error "error deleting user control messages from user #{to}: #{err}" if err?
 
-          cdb.insertUserControlMessage to, message, (err, results) ->
-            return callback err if err?
-            sio.sockets.to(to).emit "control", newMessage
-            callback()
+        cdb.insertUserControlMessage to, message, (err, results) ->
+          return callback err if err?
+          sio.sockets.to(to).emit "control", newMessage
+          callback()
 
   # broadcast a key revocation message to who's conversations
   sendRevokeMessages = (who, newVersion, callback) ->
@@ -1310,6 +1311,7 @@ else
     logger.debug "user #{deletingUser} deleting message from: #{spot} id: #{messageId}"
     otherUser = common.getOtherSpotUser spot, deletingUser
     #get the message we're deleting
+    #todo eliminate this get by storing from, data and mimetype in redis if not text
     cdb.getMessage deletingUser, spot, messageId, (err, message) ->
       if err?
         logger.error "error gettingMessage: #{err}"
@@ -1318,6 +1320,7 @@ else
       #if it's not in cassandra just delete it from redis
       if !message?
         rc.zrem "m:#{deletingUser}", "m:#{spot}:#{messageId}", (err, result) ->
+          logger.error "error deleting message: #{err}" if err?
         return callback null, null
 
       dMessage = message

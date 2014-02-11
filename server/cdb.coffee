@@ -31,6 +31,7 @@ exports.connect = (callback) ->
     if (err)
       callback err
 
+
 exports.insertMessage = (message, callback) ->
   logger.debug "cdb.insertMessage"
   spot = common.getSpotName(message.from, message.to)
@@ -298,26 +299,6 @@ exports.remapControlMessages = (results, reverse) ->
 
   return messages
 
-
-exports.remapControlMessageIds = (results) ->
-  ids = []
-  #map to array of ids
-  results.forEach (row) ->
-    row.forEach (name, value, ts, ttl) ->
-      switch name
-        when 'id'
-          if value? then ids.push value else return
-  return ids
-
-exports.getAllControlMessageIds = (username, spot,  callback) ->
-  cql = "select id from messagecontrolmessages where username=? and spotname=?;"
-  pool.cql cql, [username, spot], (err, results) =>
-    if err
-      logger.error "error getting message control messages id for #{username}, spot: #{spot}"
-      return callback err
-    return callback null, @remapControlMessageIds results, false
-
-
 exports.getControlMessages = (username, room, count, callback) ->
   cql = "select * from messagecontrolmessages where username=? and spotname=? order by spotname desc limit #{count};"
   pool.cql cql, [username, room], (err, results) =>
@@ -483,13 +464,6 @@ exports.getUserControlMessagesAfterId = (username, id, callback) ->
           return callback err
         messages = @remapUserControlMessages results, true
         return callback null, messages
-
-
-exports.getAllUserControlMessageIds = (username, callback) ->
-  cql = "select id from usercontrolmessages where username=?;"
-  pool.cql cql, [username], (err, results) =>
-    return callback err if err?
-    return callback null, @remapControlMessageIds results
 
 exports.deleteUserControlMessages = (username, messageIds, callback) ->
   #logger.debug "deleteAllMessages messageIds: #{JSON.stringify(messageIds)}"
