@@ -963,25 +963,25 @@ else
                   logger.error ("ERROR: Socket.io onmessage, " + err)
                   return callback new MessageError(iv, 500)
 
-              myMessage = null
-              theirMessage = null
+                myMessage = null
+                theirMessage = null
 
-              #if we deleted messages, add the delete control message(s) to this message to save sending the delete control message separately
-              if myDeleteControlMessages?.length > 0
-                message.deleteControlMessages = myDeleteControlMessages
-              myMessage = JSON.stringify message
+                #if we deleted messages, add the delete control message(s) to this message to save sending the delete control message separately
+                if myDeleteControlMessages?.length > 0
+                  message.deleteControlMessages = myDeleteControlMessages
+                myMessage = JSON.stringify message
 
-              if theirDeleteControlMessages?.length > 0
-                message.deleteControlMessages = theirDeleteControlMessages
-              theirMessage = JSON.stringify message
+                if theirDeleteControlMessages?.length > 0
+                  message.deleteControlMessages = theirDeleteControlMessages
+                theirMessage = JSON.stringify message
 
-              logger.info "#{from}->#{to}, mimeType: #{mimeType} message: #{myMessage}"
-              sio.sockets.to(to).emit "message", theirMessage
-              sio.sockets.to(from).emit "message", myMessage
+                logger.info "#{from}->#{to}, mimeType: #{mimeType} message: #{myMessage}"
+                sio.sockets.to(to).emit "message", theirMessage
+                sio.sockets.to(from).emit "message", myMessage
 
-              process.nextTick ->
-                sendPushMessage message, theirMessage
-              callback()
+                process.nextTick ->
+                  sendPushMessage message, theirMessage
+                callback()
 
 
   sendPushMessage = (message, messagejson) ->
