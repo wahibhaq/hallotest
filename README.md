@@ -69,7 +69,7 @@ terms of a separate license:
 * [should](https://github.com/visionmedia/should.js) - Copyright (c) 2010-2011 TJ Holowaychuk tj@vision-media.ca  Copyright (c) 2011 Aseem Kishore aseem.kishore@gmail.com
 * [express](https://github.com/visionmedia/express) -  Copyright (c) 2009-2011 TJ Holowaychuk tj@vision-media.ca
 * [connect-redis](https://github.com/visionmedia/connect-redis) - Copyright (c) 2009-2011 TJ Holowaychuk tj@vision-media.ca
-* [simplereach](https://github.com/simplereach/helenus) -Copyright (c) 2011 SimpleReach <rbradberry@simplereach.com>
+* [helenus](https://github.com/simplereach/helenus) -Copyright (c) 2011 SimpleReach <rbradberry@simplereach.com>
 * [socket.io](https://github.com/LearnBoost/socket.io) - Copyright (c) 2011 Guillermo Rauch guillermo@learnboost.com
 * [cluster](https://github.com/LearnBoost/cluster) - Copyright (c) 2011 LearnBoost <dev@learnboost.com>
 * [node-bunyan](https://github.com/trentm/node-bunyan) - Copyright (c) 2011-2012 Joyent Inc.
