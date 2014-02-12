@@ -940,8 +940,8 @@ else
                     return callback()
                   #TODO per user threshold based on pay status
                   #delete the oldest message(s)
-                  deleteCount = (card - MESSAGES_PER_USER) + 1
-                  logger.info "deleteCount #{deleteCount}"
+                  deleteCount = card - MESSAGES_PER_USER
+                  logger.info "deleteCount #{from}: #{deleteCount}"
                   if deleteCount > 0
 
                     rc.zrange userMessagesKey,  0, deleteCount-1, (err, messagePointers) ->
