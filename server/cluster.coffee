@@ -780,23 +780,23 @@ else
   checkForDuplicateMessage = (resendId, username, room, message, callback) ->
     if (resendId?)
       if (resendId > 0)
-        logger.debug "searching room: #{room} from id: #{resendId} for duplicate messages"
+        logger.info "searching room: #{room} from id: #{resendId} for duplicate messages"
         #check messages client doesn't have for dupes
         cdb.getMessagesAfterId username, room, parseInt(resendId, 10), false, (err, data) ->
           logger.error "error getting messages #{err}" if err?
           return callback err if err?
           found = _.find data, (checkMessage) ->
-            logger.debug "comparing ivs #{checkMessage.iv},#{message.iv}"
+            logger.info "comparing ivs #{checkMessage.iv},#{message.iv}"
             checkMessage.iv == message.iv
           callback null, JSON.stringify found
       else
-        logger.debug "searching up to 30 messages from room: #{room} for duplicates"
+        logger.info "searching up to 30 messages from room: #{room} for duplicates"
         #check last 30 for dupes
         cdb.getMessages username, room, 30, false, (err, data) ->
           logger.error "error getting messages #{err}" if err?
           return callback err if err?
           found = _.find data, (checkMessage) ->
-            logger.debug "comparing ivs #{checkMessage.iv},#{message.iv}"
+            logger.info "comparing ivs #{checkMessage.iv},#{message.iv}"
             checkMessage.iv == message.iv
           callback null, JSON.stringify found
     else
