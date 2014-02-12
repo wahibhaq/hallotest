@@ -777,28 +777,38 @@ else
 
     multi.exec callback
 
+  checkingIvs = {}
   checkForDuplicateMessage = (resendId, username, room, message, callback) ->
     if (resendId?)
-      if (resendId > 0)
-        logger.debug "searching room: #{room} from id: #{resendId} for duplicate messages"
-        #check messages client doesn't have for dupes
-        cdb.getMessagesAfterId username, room, parseInt(resendId, 10), false, (err, data) ->
-          logger.error "error getting messages #{err}" if err?
-          return callback err if err?
-          found = _.find data, (checkMessage) ->
-            logger.debug "comparing ivs #{checkMessage.iv},#{message.iv}"
-            checkMessage.iv == message.iv
-          callback null, JSON.stringify found
+      logger.info "checking if #{message.iv} is already being checked"
+      checkingMessage = checkingIvs[message.iv]
+      if checkingMessage?
+        logger.info "#{message.iv} is already being checked"
+        callback null, JSON.stringify(checkingMessage)
       else
-        logger.debug "searching up to 30 messages from room: #{room} for duplicates"
-        #check last 30 for dupes
-        cdb.getMessages username, room, 30, false, (err, data) ->
-          logger.error "error getting messages #{err}" if err?
-          return callback err if err?
-          found = _.find data, (checkMessage) ->
-            logger.debug "comparing ivs #{checkMessage.iv},#{message.iv}"
-            checkMessage.iv == message.iv
-          callback null, JSON.stringify found
+        checkingIvs[message.iv] = message
+        if (resendId > 0)
+          logger.debug "searching room: #{room} from id: #{resendId} for duplicate messages"
+          #check messages client doesn't have for dupes
+          cdb.getMessagesAfterId username, room, parseInt(resendId, 10), false, (err, data) ->
+            logger.error "error getting messages #{err}" if err?
+            return callback err if err?
+            found = _.find data, (checkMessage) ->
+              logger.debug "comparing ivs #{checkMessage.iv},#{message.iv}"
+              checkMessage.iv == message.iv
+            delete checkingIvs[message.iv]
+            callback null, JSON.stringify found
+        else
+          logger.debug "searching up to 30 messages from room: #{room} for duplicates"
+          #check last 30 for dupes
+          cdb.getMessages username, room, 30, false, (err, data) ->
+            logger.error "error getting messages #{err}" if err?
+            return callback err if err?
+            found = _.find data, (checkMessage) ->
+              logger.debug "comparing ivs #{checkMessage.iv},#{message.iv}"
+              checkMessage.iv == message.iv
+            delete checkingIvs[message.iv]
+            callback null, JSON.stringify found
     else
       callback null, false
 
@@ -869,7 +879,7 @@ else
     #INCR message id
     getNextMessageId room, id, (id) ->
       return callback new MessageError(iv, 500) unless id?
-
+      
       #check for dupes after generating id to preserve ordering
       #check for dupes if message has been resent
       checkForDuplicateMessage resendId, from, room, message, (err, found) ->
