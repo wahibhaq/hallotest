@@ -869,7 +869,7 @@ else
     #INCR message id
     getNextMessageId room, id, (id) ->
       return callback new MessageError(iv, 500) unless id?
-
+      logger.info "createAndSendMessage, spot: #{room}, id: #{id}, iv: #{iv}, resendId: #{resendId}"
       #check for dupes after generating id to preserve ordering
       #check for dupes if message has been resent
       checkForDuplicateMessage resendId, from, room, message, (err, found) ->
