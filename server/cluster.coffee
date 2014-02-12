@@ -1340,13 +1340,13 @@ else
     #delete it from redis
     rc.zrem "m:#{deletingUser}", "m:#{spot}:#{messageId}", (err, result) ->
       logger.error "error deleting message from redis: #{err}" if err?
-      logger.info "deleted message pointer"
+      logger.info "deleted message pointer for: #{spot} id: #{messageId}"
 
     #get the message we're deleting
     #todo eliminate this get by storing from, data and mimetype in redis if not text
     cdb.getMessage deletingUser, spot, messageId, (err, message) ->
       logger.error "error gettingMessage: #{err}" if err?
-      logger.info "got message from cassandra"
+      logger.info "got message from cassandra for: #{spot} id: #{messageId}"
       #if it's not in cassandra then don't do anything else
       return if not message?
 
