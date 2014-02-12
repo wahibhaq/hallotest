@@ -1173,6 +1173,7 @@ else
       return socket.emit new MessageError(data, 500)
 
     if typeIsArray message
+      logger.info "received array of messages"
       async.each(
         message,
         (item, callback) ->
@@ -1182,6 +1183,7 @@ else
         (err) -> )
 
     else
+      logger.info "received single message: #{data}"
       handleSingleMessage user, message, (err) ->
         socket.emit "messageError", err if err?
 
