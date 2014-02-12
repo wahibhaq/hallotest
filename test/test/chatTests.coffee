@@ -475,7 +475,7 @@ describe "surespot chat test", () ->
 
 
   it 'resending message should not create new message', (done) ->
-    client1.once 'message', (receivedMessage) ->
+    client.once 'message', (receivedMessage) ->
       receivedMessage = JSON.parse(receivedMessage)
       receivedMessage.id.should.equal 4
 
