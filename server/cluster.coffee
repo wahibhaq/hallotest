@@ -777,30 +777,49 @@ else
 
     multi.exec callback
 
+  #workaround client sending dupes bug
+  #todo remove when client fixed
+  checkingIvs = {}
   checkForDuplicateMessage = (resendId, username, room, message, callback) ->
     if (resendId?)
-      if (resendId > 0)
-        logger.info "searching room: #{room} from id: #{resendId} for duplicate messages"
-        #check messages client doesn't have for dupes
-        cdb.getMessagesAfterId username, room, parseInt(resendId, 10), false, (err, data) ->
-          logger.error "error getting messages #{err}" if err?
-          return callback err if err?
-          found = _.find data, (checkMessage) ->
-            logger.info "comparing ivs #{checkMessage.iv},#{message.iv}"
-            checkMessage.iv == message.iv
-          callback null, JSON.stringify found
+      logger.info "checking if #{message.iv} is already being checked"
+      logger.info "checkingIvs: #{JSON.stringify(checkingIvs)}"
+      checkingMessageId = checkingIvs[message.iv]
+      logger.info "checkingMessageId: #{checkingMessageId}"
+      if checkingMessageId?
+        message.id = checkingMessageId
+        sMessage = JSON.stringify(message)
+        logger.info "#{message.iv} is already being checked, sending message back #{sMessage}"
+        callback null, sMessage
       else
-        logger.info "searching up to 30 messages from room: #{room} for duplicates"
-        #check last 30 for dupes
-        cdb.getMessages username, room, 30, false, (err, data) ->
-          logger.error "error getting messages #{err}" if err?
-          return callback err if err?
-          found = _.find data, (checkMessage) ->
-            logger.info "comparing ivs #{checkMessage.iv},#{message.iv}"
-            checkMessage.iv == message.iv
-          callback null, JSON.stringify found
+        #set id of message we're checking so we can return same id to client and keep things in sync
+        checkingIvs[message.iv] = message.id
+        if (resendId > 0)
+          logger.info "searching room: #{room} from id: #{resendId} for duplicate messages"
+          #check messages client doesn't have for dupes
+          cdb.getMessagesAfterId username, room, parseInt(resendId, 10), false, (err, data) ->
+            logger.info "error getting messages #{err}" if err?
+            return callback err if err?
+            found = _.find data, (checkMessage) ->
+              logger.info "comparing ivs #{checkMessage.iv},#{message.iv}"
+              checkMessage.iv == message.iv
+            delete checkingIvs[message.iv]
+            logger.info "checkingIvs: #{JSON.stringify(checkingIvs)}"
+            callback null, JSON.stringify found
+        else
+          logger.info "searching up to 30 messages from room: #{room} for duplicates"
+          #check last 30 for dupes
+          cdb.getMessages username, room, 30, false, (err, data) ->
+            logger.error "error getting messages #{err}" if err?
+            return callback err if err?
+            found = _.find data, (checkMessage) ->
+              logger.info "comparing ivs #{checkMessage.iv},#{message.iv}"
+              checkMessage.iv == message.iv
+            delete checkingIvs[message.iv]
+            logger.info "checkingIvs: #{JSON.stringify(checkingIvs)}"
+            callback null, JSON.stringify found
     else
-      callback null, false
+      callback null, null
 
   getNextMessageId = (room, id, callback) ->
     #we will alread have an id if we uploaded a file
@@ -870,18 +889,19 @@ else
     getNextMessageId room, id, (id) ->
       return callback new MessageError(iv, 500) unless id?
       logger.info "createAndSendMessage, spot: #{room}, id: #{id}, iv: #{iv}, resendId: #{resendId}"
+      message.id = id
+
       #check for dupes after generating id to preserve ordering
       #check for dupes if message has been resent
       checkForDuplicateMessage resendId, from, room, message, (err, found) ->
         return callback new MessageError(iv, 500) if err?
-        if found
-          logger.debug "found duplicate message, not adding to db"
-          sio.sockets.to(to).emit "message", found
+        if found?
+          logger.info "found duplicate message, not adding to db"
+          #if it's already in db it's already been sent to other user, no need to send again
+          #sio.sockets.to(to).emit "message", found
           sio.sockets.to(from).emit "message", found
           callback()
         else
-          message.id = id
-
           #store message in cassandra
           cdb.insertMessage message, (err, results) ->
             if err?
