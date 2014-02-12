@@ -176,7 +176,7 @@ exports.deleteMessage = (deletingUser, fromUser, spot, id) ->
 
     pool.cql cql, [users[0], spot, id, users[1], spot, id], (err, results) =>
       logger.error err if err?
-
+      logger.info "deleted message"
   else
     #deleting user was the recipient, just delete it from their messages
     cql = "delete from chatmessages where username=? and spotname=? and id = ?;"
