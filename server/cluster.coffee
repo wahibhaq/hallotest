@@ -941,7 +941,7 @@ else
                   #TODO per user threshold based on pay status
                   #delete the oldest message(s)
                   deleteCount = (card - MESSAGES_PER_USER) + 1
-                  logger.debug "deleteCount #{deleteCount}"
+                  logger.info "deleteCount #{deleteCount}"
                   if deleteCount > 0
 
                     rc.zrange userMessagesKey,  0, deleteCount-1, (err, messagePointers) ->
@@ -1322,7 +1322,7 @@ else
 
 
   deleteMessage = (deletingUser, spot, messageId, sendControlMessage, callback) ->
-    logger.debug "user #{deletingUser} deleting message from: #{spot} id: #{messageId}"
+    logger.info "user #{deletingUser} deleting message from: #{spot} id: #{messageId}"
     otherUser = common.getOtherSpotUser spot, deletingUser
 
     #call callback immediately
