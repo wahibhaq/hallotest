@@ -182,6 +182,7 @@ exports.deleteMessage = (deletingUser, fromUser, spot, id) ->
     cql = "delete from chatmessages where username=? and spotname=? and id = ?;"
     pool.cql cql, [deletingUser, spot, id], (err, results) =>
       logger.error err if err?
+      logger.info "deleted message"
 
 
 exports.deleteMessages = (username, spot, messageIds, callback) ->

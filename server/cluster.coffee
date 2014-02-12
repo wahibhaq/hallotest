@@ -765,17 +765,9 @@ else
   app.post "/updatePurchaseTokens", ensureAuthenticated, updatePurchaseTokensMiddleware, (req, res, next) ->
     res.send 204
 
-  removeMessage = (deletingUser, messageFromUser, room, id, multi, callback) ->
-    multi = rc.multi() unless multi?
 
-    #remove message data from cassandra
-    cdb.deleteMessage deletingUser, messageFromUser, room, id
 
-    #remove from my message pointer set if i sent it
-    if deletingUser is messageFromUser
-      multi.zrem "m:#{deletingUser}", "m:#{room}:#{id}"
 
-    multi.exec callback
 
   #workaround client sending dupes bug
   #todo remove when client fixed
@@ -935,54 +927,54 @@ else
                 multi.hincrby "u:#{from}", "vc", 1
                 multi.incr "tvc"
 
-            deleteEarliestMessage = (callback) ->
-              #check how many messages the user has total
-              rc.zcard userMessagesKey, (err, card) ->
-                if err?
-                  logger.warn "error deleting earliest message: #{err}"
-                  return callback()
-                #TODO per user threshold based on pay status
-                #delete the oldest message(s)
-                deleteCount = (card - MESSAGES_PER_USER) + 1
-                logger.debug "deleteCount #{deleteCount}"
-                if deleteCount > 0
+            multi.exec  (err, results) ->
+              if err?
+                logger.error ("ERROR: Socket.io onmessage, " + err)
+                return callback new MessageError(iv, 500)
 
-                  rc.zrange userMessagesKey,  0, deleteCount-1, (err, messagePointers) ->
-                    if err?
-                      logger.warn "error deleting earliest message: #{err}"
-                      return callback()
-                    myDeleteControlMessages = []
-                    theirDeleteControlMessages = []
-                    async.each(
-                      messagePointers,
-                      (item, callback) ->
-                        messageData = getMessagePointerData from, item
+              deleteEarliestMessage = (callback) ->
+                #check how many messages the user has total
+                rc.zcard userMessagesKey, (err, card) ->
+                  if err?
+                    logger.warn "error deleting earliest message: #{err}"
+                    return callback()
+                  #TODO per user threshold based on pay status
+                  #delete the oldest message(s)
+                  deleteCount = (card - MESSAGES_PER_USER) + 1
+                  logger.debug "deleteCount #{deleteCount}"
+                  if deleteCount > 0
 
-                        #if the message we deleted is not part of the same conversation,send a control message
-                        deletedFromSameSpot = room is messageData.spot
-                        deleteMessage from, messageData.spot, messageData.id, not deletedFromSameSpot, multi, (err, deleteControlMessage) ->
-                          if not err? and deleteControlMessage?
-                            myDeleteControlMessages.push deleteControlMessage
+                    rc.zrange userMessagesKey,  0, deleteCount-1, (err, messagePointers) ->
+                      if err?
+                        logger.warn "error deleting earliest message: #{err}"
+                        return callback()
+                      myDeleteControlMessages = []
+                      theirDeleteControlMessages = []
+                      async.each(
+                        messagePointers,
+                        (item, callback) ->
+                          messageData = getMessagePointerData from, item
 
-                            #don't send control message to other user in the message if it pertains to a different conversation
-                            if deletedFromSameSpot
-                              theirDeleteControlMessages.push deleteControlMessage
+                          #if the message we deleted is not part of the same conversation,send a control message
+                          deletedFromSameSpot = room is messageData.spot
+                          deleteMessage from, messageData.spot, messageData.id, not deletedFromSameSpot, (err, deleteControlMessage) ->
+                            if not err? and deleteControlMessage?
+                              myDeleteControlMessages.push deleteControlMessage
+
+                              #don't send control message to other user in the message if it pertains to a different conversation
+                              if deletedFromSameSpot
+                                theirDeleteControlMessages.push deleteControlMessage
 
 
-                          callback()
-                      (err) ->
-                        logger.warn "error getting old messages to delete: #{err}" if err?
-                        callback myDeleteControlMessages, theirDeleteControlMessages)
+                            callback()
+                        (err) ->
+                          logger.warn "error getting old messages to delete: #{err}" if err?
+                          callback myDeleteControlMessages, theirDeleteControlMessages)
 
-                else
-                  callback()
+                  else
+                    callback()
 
-            deleteEarliestMessage (myDeleteControlMessages, theirDeleteControlMessages) ->
-              multi.exec  (err, results) ->
-                if err?
-                  logger.error ("ERROR: Socket.io onmessage, " + err)
-                  return callback new MessageError(iv, 500)
-
+              deleteEarliestMessage (myDeleteControlMessages, theirDeleteControlMessages) ->
                 myMessage = null
                 theirMessage = null
 
@@ -1329,46 +1321,46 @@ else
         callback()
 
 
-  deleteMessage = (deletingUser, spot, messageId, sendControlMessage, multi, callback) ->
+  deleteMessage = (deletingUser, spot, messageId, sendControlMessage, callback) ->
     logger.debug "user #{deletingUser} deleting message from: #{spot} id: #{messageId}"
     otherUser = common.getOtherSpotUser spot, deletingUser
+
+    #call callback immediately
+    if (sendControlMessage)
+      createAndSendMessageControlMessage deletingUser, otherUser, spot, "delete", spot, messageId, (err, message) ->
+        return callback err if err?
+        callback null, message
+    else
+      createMessageControlMessage deletingUser, otherUser, spot, "delete", spot, messageId, (err, message) ->
+        return callback err if err?
+        callback null, message
+
+    #then delete stuff
+
+    #delete it from redis
+    rc.zrem "m:#{deletingUser}", "m:#{spot}:#{messageId}", (err, result) ->
+      logger.error "error deleting message from redis: #{err}" if err?
+      logger.info "deleted message pointer"
+
     #get the message we're deleting
     #todo eliminate this get by storing from, data and mimetype in redis if not text
     cdb.getMessage deletingUser, spot, messageId, (err, message) ->
-      if err?
-        logger.error "error gettingMessage: #{err}"
-        return callback err
+      logger.error "error gettingMessage: #{err}" if err?
+      logger.info "got message from cassandra"
+      #if it's not in cassandra then don't do anything else
+      return if not message?
 
-      #if it's not in cassandra just delete it from redis
-      if !message?
-        rc.zrem "m:#{deletingUser}", "m:#{spot}:#{messageId}", (err, result) ->
-          logger.error "error deleting message: #{err}" if err?
-        return callback null, null
+      #delete message data
+      #remove message data from cassandra
+      cdb.deleteMessage deletingUser, message.from, spot, messageId
 
-      dMessage = message
-      deleteMessageInternal = (callback) ->
+      #remove from my message pointer set if i sent it
+      if deletingUser is message.from
+        #if we sent it delete the data from rackspace if we need to
+        deleteFile message.data, message.mimeType
 
-        #delete message data
-        removeMessage deletingUser, dMessage.from, spot, messageId, multi, (err, count) ->
-          return callback err if err?
 
-          #if we sent it, delete the data
-          if (deletingUser is dMessage.from)
-            #delete the file from the cloud if necessary
-            deleteFile dMessage.data, dMessage.mimeType
 
-          callback()
-
-      deleteMessageInternal (err) ->
-        return callback err if err?
-        if (sendControlMessage)
-          createAndSendMessageControlMessage deletingUser, otherUser, spot, "delete", spot, messageId, (err, message) ->
-            return callback err if err?
-            callback null, message
-        else
-          createMessageControlMessage deletingUser, otherUser, spot, "delete", spot, messageId, (err, message) ->
-            return callback err if err?
-            callback null, message
 
   deleteFile = (uri, mimeType) ->
     container = null
@@ -1400,7 +1392,7 @@ else
     
     spot = common.getSpotName username, otherUser
 
-    deleteMessage username, spot, messageId, true, null, (err, deleteControlMessage) ->
+    deleteMessage username, spot, messageId, true, (err, deleteControlMessage) ->
       return next err if err?
       res.send (if deleteControlMessage? then 204 else 404)
 
