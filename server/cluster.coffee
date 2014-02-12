@@ -1173,7 +1173,7 @@ else
       return socket.emit new MessageError(data, 500)
 
     if typeIsArray message
-      logger.info "received array of messages"
+      logger.info "received array of messages from #{user}, length #{message.length}" if message.length > 0
       async.each(
         message,
         (item, callback) ->
