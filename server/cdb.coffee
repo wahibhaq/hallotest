@@ -38,16 +38,7 @@ exports.insertMessage = (message, callback) ->
   logger.debug "cdb.insertMessage"
   spot = common.getSpotName(message.from, message.to)
 
-  cql =
-  "BEGIN BATCH
-  INSERT INTO chatmessages (username, spotname, id, datetime, fromuser, fromversion, touser, toversion, iv, data, mimeType, datasize)
-  VALUES (?, ?, ?, ?, ?,?,?,?,?,?,?,? )
-  INSERT INTO chatmessages (username, spotname, id, datetime, fromuser, fromversion, touser, toversion, iv, data, mimeType, datasize)
-  VALUES (?, ?, ?, ?, ?,?,?,?,?,?,?,? )
-  APPLY BATCH"
-
-
-  pool.cql cql, [
+  params1 = [
     message.to,
     spot,
     message.id,
@@ -58,9 +49,9 @@ exports.insertMessage = (message, callback) ->
     message.toVersion,
     message.iv,
     message.data,
-    message.mimeType,
-    message.dataSize,
+    message.mimeType]
 
+  params2 = [
     message.from,
     spot,
     message.id,
@@ -71,9 +62,25 @@ exports.insertMessage = (message, callback) ->
     message.toVersion,
     message.iv,
     message.data,
-    message.mimeType,
-    message.dataSize,
-  ], callback
+    message.mimeType]
+
+
+  insert = " INSERT INTO chatmessages (username, spotname, id, datetime, fromuser, fromversion, touser, toversion, iv, data, mimeType"
+  values = " VALUES (?, ?, ?, ?, ?,?,?,?,?,?,?"
+  if message.dataSize?
+    insert += ", datasize) "
+    values += ", ?) "
+    params1.push message.dataSize
+    params2.push message.dataSize
+
+  else
+    insert += ") "
+    values += ") "
+
+  params = params1.concat(params2)
+  cql = "BEGIN BATCH" + insert + values + insert + values + "APPLY BATCH"
+
+  pool.cql cql, params, callback
 
 
 exports.remapMessages = (results, reverse, asArrayOfJsonStrings) ->
@@ -401,23 +408,37 @@ exports.deleteAllControlMessages = (spot, callback) ->
 exports.insertUserControlMessage = (username, message, callback) ->
   #denormalize using username as partition key so all retrieval for a user
   #occurs on the same node as we are going to be pulling multiple
-  cql =
-    "INSERT INTO usercontrolmessages (username, id, type, action, data, moredata)
-     VALUES (?,?,?,?,?,?);"
 
-  #logger.debug "sending cql #{cql}"
-  #store moredata object as json string in case of friend image data
-  if message.action is 'friendImage'
-    message.moredata = JSON.stringify(message.moredata)
-
-  pool.cql cql, [
+  params = [
     username,
     message.id,
     message.type,
     message.action,
-    message.data,
-    message.moredata,
-  ], callback
+    message.data
+  ]
+
+
+
+  insert = "INSERT INTO usercontrolmessages (username, id, type, action, data"
+  values = "VALUES (?,?,?,?,?"
+  if message.moredata?
+    insert += ", moredata) "
+    values += ", ?);"
+    #store moredata object as json string in case of friend image data
+    if message.action is 'friendImage'
+      message.moredata = JSON.stringify(message.moredata)
+
+    params.push message.moredata
+
+  else
+    insert += ") "
+    values += ");"
+
+  cql = insert + values;
+
+  #logger.debug "sending cql #{cql}"
+
+  pool.cql cql, params, callback
 
 exports.remapUserControlMessages = (results, reverse) ->
   messages = []
