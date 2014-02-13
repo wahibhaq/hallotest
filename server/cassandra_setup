@@ -18,8 +18,7 @@ CREATE TABLE chatmessages (
   datasize    int,
   shareable   boolean,
   PRIMARY KEY (username, spotname, id)
-)
-WITH  caching = 'rows_only';
+);
 
 CREATE TABLE messagecontrolmessages (
   username  varchar,
@@ -31,8 +30,7 @@ CREATE TABLE messagecontrolmessages (
   moredata  varchar,
   fromuser  varchar,
   PRIMARY KEY (username, spotname, id)
-)
-WITH  caching = 'rows_only';
+);
 
 CREATE TABLE usercontrolmessages (
   username  varchar,
@@ -42,8 +40,7 @@ CREATE TABLE usercontrolmessages (
   data      varchar,
   moredata  varchar,
   PRIMARY KEY (username, id)
-)
-WITH  caching = 'rows_only';
+);
 
 CREATE TABLE publickeys (
     username  varchar,
@@ -53,11 +50,12 @@ CREATE TABLE publickeys (
     dsapub    varchar,
     dsapubsig varchar,
 
-    PRIMARY KEY (username, version));
+    PRIMARY KEY (username, version)
+);
 
 
 CREATE TABLE yourmama (
     is  varchar,
     datetime varchar,
     PRIMARY KEY (is)
- );
+);
