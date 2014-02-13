@@ -161,7 +161,12 @@ rc.keys "cu:*", (err, ms) ->
 
               console.log "inserting #{++count} message into #{splits[1]}"
               message = JSON.parse(m)
-              message.moredata = "#{message.moredata}"
+              if message.moredata?
+                if message.action is "friendImage"
+                  message.moredata = message.moredata
+                else
+                  message.moredata = "#{message.moredata}"
+
               cdb.insertUserControlMessage splits[1], message, (err, result) ->
                 if err
                   console.log "error inserting #{m} control message into #{splits[1]}, err: #{err}"
