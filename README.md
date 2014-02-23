@@ -4,6 +4,12 @@ surespot
 
 surespot is a mobile messaging application that secures all messages using end-to-end encryption.
 
+========
+Codeship
+========
+
+![Codeship](https://www.codeship.io/projects/c85f06e0-7ea0-0131-aed9-16ec65cc73a0/status)
+
 
 Contribute
 =========
